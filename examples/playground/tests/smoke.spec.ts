@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { PNG } from "pngjs";
 
-const CLEAR = [0x33, 0x66, 0x99]; // keep in sync with src/main.ts
+const WHITE = [0xff, 0xff, 0xff]; // the light theme's background
+const BAR = [0x4c, 0x78, 0xa8]; // "#4C78A8", the colour in examples/specs/bar-basic.json
 
 test("auto backend reaches ready and reports a backend", async ({ page }) => {
   const errors: string[] = [];
@@ -14,15 +15,18 @@ test("auto backend reaches ready and reports a backend", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("webgl2 fallback renders the clear colour", async ({ page }) => {
-  await page.goto("/?backend=webgl2");
+test("webgl2 fallback draws the background and the bars", async ({ page }) => {
+  await page.goto("/?backend=webgl2&ui=0");
   await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
   await expect(page.locator("html")).toHaveAttribute("data-backend", "webgl2");
 
   const png = PNG.sync.read(await page.locator("#chart").screenshot());
-  const i = ((png.height >> 1) * png.width + (png.width >> 1)) * 4;
-  const [r, g, b, a] = [png.data[i]!, png.data[i + 1]!, png.data[i + 2]!, png.data[i + 3]!];
-  const tolerance = 3;
-  CLEAR.forEach((want, k) => expect(Math.abs([r, g, b][k]! - want)).toBeLessThanOrEqual(tolerance));
-  expect(a).toBe(255);
+  const near = (i: number, want: number[], tolerance = 3) =>
+    want.every((v, k) => Math.abs(png.data[i + k]! - v) <= tolerance);
+  expect(near(0, WHITE)).toBe(true); // top-left corner: background
+  expect(png.data[3]).toBe(255);
+  let bar = 0;
+  for (let i = 0; i < png.data.length; i += 4) if (near(i, BAR)) bar++;
+  // Four bars of roughly 144 x 270..430 px.
+  expect(bar).toBeGreaterThan(100_000);
 });
