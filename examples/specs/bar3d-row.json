@@ -1,0 +1,26 @@
+{
+  "dimension": "3d",
+  "data": {
+    "sales": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4"],
+      "revenue": [120, 90, 140, 110]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "y", "orient": "left", "title": "Revenue" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "sales",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "revenue", "axis": "y" },
+        "color": { "field": "quarter" }
+      }
+    }
+  ],
+  "camera": { "type": "perspective", "azimuth": 35, "elevation": 25, "distance": 2.7 },
+  "interaction": { "orbit": true }
+}

@@ -1,0 +1,29 @@
+{
+  "dimension": "3d",
+  "data": {
+    "pnl": {
+      "month": ["Jan", "Feb", "Mar", "Jan", "Feb", "Mar"],
+      "product": ["Product A", "Product A", "Product A", "Product B", "Product B", "Product B"],
+      "profit": [12.5, -8, 20.25, -15.5, 4, -9.75]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Month" },
+    { "id": "y", "orient": "left", "title": "Profit (k$)" },
+    { "id": "z", "orient": "depth", "title": "Product" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "pnl",
+      "encoding": {
+        "x": { "field": "month", "axis": "x" },
+        "y": { "field": "profit", "axis": "y" },
+        "z": { "field": "product", "axis": "z" },
+        "color": { "field": "product" }
+      }
+    }
+  ],
+  "camera": { "type": "perspective", "azimuth": 35, "elevation": 25, "distance": 2.7 },
+  "interaction": { "orbit": true }
+}

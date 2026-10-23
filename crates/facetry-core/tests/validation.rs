@@ -118,17 +118,124 @@ fn unequal_column_lengths() {
 }
 
 #[test]
-fn depth_axis_and_3d_are_rejected_with_a_clear_message() {
+fn depth_axis_z_and_camera_need_3d() {
     let got = issues(&broken(r#""orient": "left""#, r#""orient": "depth""#));
     assert!(
         got.iter()
-            .any(|i| i.path == "/axes/1/orient" && i.message.contains("3D"))
+            .any(|i| i.path == "/axes/1/orient" && i.message.contains("`dimension: \"3d\"`")),
+        "{got:?}"
     );
-    let got = issues(&broken(r#""data": {"#, r#""dimension": "3d", "data": {"#));
-    assert_eq!(got[0].path, "/dimension");
-    assert!(got[0].message.contains("3D charts are not supported yet"));
+    let got = issues(&broken(
+        r#""y": { "field": "v", "axis": "y" }"#,
+        r#""y": { "field": "v", "axis": "y" }, "z": { "field": "c" }"#,
+    ));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/layers/0/encoding/z");
+    let got = issues(&broken(
+        r#""data": {"#,
+        r#""camera": { "azimuth": 10 }, "data": {"#,
+    ));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/camera");
 }
 
+/// A valid 3D spec with a depth axis and a z channel.
+const GOOD_3D: &str = r#"{
+  "dimension": "3d",
+  "data": { "t": { "c": ["a", "b"], "r": ["p", "q"], "v": [1, 2] } },
+  "axes": [ { "id": "x", "orient": "bottom" }, { "id": "y", "orient": "left" },
+            { "id": "z", "orient": "depth" } ],
+  "layers": [ { "mark": "bar", "data": "t", "encoding": {
+    "x": { "field": "c", "axis": "x" }, "y": { "field": "v", "axis": "y" },
+    "z": { "field": "r", "axis": "z" } } } ],
+  "camera": { "type": "orthographic", "azimuth": 10, "elevation": 20, "distance": 3 },
+  "interaction": { "orbit": false }
+}"#;
+
+fn broken_3d(from: &str, to: &str) -> String {
+    assert!(GOOD_3D.contains(from), "test bug: {from:?} not in GOOD_3D");
+    GOOD_3D.replace(from, to)
+}
+
+#[test]
+fn a_good_3d_spec_has_no_issues_and_z_is_optional() {
+    assert_eq!(issues(GOOD_3D), vec![]);
+    let no_z = broken_3d(",\n    \"z\": { \"field\": \"r\", \"axis\": \"z\" }", "");
+    assert_eq!(issues(&no_z), vec![]);
+    let spec = parse_spec_json(GOOD_3D).unwrap();
+    assert!(!spec.orbit_enabled());
+    let spec = parse_spec_json(&broken_3d(r#""orbit": false"#, r#""orbit": true"#)).unwrap();
+    assert!(spec.orbit_enabled());
+}
+
+#[test]
+fn right_axes_are_rejected_in_3d() {
+    let got = issues(&broken_3d(r#""orient": "left""#, r#""orient": "right""#));
+    assert!(
+        got.iter()
+            .any(|i| i.path == "/axes/1/orient" && i.message.contains("3D")),
+        "{got:?}"
+    );
+}
+
+#[test]
+fn z_problems_in_3d() {
+    // Numeric z field, unknown field, wrong axis orientation, unknown axis.
+    let got = issues(&broken_3d(r#""field": "r""#, r#""field": "v""#));
+    assert_eq!(got[0].path, "/layers/0/encoding/z/field");
+    assert!(got[0].message.contains("needs a categorical"));
+    let got = paths(&broken_3d(r#""field": "r""#, r#""field": "nope""#));
+    assert_eq!(got, ["/layers/0/encoding/z/field"]);
+    let got = issues(&broken_3d(
+        r#""field": "r", "axis": "z""#,
+        r#""field": "r", "axis": "x""#,
+    ));
+    assert_eq!(got[0].path, "/layers/0/encoding/z/axis");
+    assert!(got[0].message.contains("needs a depth axis"));
+    let got = paths(&broken_3d(
+        r#""field": "r", "axis": "z""#,
+        r#""field": "r", "axis": "q""#,
+    ));
+    assert_eq!(got, ["/layers/0/encoding/z/axis"]);
+}
+
+#[test]
+fn depth_axis_rules_in_3d() {
+    // Two depth axes; a numeric scale override on the categorical depth axis.
+    let got = paths(&broken_3d(
+        r#"{ "id": "z", "orient": "depth" }"#,
+        r#"{ "id": "z", "orient": "depth" }, { "id": "z2", "orient": "depth" }"#,
+    ));
+    assert_eq!(got, ["/axes/3/orient"]);
+    let got = paths(&broken_3d(
+        r#"{ "id": "z", "orient": "depth" }"#,
+        r#"{ "id": "z", "orient": "depth", "scale": { "nice": true } }"#,
+    ));
+    assert_eq!(got, ["/axes/2/scale"]);
+}
+
+#[test]
+fn camera_problems_in_3d() {
+    let got = paths(&broken_3d(r#""distance": 3"#, r#""distance": 0"#));
+    assert_eq!(got, ["/camera/distance"]);
+    let got = paths(&broken_3d(r#""distance": 3"#, r#""distance": -2"#));
+    assert_eq!(got, ["/camera/distance"]);
+    // Angles are clamped by the renderer, not rejected.
+    assert_eq!(
+        issues(&broken_3d(r#""elevation": 20"#, r#""elevation": 400"#)),
+        vec![]
+    );
+    let got = paths(&broken_3d(
+        r#""type": "orthographic""#,
+        r#""type": "fisheye""#,
+    ));
+    assert_eq!(got, ["/camera/type"]);
+    let got = paths(&broken_3d(
+        r#""azimuth": 10"#,
+        r#""azimuth": 10, "roll": 3"#,
+    ));
+    assert_eq!(got, ["/camera/roll"]);
+}
 #[test]
 fn duplicate_axis_ids_and_sides() {
     let json = broken(
