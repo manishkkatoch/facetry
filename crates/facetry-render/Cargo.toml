@@ -1,0 +1,22 @@
+[package]
+name = "facetry-render"
+description = "wgpu renderer: owns the GPU device and surface, draws frames."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+facetry-core.workspace = true
+wgpu.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu = { workspace = true, features = ["std", "parking_lot", "vulkan", "metal", "dx12", "gles"] }
+
+# Both browser backends are compiled in; which one runs is decided at runtime.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, features = ["std", "webgpu", "webgl"] }
+web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+
+[lints]
+workspace = true

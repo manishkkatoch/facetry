@@ -1,0 +1,15 @@
+{
+  "name": "facetry-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build:wasm": "scripts/build-wasm.sh",
+    "build": "pnpm build:wasm && pnpm -r build",
+    "dev": "pnpm --filter playground dev",
+    "test:e2e": "pnpm --filter playground test:e2e"
+  },
+  "devDependencies": {
+    "binaryen": "132.0.0"
+  }
+}

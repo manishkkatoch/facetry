@@ -1,0 +1,7 @@
+/target
+node_modules
+dist
+/packages/facetry/wasm
+playwright-report
+test-results
+*.tsbuildinfo

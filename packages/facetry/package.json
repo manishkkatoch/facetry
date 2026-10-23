@@ -1,0 +1,21 @@
+{
+  "name": "facetry",
+  "version": "0.0.0",
+  "description": "GPU-accelerated charts, written in Rust, compiled to WebAssembly.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "files": ["dist", "wasm"],
+  "sideEffects": false,
+  "scripts": {
+    "build:wasm": "../../scripts/build-wasm.sh",
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

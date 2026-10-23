@@ -1,0 +1,27 @@
+[package]
+name = "facetry-wasm"
+description = "wasm-bindgen bindings: the `Chart` class exposed to JS/TS."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib is the .wasm; rlib lets `cargo test`/clippy build the crate natively.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+facetry-core.workspace = true
+facetry-render.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+console_error_panic_hook.workspace = true
+web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+
+[package.metadata.wasm-pack.profile.release]
+# We run wasm-opt ourselves (scripts/build-wasm.sh) so the version is pinned via npm.
+wasm-opt = false
+
+[lints]
+workspace = true
