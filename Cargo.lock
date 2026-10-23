@@ -325,7 +325,11 @@ dependencies = [
 name = "facetry-render"
 version = "0.0.0"
 dependencies = [
+ "bytemuck",
  "facetry-core",
+ "facetry-font",
+ "naga",
+ "png",
  "web-sys",
  "wgpu",
 ]
@@ -336,8 +340,10 @@ version = "0.0.0"
 dependencies = [
  "console_error_panic_hook",
  "facetry-core",
+ "facetry-font",
  "facetry-render",
  "js-sys",
+ "serde-wasm-bindgen",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
