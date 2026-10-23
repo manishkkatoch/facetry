@@ -18,7 +18,9 @@ serde_path_to_error.workspace = true
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 
-[dev-dependencies]
+# Test-only crates that do not build for wasm32 (`cargo clippy --target wasm32 --all-targets`
+# still compiles the tests), so they are native-only and the tests that use them are gated.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 insta.workspace = true
 proptest.workspace = true
 

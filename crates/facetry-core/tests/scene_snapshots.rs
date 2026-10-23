@@ -2,6 +2,7 @@
 //!
 //! The spec files in `examples/specs/` are shared with the playground and the browser golden
 //! test. To accept intentional changes: `cargo insta review` (or `INSTA_UPDATE=always cargo test`).
+#![cfg(not(target_arch = "wasm32"))]
 
 use facetry_core::{build_scene, parse_spec_json, validate};
 use facetry_font::FontMetrics;

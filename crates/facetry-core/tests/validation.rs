@@ -1,4 +1,5 @@
 //! Validation reports every problem with a JSON-pointer path.
+#![cfg(not(target_arch = "wasm32"))]
 
 use facetry_core::{Issue, parse_spec_json, validate};
 

@@ -8,15 +8,23 @@ publish.workspace = true
 
 [dependencies]
 facetry-core.workspace = true
+facetry-font.workspace = true
 wgpu.workspace = true
+png.workspace = true
+bytemuck.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-wgpu = { workspace = true, features = ["std", "parking_lot", "vulkan", "metal", "dx12", "gles"] }
+wgpu = { workspace = true, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 
 # Both browser backends are compiled in; which one runs is decided at runtime.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wgpu = { workspace = true, features = ["std", "webgpu", "webgl"] }
+wgpu = { workspace = true, features = ["std", "wgsl", "webgpu", "webgl"] }
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+
+[dev-dependencies]
+# Lets the unit tests validate the WGSL and translate it to GLSL ES 3.00 (what WebGL2
+# consumes) without a GPU.
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 
 [lints]
 workspace = true

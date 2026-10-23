@@ -1,6 +1,15 @@
-use facetry_core::Theme;
+use facetry_core::scene::Scene;
+use facetry_core::{Color, Theme};
+use facetry_font::FontMetrics;
+use wgpu::util::DeviceExt as _;
 
 use crate::Error;
+use crate::gpu::{self, Globals};
+use crate::rect::{self, RectPipeline};
+use crate::text::{self, GlyphInstance, TextPipeline};
+
+/// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
+const MSAA_SAMPLES: u32 = 4;
 
 /// Which GPU API the caller wants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,7 +33,8 @@ impl BackendPreference {
     }
 }
 
-/// Owns the GPU objects (instance, adapter info, device, queue) and the window surface.
+/// Owns the GPU objects (instance, adapter info, device, queue) and the window surface,
+/// and draws a [`Scene`] with them.
 #[derive(Debug)]
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
@@ -32,7 +42,17 @@ pub struct Renderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     backend: wgpu::Backend,
-    theme: Theme,
+    /// Clear colour; set from each scene's background.
+    background: Color,
+    /// 4 when multisampling works, else 1.
+    samples: u32,
+    /// The multisampled colour target, resolved into the surface each frame. `None` when
+    /// `samples == 1` or the surface has no area.
+    msaa_view: Option<wgpu::TextureView>,
+    globals: wgpu::Buffer,
+    quad: wgpu::Buffer,
+    rects: RectPipeline,
+    text: TextPipeline,
     /// Largest texture side the device accepts; larger resizes are clamped.
     max_dimension: u32,
     /// `false` while the surface has zero area (hidden canvas); we cannot configure
@@ -49,7 +69,6 @@ impl Renderer {
         width: u32,
         height: u32,
         preference: BackendPreference,
-        theme: Theme,
     ) -> Result<Self, Error> {
         let unavailable =
             |what: &str, e: &dyn std::fmt::Display| Error::GpuUnavailable(format!("{what}: {e}"));
@@ -94,13 +113,55 @@ impl Renderer {
             config.format = format;
         }
 
+        // 4x MSAA smooths bar and text-quad edges. Every WebGPU device supports it for the
+        // surface formats we pick; WebGL2 usually does, so we ask rather than assume.
+        let samples = if adapter
+            .get_texture_format_features(config.format)
+            .flags
+            .sample_count_supported(MSAA_SAMPLES)
+        {
+            MSAA_SAMPLES
+        } else {
+            1
+        };
+        let font = FontMetrics::inter();
+        let globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(
+            &globals,
+            0,
+            bytemuck::bytes_of(&Globals {
+                viewport: [1.0, 1.0],
+                atlas: [font.atlas.width as f32, font.atlas.height as f32],
+                px_range: font.atlas.px_range,
+                _pad: [0.0; 3],
+            }),
+        );
+        let quad = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("unit quad"),
+            contents: bytemuck::cast_slice(&gpu::QUAD),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let rects = RectPipeline::new(&device, config.format, samples, &globals);
+        let text = TextPipeline::new(&device, &queue, config.format, samples, &globals)?;
+
         let mut renderer = Self {
             surface,
             device,
             queue,
             config,
             backend: adapter.get_info().backend,
-            theme,
+            background: Theme::default().background,
+            samples,
+            msaa_view: None,
+            globals,
+            quad,
+            rects,
+            text,
             max_dimension: adapter.limits().max_texture_dimension_2d,
             drawable: false,
         };
@@ -113,7 +174,6 @@ impl Renderer {
     pub async fn from_canvas(
         canvas: web_sys::HtmlCanvasElement,
         preference: BackendPreference,
-        theme: Theme,
     ) -> Result<Self, Error> {
         let (width, height) = (canvas.width(), canvas.height());
         Self::new(
@@ -121,7 +181,6 @@ impl Renderer {
             width,
             height,
             preference,
-            theme,
         )
         .await
     }
@@ -146,9 +205,62 @@ impl Renderer {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
         }
+        self.msaa_view = (self.drawable && self.samples > 1).then(|| {
+            self.device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("msaa colour target"),
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: self.samples,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default())
+        });
     }
 
-    /// Draws one frame: clears to the theme background.
+    /// Samples per pixel actually in use: 4 (MSAA) or 1 when the device cannot multisample.
+    pub fn msaa_samples(&self) -> u32 {
+        self.samples
+    }
+
+    /// Size of the drawing buffer in pixels (after clamping to the device limit).
+    pub fn size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
+    }
+
+    /// Converts a colour to what the render target expects: linear for sRGB formats (the GPU
+    /// encodes on write), already gamma-encoded for plain ones such as `Rgba8Unorm`.
+    fn encode_color(&self, color: Color) -> [f32; 4] {
+        if self.config.format.is_srgb() {
+            color.to_array()
+        } else {
+            color.to_srgb()
+        }
+    }
+
+    /// Uploads a scene: the next `render` draws it. Cheap enough to call on every resize or
+    /// data change (one buffer write per list).
+    pub fn set_scene(&mut self, scene: &Scene) {
+        self.background = scene.background;
+        let rects = rect::instances(scene, |c| self.encode_color(c));
+        self.rects.set_instances(&self.device, &self.queue, &rects);
+
+        let font = FontMetrics::inter();
+        let mut glyphs: Vec<GlyphInstance> = Vec::new();
+        for t in &scene.texts {
+            text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
+        }
+        self.text.set_instances(&self.device, &self.queue, &glyphs);
+    }
+
+    /// Draws one frame: the background, then gridlines, bars, axis rules and text.
     pub fn render(&mut self) -> Result<(), Error> {
         if !self.drawable {
             return Ok(());
@@ -172,43 +284,60 @@ impl Renderer {
             }
         };
 
-        let view = frame
+        let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        self.queue.write_buffer(
+            &self.globals,
+            0,
+            bytemuck::bytes_of(&Globals {
+                viewport: [self.config.width as f32, self.config.height as f32],
+                atlas: [
+                    FontMetrics::inter().atlas.width as f32,
+                    FontMetrics::inter().atlas.height as f32,
+                ],
+                px_range: FontMetrics::inter().atlas.px_range,
+                _pad: [0.0; 3],
+            }),
+        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("clear"),
+                label: Some("frame"),
             });
-        // Clear values are written to the target as-is: linear for sRGB formats (the GPU
-        // encodes), but already gamma-encoded for plain formats such as `Rgba8Unorm`.
-        let [r, g, b, a] = if self.config.format.is_srgb() {
-            self.theme.background.to_array()
-        } else {
-            self.theme.background.to_srgb()
+        let [r, g, b, a] = self.encode_color(self.background);
+        // With MSAA we draw into the multisampled texture and resolve (average the samples)
+        // into the surface; the multisampled contents are then thrown away.
+        let (view, resolve_target, store) = match &self.msaa_view {
+            Some(msaa) => (msaa, Some(&frame_view), wgpu::StoreOp::Discard),
+            None => (&frame_view, None, wgpu::StoreOp::Store),
         };
-        // Dropping the pass ends it; clearing needs no draw calls.
-        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("clear pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: f64::from(r),
-                        g: f64::from(g),
-                        b: f64::from(b),
-                        a: f64::from(a),
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        }));
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("chart pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(r),
+                            g: f64::from(g),
+                            b: f64::from(b),
+                            a: f64::from(a),
+                        }),
+                        store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            // No depth test in 2D: draw order alone decides what is on top.
+            self.rects.draw(&mut pass, &self.quad);
+            self.text.draw(&mut pass, &self.quad);
+        }
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
         Ok(())

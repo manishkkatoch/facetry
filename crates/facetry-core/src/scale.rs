@@ -66,7 +66,7 @@ fn decimals_for(increment: f64) -> usize {
     let n = (-increment).round() as u64;
     let mut pow = 1u64;
     for d in 0..=15 {
-        if n != 0 && pow % n == 0 {
+        if n != 0 && pow.is_multiple_of(n) {
             return d;
         }
         pow = pow.saturating_mul(10);
@@ -475,6 +475,7 @@ mod tests {
         assert_eq!(s.color("c"), range[0]);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     mod properties {
         use super::*;
         use proptest::prelude::*;
