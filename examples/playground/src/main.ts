@@ -15,6 +15,7 @@ if (params.get("ui") === "0") document.body.classList.add("embed");
 
 const canvas = document.querySelector<HTMLCanvasElement>("#chart")!;
 const status = document.querySelector<HTMLElement>("#status")!;
+const cameraReadout = document.querySelector<HTMLElement>("#camera")!;
 const select = document.querySelector<HTMLSelectElement>("#example")!;
 const textarea = document.querySelector<HTMLTextAreaElement>("#json")!;
 const applyButton = document.querySelector<HTMLButtonElement>("#apply")!;
@@ -43,10 +44,26 @@ function showIssues(items: { path: string; message: string }[] = []) {
 const nextFrames = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
+/** Shows the 3D camera (azimuth / elevation / distance); hidden for 2D charts. */
+function showCamera(spec: ChartSpec) {
+  const is3d = spec.dimension === "3d";
+  cameraReadout.hidden = !is3d;
+  if (!is3d) {
+    delete root.dataset.camera;
+    return;
+  }
+  const c = chart.camera;
+  cameraReadout.textContent = `camera: azimuth ${c.azimuth.toFixed(0)}°, elevation ${c.elevation.toFixed(0)}°, distance ${c.distance.toFixed(2)}`;
+  root.dataset.camera = JSON.stringify(c); // the e2e tests read this
+}
+let currentSpec: ChartSpec;
+
 let updates = 0;
 async function apply(spec: unknown) {
   try {
     chart.update(spec as ChartSpec);
+    currentSpec = spec as ChartSpec;
+    showCamera(currentSpec);
     showIssues();
   } catch (e) {
     const err = FacetryError.from(e);
@@ -58,6 +75,7 @@ async function apply(spec: unknown) {
 }
 
 show(examples.get(initial)!);
+currentSpec = examples.get(initial)!;
 let chart: Chart;
 try {
   chart = await Chart.create(canvas, examples.get(initial)!, { backend });
@@ -65,6 +83,15 @@ try {
   status.textContent = `backend: ${chart.backend}, ${chart.msaaSamples}x MSAA`;
   root.dataset.msaa = String(chart.msaaSamples);
   root.dataset.backend = chart.backend;
+  // For poking at it from the devtools console (and the e2e tests): `facetryChart.setCamera(...)`.
+  Object.assign(window, { facetryChart: chart });
+  showCamera(currentSpec);
+  // The chart handles the gestures itself; we only mirror the camera it ends up with.
+  for (const type of ["pointermove", "wheel", "dblclick"]) {
+    canvas.addEventListener(type, () => requestAnimationFrame(() => showCamera(currentSpec)), {
+      passive: true,
+    });
+  }
   root.dataset.ready = "true"; // the e2e tests wait for this
 } catch (e) {
   const err = FacetryError.from(e);
