@@ -112,6 +112,26 @@ pub enum VAlign {
     Baseline,
 }
 
+/// What a label is, which decides whether the renderer may hide or move it as the camera
+/// turns. Axis labels depend on the viewpoint (an edge seen end-on squeezes its labels
+/// together), and that cannot be decided when the scene is built: it is decided per frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelRole {
+    /// Always drawn where it is (value labels).
+    #[default]
+    Fixed,
+    /// The `index`-th of `count` tick labels along axis `group` (see [`AXIS_X`], [`AXIS_Z`],
+    /// [`AXIS_Y`]).
+    Tick { group: u8, index: u16, count: u16 },
+    /// The title of axis `group`; shown in preference to tick labels.
+    Title { group: u8 },
+}
+
+/// Label groups: which axis a [`LabelRole`] belongs to.
+pub const AXIS_X: u8 = 0;
+pub const AXIS_Z: u8 = 1;
+pub const AXIS_Y: u8 = 2;
+
 /// A label. `anchor` is a point in the world; the text is then placed relative to where that
 /// point lands on screen: `align`/`valign` pick which point of the text sits there and
 /// `offset_px` (x right, y down, device pixels) nudges it. So labels always face the viewer
@@ -131,6 +151,9 @@ pub struct Text3 {
     pub valign: VAlign,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub azimuths: Option<AzimuthRange>,
+    /// Not in the snapshot: the key says which axis and category it is.
+    #[serde(skip)]
+    pub role: LabelRole,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

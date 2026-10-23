@@ -1049,12 +1049,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.0,
         0.0,
-        0.0
+        0.9
       ],
       "b": [
         1.2,
         0.0,
-        0.0
+        0.9
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1069,12 +1069,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.15,
         0.0,
-        0.0
+        0.9
       ],
       "b": [
         0.15,
         0.0,
-        -0.03
+        0.93
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1089,12 +1089,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.45,
         0.0,
-        0.0
+        0.9
       ],
       "b": [
         0.45,
         0.0,
-        -0.03
+        0.93
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1109,12 +1109,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.75,
         0.0,
-        0.0
+        0.9
       ],
       "b": [
         0.75,
         0.0,
-        -0.03
+        0.93
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1129,12 +1129,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         1.05,
         0.0,
-        0.0
+        0.9
       ],
       "b": [
         1.05,
         0.0,
-        -0.03
+        0.93
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1747,12 +1747,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/line@135",
       "kind": "axis",
       "a": [
-        0.0,
+        1.2,
         0.0,
         0.0
       ],
       "b": [
-        0.0,
+        1.2,
         0.0,
         0.9
       ],
@@ -1767,12 +1767,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:North@135",
       "kind": "tick",
       "a": [
-        0.0,
+        1.2,
         0.0,
         0.75
       ],
       "b": [
-        -0.03,
+        1.23,
         0.0,
         0.75
       ],
@@ -1787,12 +1787,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:South@135",
       "kind": "tick",
       "a": [
-        0.0,
+        1.2,
         0.0,
         0.45
       ],
       "b": [
-        -0.03,
+        1.23,
         0.0,
         0.45
       ],
@@ -1807,12 +1807,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:West@135",
       "kind": "tick",
       "a": [
-        0.0,
+        1.2,
         0.0,
         0.15
       ],
       "b": [
-        -0.03,
+        1.23,
         0.0,
         0.15
       ],
@@ -2249,12 +2249,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.0,
         0.0,
-        0.9
+        0.0
       ],
       "b": [
         1.2,
         0.0,
-        0.9
+        0.0
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2269,12 +2269,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.15,
         0.0,
-        0.9
+        0.0
       ],
       "b": [
         0.15,
         0.0,
-        0.93
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2289,12 +2289,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.45,
         0.0,
-        0.9
+        0.0
       ],
       "b": [
         0.45,
         0.0,
-        0.93
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2309,12 +2309,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         0.75,
         0.0,
-        0.9
+        0.0
       ],
       "b": [
         0.75,
         0.0,
-        0.93
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2329,12 +2329,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "a": [
         1.05,
         0.0,
-        0.9
+        0.0
       ],
       "b": [
         1.05,
         0.0,
-        0.93
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2947,12 +2947,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/line@315",
       "kind": "axis",
       "a": [
-        1.2,
+        0.0,
         0.0,
         0.0
       ],
       "b": [
-        1.2,
+        0.0,
         0.0,
         0.9
       ],
@@ -2967,12 +2967,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:North@315",
       "kind": "tick",
       "a": [
-        1.2,
+        0.0,
         0.0,
         0.75
       ],
       "b": [
-        1.23,
+        -0.03,
         0.0,
         0.75
       ],
@@ -2987,12 +2987,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:South@315",
       "kind": "tick",
       "a": [
-        1.2,
+        0.0,
         0.0,
         0.45
       ],
       "b": [
-        1.23,
+        -0.03,
         0.0,
         0.45
       ],
@@ -3007,12 +3007,12 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/tick:West@315",
       "kind": "tick",
       "a": [
-        1.2,
+        0.0,
         0.0,
         0.15
       ],
       "b": [
-        1.23,
+        -0.03,
         0.0,
         0.15
       ],
@@ -3466,15 +3466,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.15,
         0.0,
-        -0.03
+        0.93
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3487,15 +3487,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.45,
         0.0,
-        -0.03
+        0.93
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3508,15 +3508,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.75,
         0.0,
-        -0.03
+        0.93
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3529,15 +3529,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         1.05,
         0.0,
-        -0.03
+        0.93
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3550,15 +3550,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.6,
         0.0,
-        -0.03
+        0.93
       ],
       "offset_px": [
-        58.93,
+        -58.93,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -4199,17 +4199,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:North@135",
       "text": "North",
       "anchor": [
-        -0.03,
+        1.23,
         0.0,
         0.75
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -4220,17 +4220,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:South@135",
       "text": "South",
       "anchor": [
-        -0.03,
+        1.23,
         0.0,
         0.45
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -4241,17 +4241,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:West@135",
       "text": "West",
       "anchor": [
-        -0.03,
+        1.23,
         0.0,
         0.15
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -4262,17 +4262,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/title@135",
       "text": "Region",
       "anchor": [
-        -0.03,
+        1.23,
         0.0,
         0.45
       ],
       "offset_px": [
-        75.01,
+        -75.01,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -4726,15 +4726,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.15,
         0.0,
-        0.93
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4747,15 +4747,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.45,
         0.0,
-        0.93
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4768,15 +4768,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.75,
         0.0,
-        0.93
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4789,15 +4789,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         1.05,
         0.0,
-        0.93
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4810,15 +4810,15 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "anchor": [
         0.6,
         0.0,
-        0.93
+        -0.03
       ],
       "offset_px": [
-        58.93,
+        -58.93,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -5459,17 +5459,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:North@315",
       "text": "North",
       "anchor": [
-        1.23,
+        -0.03,
         0.0,
         0.75
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,
@@ -5480,17 +5480,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:South@315",
       "text": "South",
       "anchor": [
-        1.23,
+        -0.03,
         0.0,
         0.45
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,
@@ -5501,17 +5501,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/label:West@315",
       "text": "West",
       "anchor": [
-        1.23,
+        -0.03,
         0.0,
         0.15
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,
@@ -5522,17 +5522,17 @@ expression: "scene3d_for(\"bar3d-grid\")"
       "key": "axis:z/title@315",
       "text": "Region",
       "anchor": [
-        1.23,
+        -0.03,
         0.0,
         0.45
       ],
       "offset_px": [
-        75.01,
+        -75.01,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,

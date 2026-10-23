@@ -15,6 +15,11 @@
 //! [`AzimuthRange`] it is for, and the shader keeps only the sector the camera is in. The
 //! walls are tagged the same way. The layout code below is written for one sector and
 //! repeated eight times; see the comments there for which edge gets which axis and why.
+//!
+//! **Which labels show is not decided here.** Every tick label is emitted (up to a cap) and
+//! tagged with a [`LabelRole`]; the renderer hides the ones that would overlap and pushes
+//! the rest clear of the box, from the *current* camera, so an edge seen end-on thins out
+//! its labels instead of piling them up (see `facetry-render`'s `labels` module).
 
 use std::collections::HashMap;
 
@@ -47,8 +52,11 @@ const TITLE_SLACK: f64 = 12.0;
 /// The same for titles on the right-hand edge, where labels at both ends of the edge are
 /// level with the title's row.
 const SIDE_TITLE_SLACK: f64 = 30.0;
-const MIN_LABEL_GAP: f64 = 4.0;
 const TICK_SPACING: f64 = 50.0;
+/// Category labels emitted per axis at most (every n-th beyond that). The renderer hides the
+/// ones that overlap, but it can only keep track of so many, so a 500-category axis does not
+/// get 500 candidates.
+const MAX_LABELS_PER_AXIS: usize = 100;
 
 /// The unit camera `distance` is measured in: the box's radius (half its diagonal), but at
 /// least 1. A flat chart (one row of bars) has a small radius, and framing it by that would
@@ -357,23 +365,6 @@ pub fn build_scene_3d_with_theme(
         .iter()
         .map(|l| measure.width(l, label_size))
         .fold(0.0, f32::max);
-    // How many categories' labels fit along an edge: a label every n-th, the smallest n for
-    // which neighbours keep a gap on screen. Along the bottom edge labels sit side by side
-    // (width matters), along the side edge they stack (height). The factor guesses how much
-    // the edge is foreshortened.
-    let every = |domain: &[String], step: f64, bottom: bool| -> usize {
-        let (extent, factor) = if bottom {
-            let widest = domain
-                .iter()
-                .map(|l| f64::from(measure.width(l, label_size)))
-                .fold(0.0, f64::max);
-            (widest, 0.85)
-        } else {
-            (f64::from(label_h), 0.4)
-        };
-        let room = (step * px_per_unit * factor).max(1.0);
-        ((extent + MIN_LABEL_GAP * s) / room).ceil().max(1.0) as usize
-    };
     let x_centres: Vec<f32> = (0..band_x.domain().len())
         .map(|i| band_x.center(i) as f32)
         .collect();
@@ -383,6 +374,8 @@ pub fn build_scene_3d_with_theme(
     // Each axis is a band scale along one floor edge.
     struct Edge<'a> {
         id: &'a str,
+        /// [`AXIS_X`] or [`AXIS_Z`]: which group its labels belong to.
+        group: u8,
         title: Option<&'a str>,
         domain: &'a [String],
         /// Centre of each category along the edge, in world units.
@@ -393,8 +386,11 @@ pub fn build_scene_3d_with_theme(
         /// Where the edge sits on the other horizontal axis, and which way is outward.
         fixed: f32,
         out: f32,
-        /// Along the bottom of the picture (labels below) or its right side (labels right).
+        /// Along the bottom of the picture (labels below) or up its side (labels beside it).
         bottom: bool,
+        /// For a side edge: it runs to the left of the nearest corner, so its labels hang
+        /// to the left (otherwise to the right).
+        left: bool,
     }
 
     let mut text = |key: String,
@@ -404,14 +400,15 @@ pub fn build_scene_3d_with_theme(
                     size: f32,
                     align,
                     valign,
-                    azimuths| {
+                    azimuths,
+                    role| {
         scene.texts.push(Text3 {
             key,
             text: text.to_owned(),
             anchor,
             offset_px: offset,
             size_px: size,
-            color: if size == title_size {
+            color: if matches!(role, LabelRole::Title { .. }) {
                 theme.text
             } else {
                 theme.text_muted
@@ -419,6 +416,7 @@ pub fn build_scene_3d_with_theme(
             align,
             valign,
             azimuths,
+            role,
         });
     };
 
@@ -432,43 +430,54 @@ pub fn build_scene_3d_with_theme(
         // Facing the front or back of the box (as opposed to a side)?
         let facing = cos.abs() > sin.abs();
         // The screen's right vector is (cos, 0, -sin): the corner minimising that is the
-        // leftmost one on screen, and the opposite corner the rightmost. Nearest corner:
-        // toward the camera in both x and z.
+        // leftmost one on screen (where the y axis stands). Nearest corner: toward the camera
+        // in both x and z.
         let (left_x, left_z) = (
             if cos > 0.0 { 0.0 } else { w },
             if sin > 0.0 { d } else { 0.0 },
         );
-        let (right_x, right_z) = (w - left_x, d - left_z);
         let (near_x, near_z) = (
             if sin > 0.0 { w } else { 0.0 },
             if cos > 0.0 { d } else { 0.0 },
         );
-        // The two horizontal axes. Facing the front, x runs along the bottom of the picture
-        // and depth up its right side; seen from the side it is the other way around, so
-        // the long axis is always the one nearest the viewer and the foreshortened one sits
-        // on the right, away from the y axis at the left.
+        // The two horizontal axes sit on the two floor edges that meet at the nearest corner
+        // (the lower outline of the picture; the other two edges are hidden behind the bars,
+        // and labels there would be drawn on top of them). Facing the front, x runs along
+        // the bottom of the picture and depth up one side; seen from the side it is the
+        // other way around, so the long axis is always the "bottom" one and the foreshortened
+        // one runs up the side, with its labels beside it. Which side is the foreshortened
+        // edge's: it runs from the nearest corner to the left corner or to the right one, and
+        // its labels hang outward, away from the box.
         let outward = |at: f32| if at <= 0.0 { -1.0 } else { 1.0 };
+        // The screen's right vector is (cos, 0, -sin); an edge runs to the left of the
+        // nearest corner when its far end has a smaller component along it.
+        let x_to_left = (w - 2.0 * near_x) * cos < 0.0;
+        let z_to_left = (d - 2.0 * near_z) * sin > 0.0;
         let x_edge = |bottom| Edge {
             id: x_axis.map_or("x", |i| spec.axes[i].id.as_str()),
+            group: AXIS_X,
             title: x_axis.and_then(|i| spec.axes[i].title.as_deref()),
             domain: band_x.domain(),
             centres: &x_centres,
             length: w,
             along_x: true,
-            fixed: if bottom { near_z } else { right_z },
-            out: outward(if bottom { near_z } else { right_z }),
+            fixed: near_z,
+            out: outward(near_z),
             bottom,
+            left: x_to_left,
         };
         let z_edge = |bottom| Edge {
             id: z_axis.map_or("z", |i| spec.axes[i].id.as_str()),
+            group: AXIS_Z,
             title: z_axis.and_then(|i| spec.axes[i].title.as_deref()),
             domain: band_z.domain(),
             centres: &z_centres,
             length: d,
             along_x: false,
-            fixed: if bottom { near_x } else { right_x },
-            out: outward(if bottom { near_x } else { right_x }),
+            fixed: near_x,
+            out: outward(near_x),
             bottom,
+            left: z_to_left,
         };
         let mut edges = Vec::new();
         if x_axis.is_some() {
@@ -494,11 +503,8 @@ pub fn build_scene_3d_with_theme(
                 point(e.length, 0.0),
                 range,
             );
-            let n_every = every(
-                e.domain,
-                e.length as f64 / e.domain.len().max(1) as f64,
-                e.bottom,
-            );
+            let step = e.domain.len().div_ceil(MAX_LABELS_PER_AXIS).max(1);
+            let count = e.domain.len().div_ceil(step) as u16;
             let widest = e
                 .domain
                 .iter()
@@ -514,9 +520,11 @@ pub fn build_scene_3d_with_theme(
                     end,
                     range,
                 );
-                if i % n_every == 0 {
+                if i % step == 0 {
                     let (offset, align, valign) = if e.bottom {
                         ([0.0, label_gap], Anchor::Middle, VAlign::Top)
+                    } else if e.left {
+                        ([-label_gap, 0.0], Anchor::End, VAlign::Middle)
                     } else {
                         ([label_gap, 0.0], Anchor::Start, VAlign::Middle)
                     };
@@ -529,6 +537,11 @@ pub fn build_scene_3d_with_theme(
                         align,
                         valign,
                         range,
+                        LabelRole::Tick {
+                            group: e.group,
+                            index: (i / step) as u16,
+                            count,
+                        },
                     );
                 }
             }
@@ -545,14 +558,12 @@ pub fn build_scene_3d_with_theme(
                         VAlign::Top,
                     )
                 } else {
-                    (
-                        [
-                            label_gap + widest + title_gap + (SIDE_TITLE_SLACK * s) as f32,
-                            0.0,
-                        ],
-                        Anchor::Start,
-                        VAlign::Middle,
-                    )
+                    let reach = label_gap + widest + title_gap + (SIDE_TITLE_SLACK * s) as f32;
+                    if e.left {
+                        ([-reach, 0.0], Anchor::End, VAlign::Middle)
+                    } else {
+                        ([reach, 0.0], Anchor::Start, VAlign::Middle)
+                    }
                 };
                 text(
                     format!("axis:{id}/title@{q}"),
@@ -563,6 +574,7 @@ pub fn build_scene_3d_with_theme(
                     align,
                     valign,
                     range,
+                    LabelRole::Title { group: e.group },
                 );
             }
         }
@@ -587,7 +599,7 @@ pub fn build_scene_3d_with_theme(
                 at(1.0, [0.0; 3]),
                 range,
             );
-            for (&v, label) in y_ticks.values.iter().zip(&y_labels) {
+            for (index, (&v, label)) in y_ticks.values.iter().zip(&y_labels).enumerate() {
                 let y = y_scale.map(v) as f32;
                 let end = at(y, tick_dir);
                 let name = format_number(v, y_ticks.decimals, false);
@@ -607,6 +619,11 @@ pub fn build_scene_3d_with_theme(
                     Anchor::End,
                     VAlign::Middle,
                     range,
+                    LabelRole::Tick {
+                        group: AXIS_Y,
+                        index: index as u16,
+                        count: y_labels.len() as u16,
+                    },
                 );
             }
             if let Some(t) = &spec.axes[i].title {
@@ -619,6 +636,7 @@ pub fn build_scene_3d_with_theme(
                     Anchor::End,
                     VAlign::Middle,
                     range,
+                    LabelRole::Title { group: AXIS_Y },
                 );
             }
         }

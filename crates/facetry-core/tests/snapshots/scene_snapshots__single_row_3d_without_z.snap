@@ -1125,12 +1125,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.0,
         0.0,
-        0.0
+        0.3
       ],
       "b": [
         1.2,
         0.0,
-        0.0
+        0.3
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1145,12 +1145,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.15,
         0.0,
-        0.0
+        0.3
       ],
       "b": [
         0.15,
         0.0,
-        -0.03
+        0.33
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1165,12 +1165,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.45,
         0.0,
-        0.0
+        0.3
       ],
       "b": [
         0.45,
         0.0,
-        -0.03
+        0.33
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1185,12 +1185,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.75,
         0.0,
-        0.0
+        0.3
       ],
       "b": [
         0.75,
         0.0,
-        -0.03
+        0.33
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1205,12 +1205,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         1.05,
         0.0,
-        0.0
+        0.3
       ],
       "b": [
         1.05,
         0.0,
-        -0.03
+        0.33
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2245,12 +2245,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.0,
         0.0,
-        0.3
+        0.0
       ],
       "b": [
         1.2,
         0.0,
-        0.3
+        0.0
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2265,12 +2265,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.15,
         0.0,
-        0.3
+        0.0
       ],
       "b": [
         0.15,
         0.0,
-        0.33
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2285,12 +2285,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.45,
         0.0,
-        0.3
+        0.0
       ],
       "b": [
         0.45,
         0.0,
-        0.33
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2305,12 +2305,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         0.75,
         0.0,
-        0.3
+        0.0
       ],
       "b": [
         0.75,
         0.0,
-        0.33
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2325,12 +2325,12 @@ expression: "scene3d_for(\"bar3d-row\")"
       "a": [
         1.05,
         0.0,
-        0.3
+        0.0
       ],
       "b": [
         1.05,
         0.0,
-        0.33
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -3381,15 +3381,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.15,
         0.0,
-        -0.03
+        0.33
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3402,15 +3402,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.45,
         0.0,
-        -0.03
+        0.33
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3423,15 +3423,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.75,
         0.0,
-        -0.03
+        0.33
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3444,15 +3444,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         1.05,
         0.0,
-        -0.03
+        0.33
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3465,15 +3465,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.6,
         0.0,
-        -0.03
+        0.33
       ],
       "offset_px": [
-        58.93,
+        -58.93,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -4557,15 +4557,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.15,
         0.0,
-        0.33
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4578,15 +4578,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.45,
         0.0,
-        0.33
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4599,15 +4599,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.75,
         0.0,
-        0.33
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4620,15 +4620,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         1.05,
         0.0,
-        0.33
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4641,15 +4641,15 @@ expression: "scene3d_for(\"bar3d-row\")"
       "anchor": [
         0.6,
         0.0,
-        0.33
+        -0.03
       ],
       "offset_px": [
-        58.93,
+        -58.93,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,

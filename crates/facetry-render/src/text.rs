@@ -143,52 +143,64 @@ impl Atlas {
         Ok(Self { view, sampler })
     }
 
-    /// The bind group layout and group shared by both text pipelines: globals, atlas, sampler.
+    /// The bind group layout and group shared by both text pipelines: globals, atlas, sampler,
+    /// and optionally (binding 3) a second uniform buffer, which the 3D pipeline uses for its
+    /// label-state table.
     fn bind(
         &self,
         device: &wgpu::Device,
         name: &str,
         globals: &wgpu::Buffer,
+        extra: Option<&wgpu::Buffer>,
     ) -> (wgpu::PipelineLayout, wgpu::BindGroup) {
+        let mut layout_entries = vec![
+            uniform_entry(0),
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ];
+        let mut entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&self.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&self.sampler),
+            },
+        ];
+        if let Some(buffer) = extra {
+            layout_entries.push(uniform_entry(3));
+            entries.push(wgpu::BindGroupEntry {
+                binding: 3,
+                resource: buffer.as_entire_binding(),
+            });
+        }
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(&format!("{name} bind group layout")),
-            entries: &[
-                uniform_entry(0),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
+            entries: &layout_entries,
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("{name} bind group")),
             layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: globals.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ],
+            entries: &entries,
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some(&format!("{name} pipeline layout")),
@@ -218,7 +230,7 @@ impl TextPipeline {
             label: Some("text shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
         });
-        let (pipeline_layout, bind_group) = atlas.bind(device, "text", globals);
+        let (pipeline_layout, bind_group) = atlas.bind(device, "text", globals, None);
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
         ];
@@ -290,7 +302,9 @@ impl TextPipeline {
 }
 
 /// One glyph of a world-anchored label: a [`GlyphInstance`]'s quad, relative to where the
-/// label's `anchor` lands on screen, plus the azimuth range it is shown in (see `line3d.wgsl`).
+/// label's `anchor` lands on screen, plus the azimuth range it is shown in (see `line3d.wgsl`)
+/// and the slot whose entry in the label-state table decides whether it shows and where it is
+/// nudged (see `labels.rs`; [`NO_SLOT`] for labels that always show).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct Glyph3Instance {
@@ -301,7 +315,11 @@ pub struct Glyph3Instance {
     pub uv: [f32; 4],
     pub color: [f32; 4],
     pub show: [f32; 2],
+    pub slot: f32,
 }
+
+/// The `slot` of a label that is not managed per frame.
+pub const NO_SLOT: f32 = -1.0;
 
 /// Lays out a 3D label with the 2D glyph code: the text is placed around the pixel origin
 /// `(0, 0)` (shifted by `offset_px` and the vertical alignment), and the shader later moves
@@ -309,6 +327,7 @@ pub struct Glyph3Instance {
 pub fn layout_glyphs_3d(
     text: &Text3,
     color: [f32; 4],
+    slot: f32,
     font: &FontMetrics,
     out: &mut Vec<Glyph3Instance>,
 ) {
@@ -340,6 +359,7 @@ pub fn layout_glyphs_3d(
         uv: g.uv,
         color: g.color,
         show,
+        slot,
     }));
 }
 
@@ -388,15 +408,16 @@ impl Text3dPipeline {
         format: wgpu::TextureFormat,
         samples: u32,
         globals: &wgpu::Buffer,
+        label_states: &wgpu::Buffer,
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("text3d shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text3d.wgsl").into()),
         });
-        let (layout, bind_group) = atlas.bind(device, "text3d", globals);
+        let (layout, bind_group) = atlas.bind(device, "text3d", globals, Some(label_states));
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x3, 2 => Float32x2, 3 => Float32x2, 4 => Float32x2, 5 => Float32x4,
-            6 => Float32x4, 7 => Float32x2
+            6 => Float32x4, 7 => Float32x2, 8 => Float32
         ];
         let pipeline = pipeline(
             device,
@@ -547,12 +568,13 @@ mod tests {
             align,
             valign,
             azimuths: None,
+            role: Default::default(),
         }
     }
 
     fn glyphs3(t: &Text3) -> Vec<Glyph3Instance> {
         let mut out = Vec::new();
-        layout_glyphs_3d(t, [0.0; 4], FontMetrics::inter(), &mut out);
+        layout_glyphs_3d(t, [0.0; 4], NO_SLOT, FontMetrics::inter(), &mut out);
         out
     }
 

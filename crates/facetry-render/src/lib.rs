@@ -9,6 +9,7 @@ compile_error!("on wasm32, enable the `webgpu` and/or `webgl` feature of facetry
 mod camera;
 mod error;
 mod gpu;
+pub mod labels;
 mod rect;
 mod renderer;
 mod solid;

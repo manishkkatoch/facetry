@@ -8,6 +8,7 @@ use wgpu::util::DeviceExt as _;
 use crate::Error;
 use crate::camera::Camera;
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
+use crate::labels::{LabelPlan, SLOTS};
 use crate::rect::{self, RectPipeline};
 use crate::solid::{self, BoxPipeline, LinePipeline};
 use crate::text::{self, Atlas, Glyph3Instance, GlyphInstance, Text3dPipeline, TextPipeline};
@@ -71,16 +72,13 @@ impl BackendPreference {
 const LIGHT_TO: [f32; 3] = [0.55, 0.8, 0.45];
 /// Share of a face's colour it keeps with no light at all.
 const AMBIENT: f32 = 0.5;
-/// Looking at the box's exact centre leaves the bottom of the picture (axis titles hang
-/// below the front edge) cramped and the top empty, so the camera looks this far (in world
-/// units) below the centre, which lifts the box a little.
-const FRAMING_LIFT: f32 = 0.12;
-
 /// The pipelines and buffers only 3D charts need, created the first time a 3D scene arrives
 /// so 2D charts do not pay for them.
 #[derive(Debug)]
 struct Solid {
     globals: wgpu::Buffer,
+    /// Per-label "show it, nudge it" table the text shader reads (see `labels.rs`).
+    label_states: wgpu::Buffer,
     boxes: BoxPipeline,
     lines: LinePipeline,
     text: Text3dPipeline,
@@ -111,6 +109,10 @@ pub struct Renderer {
     /// The plot box's size when a 3D scene is active (`None`: draw the 2D scene).
     box_size: Option<[f32; 3]>,
     camera: Camera,
+    /// The 3D axis labels that are shown or hidden per frame, and the camera and viewport the
+    /// label table was last computed for (so a redraw that changed neither skips the work).
+    label_plan: Option<LabelPlan>,
+    label_key: Option<(Camera, (u32, u32))>,
     quad: wgpu::Buffer,
     rects: RectPipeline,
     text: TextPipeline,
@@ -244,6 +246,8 @@ impl Renderer {
             solid: None,
             box_size: None,
             camera: Camera::default(),
+            label_plan: None,
+            label_key: None,
             quad,
             rects,
             text,
@@ -367,11 +371,18 @@ impl Renderer {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
+            let label_states = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("label states"),
+                size: (SLOTS * std::mem::size_of::<[f32; 4]>()) as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
             Solid {
                 boxes: BoxPipeline::new(device, format, samples, &globals),
                 lines: LinePipeline::new(device, format, samples, &globals),
-                text: Text3dPipeline::new(device, atlas, format, samples, &globals),
+                text: Text3dPipeline::new(device, atlas, format, samples, &globals, &label_states),
                 globals,
+                label_states,
             }
         });
         let encode = |c| encode_color(self.config.format, c);
@@ -386,9 +397,10 @@ impl Renderer {
             &solid::line_instances(scene, encode),
         );
         let font = FontMetrics::inter();
+        let (plan, slots) = LabelPlan::new(scene, font);
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
-        for t in &scene.texts {
-            text::layout_glyphs_3d(t, encode(t.color), font, &mut glyphs);
+        for (t, &slot) in scene.texts.iter().zip(&slots) {
+            text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
         }
         // Outlines first (every label's, so no outline covers another label's letters), then
         // the letters themselves.
@@ -397,6 +409,8 @@ impl Renderer {
         solid
             .text
             .set_instances(&self.device, &self.queue, &instances);
+        self.label_plan = Some(plan);
+        self.label_key = None;
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -409,21 +423,14 @@ impl Renderer {
         self.camera = camera;
     }
 
-    /// The globals for this frame, from the camera and the viewport.
-    fn globals_3d(&self, size: [f32; 3]) -> Globals3 {
-        let size = Vec3::from(size);
-        let (centre, radius) = (
-            size / 2.0 - Vec3::Y * FRAMING_LIFT,
-            facetry_core::framing_radius(size.to_array()),
-        );
-        let (w, h) = (self.config.width as f32, self.config.height as f32);
+    /// The globals for a frame drawn into a target of `target` pixels, from the camera.
+    fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
+        let (centre, radius) = Camera::plot_frame(size);
+        let (w, h) = (target.0 as f32, target.1 as f32);
         let eye = self.camera.eye(centre, radius);
         let font = FontMetrics::inter();
         Globals3 {
-            view_proj: self
-                .camera
-                .view_proj(w / h.max(1.0), centre, radius)
-                .to_cols_array_2d(),
+            view_proj: self.camera.plot_view_proj(size, (w, h)).to_cols_array_2d(),
             eye: eye.extend(1.0).to_array(),
             view: [
                 self.camera.azimuth,
@@ -439,8 +446,109 @@ impl Renderer {
         }
     }
 
-    /// Draws one frame. 2D: the background, then gridlines, bars, axis rules and text. 3D:
-    /// bars (depth-tested), then lines (depth-tested against the bars), then text on top.
+    /// Writes everything the shaders read per frame for a target of `target` pixels: the
+    /// globals, and in 3D the label table (skipped when the camera and size are the ones it
+    /// was last computed for).
+    fn write_frame_uniforms(&mut self, target: (u32, u32)) {
+        let font = FontMetrics::inter();
+        if let (Some(size), Some(solid)) = (self.box_size, &self.solid) {
+            self.queue.write_buffer(
+                &solid.globals,
+                0,
+                bytemuck::bytes_of(&self.globals_3d(size, target)),
+            );
+            let key = Some((self.camera, target));
+            if self.label_key != key {
+                if let Some(plan) = &self.label_plan {
+                    let viewport = (target.0 as f32, target.1 as f32);
+                    let table = plan.states(
+                        self.camera.plot_view_proj(size, viewport),
+                        [viewport.0, viewport.1],
+                        self.camera.azimuth,
+                    );
+                    self.queue
+                        .write_buffer(&solid.label_states, 0, bytemuck::cast_slice(&table));
+                }
+                self.label_key = key;
+            }
+        }
+        self.queue.write_buffer(
+            &self.globals,
+            0,
+            bytemuck::bytes_of(&Globals {
+                viewport: [target.0 as f32, target.1 as f32],
+                atlas: [font.atlas.width as f32, font.atlas.height as f32],
+                px_range: font.atlas.px_range,
+                _pad: [0.0; 3],
+            }),
+        );
+    }
+
+    /// Records the chart pass. 2D: the background, then gridlines, bars, axis rules and text.
+    /// 3D: bars (depth-tested), then lines (depth-tested against the bars), then text on top.
+    ///
+    /// Draws into `color`; with MSAA that is the multisampled target and `resolve` is where
+    /// it is averaged down to.
+    fn record_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        color: &wgpu::TextureView,
+        resolve: Option<&wgpu::TextureView>,
+        depth: Option<&wgpu::TextureView>,
+        clear: [f32; 4],
+    ) {
+        let [r, g, b, a] = clear;
+        // The multisampled contents are thrown away once resolved.
+        let store = if resolve.is_some() {
+            wgpu::StoreOp::Discard
+        } else {
+            wgpu::StoreOp::Store
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("chart pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color,
+                depth_slice: None,
+                resolve_target: resolve,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: f64::from(r),
+                        g: f64::from(g),
+                        b: f64::from(b),
+                        a: f64::from(a),
+                    }),
+                    store,
+                },
+            })],
+            depth_stencil_attachment: depth.map(|view| wgpu::RenderPassDepthStencilAttachment {
+                view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Discard,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        match (&self.solid, self.box_size) {
+            (Some(solid), Some(_)) => {
+                solid.boxes.draw(&mut pass);
+                solid.lines.draw(&mut pass, &self.quad);
+                // Labels are drawn last and ignore depth: they sit just outside the box,
+                // and a label hidden behind a bar is worse than one drawn over it.
+                solid.text.draw(&mut pass, &self.quad);
+            }
+            // No depth test in 2D: draw order alone decides what is on top.
+            _ => {
+                self.rects.draw(&mut pass, &self.quad);
+                self.text.draw(&mut pass, &self.quad);
+            }
+        }
+    }
+
+    /// Draws one frame to the surface.
     pub fn render(&mut self) -> Result<(), Error> {
         if !self.drawable {
             return Ok(());
@@ -467,84 +575,20 @@ impl Renderer {
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        if let (Some(size), Some(solid)) = (self.box_size, &self.solid) {
-            self.queue.write_buffer(
-                &solid.globals,
-                0,
-                bytemuck::bytes_of(&self.globals_3d(size)),
-            );
-        }
-        self.queue.write_buffer(
-            &self.globals,
-            0,
-            bytemuck::bytes_of(&Globals {
-                viewport: [self.config.width as f32, self.config.height as f32],
-                atlas: [
-                    FontMetrics::inter().atlas.width as f32,
-                    FontMetrics::inter().atlas.height as f32,
-                ],
-                px_range: FontMetrics::inter().atlas.px_range,
-                _pad: [0.0; 3],
-            }),
-        );
+        self.write_frame_uniforms((self.config.width, self.config.height));
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        let [r, g, b, a] = self.encode_color(self.background);
         // With MSAA we draw into the multisampled texture and resolve (average the samples)
-        // into the surface; the multisampled contents are then thrown away.
-        let (view, resolve_target, store) = match &self.msaa_view {
-            Some(msaa) => (msaa, Some(&frame_view), wgpu::StoreOp::Discard),
-            None => (&frame_view, None, wgpu::StoreOp::Store),
+        // into the surface.
+        let (view, resolve) = match &self.msaa_view {
+            Some(msaa) => (msaa, Some(&frame_view)),
+            None => (&frame_view, None),
         };
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("chart pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: f64::from(r),
-                            g: f64::from(g),
-                            b: f64::from(b),
-                            a: f64::from(a),
-                        }),
-                        store,
-                    },
-                })],
-                depth_stencil_attachment: self.depth_view.as_ref().map(|view| {
-                    wgpu::RenderPassDepthStencilAttachment {
-                        view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Discard,
-                        }),
-                        stencil_ops: None,
-                    }
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            match (&self.solid, self.box_size) {
-                (Some(solid), Some(_)) => {
-                    solid.boxes.draw(&mut pass);
-                    solid.lines.draw(&mut pass, &self.quad);
-                    // Labels are drawn last and ignore depth: they sit just outside the box,
-                    // and a label hidden behind a bar is worse than one drawn over it.
-                    solid.text.draw(&mut pass, &self.quad);
-                }
-                // No depth test in 2D: draw order alone decides what is on top.
-                _ => {
-                    self.rects.draw(&mut pass, &self.quad);
-                    self.text.draw(&mut pass, &self.quad);
-                }
-            }
-        }
+        let clear = self.encode_color(self.background);
+        self.record_pass(&mut encoder, view, resolve, self.depth_view.as_ref(), clear);
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
         Ok(())
