@@ -21,6 +21,8 @@ struct Vertex {
     // Per instance:
     @location(1) rect: vec4<f32>,  // x, y, width, height in device pixels, origin top-left
     @location(2) color: vec4<f32>,
+    // 1 while the pointer is over this rectangle: it is lightened a little.
+    @location(3) hover: f32,
 }
 
 struct Varying {
@@ -36,7 +38,8 @@ fn vs_main(v: Vertex) -> Varying {
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,
     );
-    return Varying(vec4<f32>(clip, 0.0, 1.0), v.color);
+    let rgb = mix(v.color.rgb, vec3<f32>(1.0), 0.12 * v.hover);
+    return Varying(vec4<f32>(clip, 0.0, 1.0), vec4<f32>(rgb, v.color.a));
 }
 
 @fragment

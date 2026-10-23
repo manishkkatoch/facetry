@@ -24,6 +24,7 @@
 use std::collections::HashMap;
 
 use crate::Theme;
+use crate::scale::format_value;
 use crate::scale::{Band, Linear, format_number};
 use crate::scene::{Anchor, RuleKind};
 use crate::scene3d::*;
@@ -57,6 +58,8 @@ const TICK_SPACING: f64 = 50.0;
 /// ones that overlap, but it can only keep track of so many, so a 500-category axis does not
 /// get 500 candidates.
 const MAX_LABELS_PER_AXIS: usize = 100;
+/// Between a bar's top (or bottom, for a negative bar) and its value label, CSS px.
+const VALUE_LABEL_GAP: f64 = 4.0;
 
 /// The unit camera `distance` is measured in: the box's radius (half its diagonal), but at
 /// least 1. A flat chart (one row of bars) has a small radius, and framing it by that would
@@ -190,7 +193,11 @@ pub fn build_scene_3d_with_theme(
         boxes: Vec::new(),
         lines: Vec::new(),
         texts: Vec::new(),
+        labels: Vec::new(),
     };
+    // Value labels wait until the pixel sizes below are known: (box index, when shown, text,
+    // negative).
+    let mut value_labels: Vec<(usize, crate::spec::LabelShow, String, bool)> = Vec::new();
 
     // --- bars -------------------------------------------------------------------------------
     let ordinal = crate::build::color_scale(&layers, theme);
@@ -234,8 +241,14 @@ pub fn build_scene_3d_with_theme(
             } else {
                 format!("{base_key}#{n}")
             };
+            if let Some(label) = &spec.layers[layer.index].label {
+                let text = format_value(value, label.format.as_ref().and_then(|f| f.decimals));
+                value_labels.push((scene.boxes.len(), label.show, text, value < 0.0));
+            }
             scene.boxes.push(BoxMark {
                 key,
+                layer: layer.index,
+                row,
                 min: [
                     x0 as f32,
                     end.min(y_zero) as f32,
@@ -262,6 +275,33 @@ pub fn build_scene_3d_with_theme(
     let tick = TICK_LEN as f32;
     let (w, d) = (width as f32, depth as f32);
     let y_id = y_axis.map_or("y", |i| spec.axes[i].id.as_str());
+
+    // --- value labels -----------------------------------------------------------------------
+    // Above the middle of the bar's top face (below the middle of the bottom face of a
+    // negative bar), hanging off a world anchor like every 3D label.
+    for (mark, show, label_text, negative) in value_labels {
+        let b = &scene.boxes[mark];
+        let centre = [(b.min[0] + b.max[0]) / 2.0, (b.min[2] + b.max[2]) / 2.0];
+        let gap = (VALUE_LABEL_GAP * s) as f32;
+        let (y, offset, valign) = if negative {
+            (b.min[1], [0.0, gap], VAlign::Top)
+        } else {
+            (b.max[1], [0.0, -gap], VAlign::Baseline)
+        };
+        let text = Text3 {
+            key: format!("{}/label", b.key),
+            text: label_text,
+            anchor: [centre[0], y, centre[1]],
+            offset_px: offset,
+            size_px: label_size,
+            color: theme.text,
+            align: Anchor::Middle,
+            valign,
+            azimuths: None,
+            role: LabelRole::Fixed,
+        };
+        scene.labels.push(MarkLabel3 { mark, show, text });
+    }
 
     let mut line =
         |key: String, kind: RuleKind, a: [f32; 3], b: [f32; 3], azimuths: Option<AzimuthRange>| {

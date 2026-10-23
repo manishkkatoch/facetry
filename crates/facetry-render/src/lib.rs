@@ -11,6 +11,7 @@ mod error;
 mod gpu;
 mod image;
 pub mod labels;
+pub mod pick;
 mod rect;
 mod renderer;
 mod solid;

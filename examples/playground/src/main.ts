@@ -20,6 +20,7 @@ const select = document.querySelector<HTMLSelectElement>("#example")!;
 const textarea = document.querySelector<HTMLTextAreaElement>("#json")!;
 const applyButton = document.querySelector<HTMLButtonElement>("#apply")!;
 const saveButton = document.querySelector<HTMLButtonElement>("#save-png")!;
+const hoverReadout = document.querySelector<HTMLElement>("#hover")!;
 const issuesList = document.querySelector<HTMLUListElement>("#issues")!;
 const root = document.documentElement;
 
@@ -87,6 +88,11 @@ try {
   // For poking at it from the devtools console (and the e2e tests): `facetryChart.setCamera(...)`.
   Object.assign(window, { facetryChart: chart });
   showCamera(currentSpec);
+  // Hover and click events: show the bar under the pointer, log clicks.
+  chart.on("hover", (mark) => {
+    hoverReadout.textContent = mark ? `${mark.key} ${JSON.stringify(mark.datum)}` : "";
+  });
+  chart.on("click", (mark) => console.log("click", mark));
   // The chart handles the gestures itself; we only mirror the camera it ends up with.
   for (const type of ["pointermove", "wheel", "dblclick"]) {
     canvas.addEventListener(type, () => requestAnimationFrame(() => showCamera(currentSpec)), {

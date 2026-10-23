@@ -17,8 +17,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::Theme;
-use crate::scale::{Band, Linear, Ordinal, Ticks, format_number};
-use crate::scene::{Anchor, Bounds, Rect, Rotation, Rule, RuleKind, Scene, Text};
+use crate::scale::{Band, Linear, Ordinal, Ticks, format_number, format_value};
+use crate::scene::{Anchor, Bounds, MarkLabel, Rect, Rotation, Rule, RuleKind, Scene, Text};
 use crate::spec::{AxisSpec, ChartSpec, Orient};
 use crate::text::TextMeasure;
 use crate::validate::{ColorSource, ResolvedLayer, resolve_layer};
@@ -38,6 +38,8 @@ const MIN_LABEL_GAP: f64 = 8.0;
 const TICK_SPACING: f64 = 50.0;
 const BAND_PADDING_INNER: f64 = 0.2;
 const BAND_PADDING_OUTER: f64 = 0.1;
+/// Between a bar's end and its value label.
+const VALUE_LABEL_GAP: f64 = 4.0;
 
 /// Builds the scene with the default (light) theme.
 ///
@@ -267,6 +269,7 @@ pub fn build_scene_with_theme(
         rects: Vec::new(),
         rules: Vec::new(),
         texts: Vec::new(),
+        labels: Vec::new(),
     };
     let snap = |v: f64| v.round();
     let rule = |key: String, kind, x: f64, y: f64, w: f64, h: f64, color| Rule {
@@ -379,15 +382,56 @@ pub fn build_scene_with_theme(
             } else {
                 format!("{base_key}#{n}")
             };
+            let bounds = Bounds::new(
+                left,
+                end.min(baseline),
+                right - left,
+                (end - baseline).abs(),
+            );
+            if let Some(spec) = &spec.layers[layer.index].label {
+                let label_text = format_value(value, spec.format.as_ref().and_then(|f| f.decimals));
+                // Above the bar's end (below a negative bar's), unless that leaves the plot:
+                // then inside the bar, in whichever of the theme's two colours contrasts more.
+                let gap = VALUE_LABEL_GAP * s;
+                let (bar_top, bar_bottom) = (end.min(baseline), end.max(baseline));
+                let (outside, inside, fits) = if value >= 0.0 {
+                    let y = bar_top - gap;
+                    (y, bar_top + gap + cap, y - cap >= top)
+                } else {
+                    let y = bar_bottom + gap + cap;
+                    (y, bar_bottom - gap, y + label_desc <= plot_bottom)
+                };
+                let contrast = if theme.text.contrast(color) >= theme.background.contrast(color) {
+                    theme.text
+                } else {
+                    theme.background
+                };
+                let (baseline_y, label_color) = if fits {
+                    (outside, theme.text)
+                } else {
+                    (inside, contrast)
+                };
+                scene.labels.push(MarkLabel {
+                    mark: scene.rects.len(),
+                    show: spec.show,
+                    text: text(
+                        format!("{key}/label"),
+                        label_text,
+                        (left + right) / 2.0,
+                        baseline_y,
+                        label_size,
+                        label_color,
+                        Anchor::Middle,
+                        Rotation::None,
+                    ),
+                });
+            }
             scene.rects.push(Rect {
                 key,
-                bounds: Bounds::new(
-                    left,
-                    end.min(baseline),
-                    right - left,
-                    (end - baseline).abs(),
-                ),
+                bounds,
                 color,
+                layer: layer.index,
+                row,
             });
         }
     }

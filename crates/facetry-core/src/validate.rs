@@ -13,8 +13,8 @@ use tsify::Tsify;
 
 use crate::Color;
 use crate::spec::{
-    AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec, Orient,
-    PositionEncoding, Table,
+    AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
+    MAX_LABEL_DECIMALS, Orient, PositionEncoding, Table,
 };
 
 /// One problem with a spec.
@@ -540,9 +540,20 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
 
     validate_axes(&spec.axes, spec.dimension, &mut issues);
 
-    for i in 0..spec.layers.len() {
+    for (i, layer) in spec.layers.iter().enumerate() {
         if let Err(mut layer_issues) = resolve_layer(spec, i) {
             issues.append(&mut layer_issues);
+        }
+        let decimals = layer
+            .label
+            .as_ref()
+            .and_then(|l| l.format.as_ref())
+            .and_then(|f| f.decimals);
+        if let Some(d) = decimals.filter(|&d| d > MAX_LABEL_DECIMALS) {
+            issues.push(Issue::new(
+                pointer(&["layers", &i.to_string(), "label", "format", "decimals"]),
+                format!("decimals must be between 0 and {MAX_LABEL_DECIMALS}, got {d}"),
+            ));
         }
     }
     issues

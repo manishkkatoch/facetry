@@ -216,6 +216,9 @@ pub struct TextPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     instances: InstanceBuffer,
+    /// A few glyphs drawn after the rest and replaced on their own (the hovered bar's label),
+    /// so hovering does not rewrite the whole text buffer.
+    overlay: InstanceBuffer,
 }
 
 impl TextPipeline {
@@ -277,6 +280,7 @@ impl TextPipeline {
             pipeline,
             bind_group,
             instances: InstanceBuffer::new("glyph instances"),
+            overlay: InstanceBuffer::new("glyph overlay"),
         }
     }
 
@@ -289,15 +293,32 @@ impl TextPipeline {
         self.instances.set(device, queue, items);
     }
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
-        let Some((buffer, count)) = self.instances.bound() else {
-            return;
-        };
+    /// Replaces the overlay glyphs (empty: none).
+    pub fn set_overlay(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        items: &[GlyphInstance],
+    ) {
+        self.overlay.set(device, queue, items);
+    }
+
+    /// Draws the text, then the overlay. `overlay: false` skips the overlay (snapshots draw
+    /// no hover state).
+    pub fn draw<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        quad: &'a wgpu::Buffer,
+        overlay: bool,
+    ) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, quad.slice(..));
-        pass.set_vertex_buffer(1, buffer.slice(..));
-        pass.draw(0..4, 0..count);
+        let layers = [Some(&self.instances), overlay.then_some(&self.overlay)];
+        for (buffer, count) in layers.into_iter().flatten().filter_map(|b| b.bound()) {
+            pass.set_vertex_buffer(1, buffer.slice(..));
+            pass.draw(0..4, 0..count);
+        }
     }
 }
 
@@ -399,6 +420,8 @@ pub struct Text3dPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     instances: InstanceBuffer,
+    /// Like [`TextPipeline`]'s overlay: the hovered bar's label.
+    overlay: InstanceBuffer,
 }
 
 impl Text3dPipeline {
@@ -448,6 +471,7 @@ impl Text3dPipeline {
             pipeline,
             bind_group,
             instances: InstanceBuffer::new("glyph3 instances"),
+            overlay: InstanceBuffer::new("glyph3 overlay"),
         }
     }
 
@@ -460,15 +484,31 @@ impl Text3dPipeline {
         self.instances.set(device, queue, items);
     }
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
-        let Some((buffer, count)) = self.instances.bound() else {
-            return;
-        };
+    /// Replaces the overlay glyphs (empty: none).
+    pub fn set_overlay(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        items: &[Glyph3Instance],
+    ) {
+        self.overlay.set(device, queue, items);
+    }
+
+    /// Draws the text, then the overlay; `overlay: false` skips it (snapshots).
+    pub fn draw<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        quad: &'a wgpu::Buffer,
+        overlay: bool,
+    ) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, quad.slice(..));
-        pass.set_vertex_buffer(1, buffer.slice(..));
-        pass.draw(0..4, 0..count);
+        let layers = [Some(&self.instances), overlay.then_some(&self.overlay)];
+        for (buffer, count) in layers.into_iter().flatten().filter_map(|b| b.bound()) {
+            pass.set_vertex_buffer(1, buffer.slice(..));
+            pass.draw(0..4, 0..count);
+        }
     }
 }
 

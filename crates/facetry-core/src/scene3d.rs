@@ -12,6 +12,7 @@ use serde::{Serialize, Serializer};
 
 use crate::Color;
 use crate::scene::{Anchor, RuleKind};
+use crate::spec::LabelShow;
 
 /// World units are fractions of the plot box, so 4 decimals is far below a pixel.
 fn w4_3<S: Serializer>(v: &[f32; 3], s: S) -> Result<S::Ok, S::Error> {
@@ -75,6 +76,12 @@ pub struct BoxMark {
     #[serde(serialize_with = "w4_3")]
     pub max: [f32; 3],
     pub color: Color,
+    /// The layer index and table row the bar came from (what hover and click events report).
+    /// Not in the snapshot: the key already encodes it.
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
 }
 
 /// A straight line segment in world space (gridline, axis edge or tick mark). It is drawn as
@@ -156,6 +163,15 @@ pub struct Text3 {
     pub role: LabelRole,
 }
 
+/// The value label of a bar (`boxes[mark]`); see [`crate::scene::MarkLabel`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MarkLabel3 {
+    /// Index into [`Scene3d::boxes`].
+    pub mark: usize,
+    pub show: LabelShow,
+    pub text: Text3,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Scene3d {
     pub width: u32,
@@ -172,4 +188,7 @@ pub struct Scene3d {
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     pub texts: Vec<Text3>,
+    /// Value labels of the bars that have one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<MarkLabel3>,
 }

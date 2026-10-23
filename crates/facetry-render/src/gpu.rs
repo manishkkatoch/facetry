@@ -98,6 +98,14 @@ impl InstanceBuffer {
         }
     }
 
+    /// Overwrites a few bytes inside the buffer (`offset` from its start), for tiny updates
+    /// such as one instance's hover flag. Does nothing while the buffer is empty.
+    pub fn patch(&self, queue: &wgpu::Queue, offset: u64, bytes: &[u8]) {
+        if let Some(buffer) = &self.buffer {
+            queue.write_buffer(buffer, offset, bytes);
+        }
+    }
+
     /// The buffer and instance count, or `None` when there is nothing to draw.
     pub fn bound(&self) -> Option<(&wgpu::Buffer, u32)> {
         match (&self.buffer, self.count) {

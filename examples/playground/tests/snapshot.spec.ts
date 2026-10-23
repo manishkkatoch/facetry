@@ -202,6 +202,41 @@ test("a snapshot leaves the canvas untouched and the chart keeps working", async
   expect([resized.png.width, resized.png.height]).toEqual([600, 400]);
 });
 
+test("hover highlights and hover-only labels are not in the snapshot", async ({ page }) => {
+  await open(page, "bar3d-labels");
+  const plain = await snapshot(page);
+  const centre = await page.evaluate(() => (window as any).facetryChart.markPosition("layer0/Q3/North"));
+  await page.mouse.move(centre.x, centre.y);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  // The bar really is highlighted on screen...
+  const shown = await screen(page);
+  const hovered = await snapshot(page);
+  expect(differing(shown, hovered.png, 8)).toBeGreaterThan(0.005);
+  // ...but not in the picture.
+  expect(differing(plain.png, hovered.png, 0)).toBe(0);
+  // And taking it did not clear the hover.
+  expect(differing(shown, await screen(page), 0)).toBe(0);
+});
+
+test("always labels are in the snapshot", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto("/?backend=webgl2&example=bar-labels");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const withLabels = await snapshot(page);
+  const spec = JSON.parse(await page.locator("#json").inputValue());
+  expect(spec.layers[0].label).toEqual({ show: "always" });
+  delete spec.layers[0].label;
+  await page.locator("#json").fill(JSON.stringify(spec));
+  await page.locator("#apply").click();
+  await expect(page.locator("html")).toHaveAttribute("data-updates", "1");
+  const without = await snapshot(page);
+  expect(withLabels.png.width).toBe(without.png.width);
+  // Only the five labels differ: a few hundred glyph pixels, none of them at the picture's edges.
+  const share = differing(withLabels.png, without.png, 20);
+  expect(share).toBeGreaterThan(0.0003);
+  expect(share).toBeLessThan(0.01);
+});
+
 test("bad options reject with typed errors; concurrent snapshots both finish", async ({ page }) => {
   await open(page, "bar-basic");
   const codes = await page.evaluate(async () => {

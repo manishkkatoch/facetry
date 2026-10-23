@@ -5,13 +5,18 @@ use facetry_core::scene::Scene;
 
 use crate::gpu::{InstanceBuffer, QUAD_LAYOUT};
 
-/// One rectangle: `[x, y, width, height]` in device pixels, then an RGBA colour.
+/// One rectangle: `[x, y, width, height]` in device pixels, an RGBA colour, and a hover flag
+/// (1 brightens the rectangle; it is rewritten alone when the pointer moves between bars).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct RectInstance {
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    pub hover: f32,
 }
+
+/// Byte offset of [`RectInstance::hover`] inside an instance.
+pub const HOVER_OFFSET: usize = std::mem::offset_of!(RectInstance, hover);
 
 /// Everything that is a box, back to front. `encode` turns a scene colour into what the
 /// render target expects (see `Renderer::encode_color`).
@@ -24,6 +29,7 @@ pub fn instances(
         .map(|(b, color)| RectInstance {
             rect: [b.x, b.y, b.w, b.h],
             color: encode(color),
+            hover: 0.0,
         })
         .collect()
 }
@@ -63,7 +69,7 @@ impl RectPipeline {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let instance_attrs = wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4];
+        let instance_attrs = wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4, 3 => Float32];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("rect pipeline"),
             layout: Some(&pipeline_layout),
@@ -117,6 +123,17 @@ impl RectPipeline {
         items: &[RectInstance],
     ) {
         self.instances.set(device, queue, items);
+    }
+
+    /// Sets the hover flag of instance `index` (an index into the slice given to
+    /// `set_instances`).
+    pub fn set_hover(&self, queue: &wgpu::Queue, index: usize, on: bool) {
+        let offset = index * std::mem::size_of::<RectInstance>() + HOVER_OFFSET;
+        self.instances.patch(
+            queue,
+            offset as u64,
+            bytemuck::bytes_of(&if on { 1.0_f32 } else { 0.0 }),
+        );
     }
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {

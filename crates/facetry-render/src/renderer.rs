@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use facetry_core::scene::Scene;
-use facetry_core::scene3d::Scene3d;
+use facetry_core::scene::{Scene, Text};
+use facetry_core::scene3d::{BoxMark, Scene3d, Text3};
+use facetry_core::spec::LabelShow;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
 use glam::Vec3;
@@ -13,9 +14,12 @@ use crate::camera::Camera;
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
+use crate::pick;
 use crate::rect::{self, RectPipeline};
 use crate::solid::{self, BoxPipeline, LinePipeline};
-use crate::text::{self, Atlas, Glyph3Instance, GlyphInstance, Text3dPipeline, TextPipeline};
+use crate::text::{
+    self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
+};
 
 /// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
 const MSAA_SAMPLES: u32 = 4;
@@ -88,6 +92,21 @@ struct Solid {
     text: Text3dPipeline,
 }
 
+/// A 2D value label that shows while its bar is hovered, colour already encoded.
+#[derive(Debug)]
+struct HoverLabel {
+    mark: usize,
+    text: Text,
+    color: [f32; 4],
+}
+
+#[derive(Debug)]
+struct HoverLabel3 {
+    mark: usize,
+    text: Text3,
+    color: [f32; 4],
+}
+
 /// Owns the GPU objects (instance, adapter info, device, queue) and the window surface,
 /// and draws a [`Scene`] with them.
 #[derive(Debug)]
@@ -117,6 +136,17 @@ pub struct Renderer {
     /// label table was last computed for (so a redraw that changed neither skips the work).
     label_plan: Option<LabelPlan>,
     label_key: Option<(Camera, (u32, u32))>,
+    /// Hover: the bar under the pointer (an index into the scene's bars), how many bars
+    /// there are, and the labels that show only while their bar is hovered.
+    hover: Option<usize>,
+    mark_count: usize,
+    /// 2D: bars follow the gridlines in the rect buffer, so bar `i` is instance
+    /// `bar_offset + i`.
+    bar_offset: usize,
+    hover_labels: Vec<HoverLabel>,
+    hover_labels_3d: Vec<HoverLabel3>,
+    /// Colour and radius of the outline round 3D labels.
+    halo: ([f32; 4], f32),
     quad: wgpu::Buffer,
     rects: RectPipeline,
     text: TextPipeline,
@@ -252,6 +282,12 @@ impl Renderer {
             camera: Camera::default(),
             label_plan: None,
             label_key: None,
+            hover: None,
+            mark_count: 0,
+            bar_offset: 0,
+            hover_labels: Vec::new(),
+            hover_labels_3d: Vec::new(),
+            halo: ([1.0; 4], 1.0),
             quad,
             rects,
             text,
@@ -345,7 +381,7 @@ impl Renderer {
     }
 
     /// Uploads a scene: the next `render` draws it. Cheap enough to call on every resize or
-    /// data change (one buffer write per list).
+    /// data change (one buffer write per list). Clears any hover.
     pub fn set_scene(&mut self, scene: &Scene) {
         if self.box_size.take().is_some() {
             self.rebuild_targets(); // drops the depth buffer
@@ -359,11 +395,33 @@ impl Renderer {
         for t in &scene.texts {
             text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
         }
+        // Value labels: `always` ones are ordinary text, `hover` ones wait for their bar.
+        self.hover_labels.clear();
+        for label in &scene.labels {
+            let color = self.encode_color(label.text.color);
+            match label.show {
+                LabelShow::Always => text::layout_glyphs(&label.text, color, font, &mut glyphs),
+                LabelShow::Hover => self.hover_labels.push(HoverLabel {
+                    mark: label.mark,
+                    text: label.text.clone(),
+                    color,
+                }),
+            }
+        }
         self.text.set_instances(&self.device, &self.queue, &glyphs);
+        self.text.set_overlay(&self.device, &self.queue, &[]);
+        self.hover_labels_3d.clear();
+        self.hover = None;
+        self.mark_count = scene.rects.len();
+        self.bar_offset = scene
+            .rules
+            .iter()
+            .filter(|r| r.kind == facetry_core::scene::RuleKind::Grid)
+            .count();
     }
 
     /// Uploads a 3D scene: the next `render` draws it from the current camera. Orbiting does
-    /// not call this; only a new spec or a resize does.
+    /// not call this; only a new spec or a resize does. Clears any hover.
     pub fn set_scene_3d(&mut self, scene: &Scene3d) {
         self.background = scene.background;
         let (device, format, samples) = (&self.device, self.config.format, self.samples);
@@ -406,15 +464,34 @@ impl Renderer {
         for (t, &slot) in scene.texts.iter().zip(&slots) {
             text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
         }
+        self.hover_labels.clear();
+        self.hover_labels_3d.clear();
+        for label in &scene.labels {
+            let color = encode(label.text.color);
+            match label.show {
+                LabelShow::Always => {
+                    text::layout_glyphs_3d(&label.text, color, NO_SLOT, font, &mut glyphs)
+                }
+                LabelShow::Hover => self.hover_labels_3d.push(HoverLabel3 {
+                    mark: label.mark,
+                    text: label.text.clone(),
+                    color,
+                }),
+            }
+        }
         // Outlines first (every label's, so no outline covers another label's letters), then
         // the letters themselves.
-        let mut instances = text::halo_instances(&glyphs, encode(scene.background), scene.halo_px);
+        self.halo = (encode(scene.background), scene.halo_px);
+        let mut instances = text::halo_instances(&glyphs, self.halo.0, self.halo.1);
         instances.extend(glyphs);
         solid
             .text
             .set_instances(&self.device, &self.queue, &instances);
+        solid.text.set_overlay(&self.device, &self.queue, &[]);
         self.label_plan = Some(plan);
         self.label_key = None;
+        self.hover = None;
+        self.mark_count = scene.boxes.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -425,6 +502,69 @@ impl Renderer {
     /// Sets the camera for the next `render`. Cheap: it only changes a uniform.
     pub fn set_camera(&mut self, camera: Camera) {
         self.camera = camera;
+    }
+
+    /// Marks bar `mark` (an index into the scene's bars) as hovered, or none: the bar is
+    /// lightened, and a `hover`-mode value label of it is shown. Changes one flag per bar and
+    /// a few glyphs; nothing else is rewritten.
+    pub fn set_hover(&mut self, mark: Option<usize>) {
+        let mark = mark.filter(|&m| m < self.mark_count);
+        if mark == self.hover {
+            return;
+        }
+        let previous = std::mem::replace(&mut self.hover, mark);
+        let font = FontMetrics::inter();
+        if let (Some(solid), Some(_)) = (&mut self.solid, self.box_size) {
+            if let Some(p) = previous {
+                solid.boxes.set_hover(&self.queue, p, false);
+            }
+            let mut instances = Vec::new();
+            if let Some(m) = mark {
+                solid.boxes.set_hover(&self.queue, m, true);
+                if let Some(l) = self.hover_labels_3d.iter().find(|l| l.mark == m) {
+                    text::layout_glyphs_3d(&l.text, l.color, NO_SLOT, font, &mut instances);
+                    let halo = text::halo_instances(&instances, self.halo.0, self.halo.1);
+                    instances.splice(0..0, halo);
+                }
+            }
+            solid
+                .text
+                .set_overlay(&self.device, &self.queue, &instances);
+        } else {
+            if let Some(p) = previous {
+                self.rects
+                    .set_hover(&self.queue, self.bar_offset + p, false);
+            }
+            let mut glyphs = Vec::new();
+            if let Some(m) = mark {
+                self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                if let Some(l) = self.hover_labels.iter().find(|l| l.mark == m) {
+                    text::layout_glyphs(&l.text, l.color, font, &mut glyphs);
+                }
+            }
+            self.text.set_overlay(&self.device, &self.queue, &glyphs);
+        }
+    }
+
+    /// The bar of `boxes` under pixel `(x, y)` of the surface, in the current camera: a ray
+    /// through the pixel against every box, nearest wins. `None` in a 2D chart.
+    pub fn pick_3d(&self, boxes: &[BoxMark], x: f32, y: f32) -> Option<usize> {
+        let size = self.box_size?;
+        let viewport = (self.config.width as f32, self.config.height as f32);
+        pick::pick_3d(
+            boxes,
+            self.camera.plot_view_proj(size, viewport),
+            viewport,
+            (x, y),
+        )
+    }
+
+    /// Where a world point is on the surface right now, in pixels. `None` in a 2D chart.
+    pub fn project_3d(&self, point: [f32; 3]) -> Option<[f32; 2]> {
+        let size = self.box_size?;
+        let viewport = (self.config.width as f32, self.config.height as f32);
+        let vp = self.camera.plot_view_proj(size, viewport);
+        pick::project(vp, viewport, Vec3::from(point)).map(|(x, y)| [x, y])
     }
 
     /// The largest width or height a surface or snapshot may have.
@@ -497,7 +637,7 @@ impl Renderer {
     /// 3D: bars (depth-tested), then lines (depth-tested against the bars), then text on top.
     ///
     /// Draws into `color`; with MSAA that is the multisampled target and `resolve` is where
-    /// it is averaged down to.
+    /// it is averaged down to. `overlay: false` leaves out the hover label.
     fn record_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -505,6 +645,7 @@ impl Renderer {
         resolve: Option<&wgpu::TextureView>,
         depth: Option<&wgpu::TextureView>,
         clear: [f32; 4],
+        overlay: bool,
     ) {
         let [r, g, b, a] = clear;
         // The multisampled contents are thrown away once resolved.
@@ -547,12 +688,12 @@ impl Renderer {
                 solid.lines.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,
                 // and a label hidden behind a bar is worse than one drawn over it.
-                solid.text.draw(&mut pass, &self.quad);
+                solid.text.draw(&mut pass, &self.quad, overlay);
             }
             // No depth test in 2D: draw order alone decides what is on top.
             _ => {
                 self.rects.draw(&mut pass, &self.quad);
-                self.text.draw(&mut pass, &self.quad);
+                self.text.draw(&mut pass, &self.quad, overlay);
             }
         }
     }
@@ -597,7 +738,14 @@ impl Renderer {
             None => (&frame_view, None),
         };
         let clear = self.encode_color(self.background);
-        self.record_pass(&mut encoder, view, resolve, self.depth_view.as_ref(), clear);
+        self.record_pass(
+            &mut encoder,
+            view,
+            resolve,
+            self.depth_view.as_ref(),
+            clear,
+            true,
+        );
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
         Ok(())
@@ -610,7 +758,7 @@ impl Renderer {
     /// theme's.
     ///
     /// The caller loads the scene laid out for this size first, and loads the on-screen one
-    /// again afterwards. Finish with
+    /// again afterwards; hover state is not drawn. Finish with
     /// [`poll_snapshot`](Self::poll_snapshot) until it yields the pixels.
     pub fn snapshot(
         &mut self,
@@ -700,7 +848,14 @@ impl Renderer {
             Some(msaa) => (msaa, Some(&resolved_view)),
             None => (&resolved_view, None),
         };
-        self.record_pass(&mut encoder, view, resolve, depth_view.as_ref(), clear);
+        self.record_pass(
+            &mut encoder,
+            view,
+            resolve,
+            depth_view.as_ref(),
+            clear,
+            false,
+        );
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: &resolved,

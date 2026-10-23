@@ -367,3 +367,91 @@ fn pointer_paths_escape_slashes_in_names() {
     let json = r#"{ "data": { "a/b": { "c": [1], "d": [1, 2] } } }"#;
     assert_eq!(paths(json), ["/data/a~1b"]);
 }
+
+// --- value labels --------------------------------------------------------------------------
+
+fn with_label(label: &str) -> String {
+    broken(
+        r#""encoding": {"#,
+        &format!(r#""label": {label}, "encoding": {{"#),
+    )
+}
+
+#[test]
+fn good_labels_validate() {
+    for label in [
+        r#"{ "show": "always" }"#,
+        r#"{ "show": "hover" }"#,
+        r#"{ "show": "always", "format": {} }"#,
+        r#"{ "show": "hover", "format": { "decimals": 0 } }"#,
+        r#"{ "show": "hover", "format": { "decimals": 10 } }"#,
+    ] {
+        assert_eq!(issues(&with_label(label)), vec![], "{label}");
+    }
+}
+
+#[test]
+fn label_show_must_be_always_or_hover() {
+    let got = issues(&with_label(r#"{ "show": "sometimes" }"#));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/layers/0/label/show");
+    assert!(got[0].message.contains("always"), "{}", got[0].message);
+    assert_eq!(
+        paths(&with_label(r#"{ "show": true }"#)),
+        ["/layers/0/label/show"]
+    );
+}
+
+#[test]
+fn label_needs_show_and_rejects_unknown_fields() {
+    let got = issues(&with_label("{}"));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/layers/0/label");
+    assert!(got[0].message.contains("show"), "{}", got[0].message);
+    assert_eq!(
+        paths(&with_label(r#"{ "show": "always", "colour": "red" }"#)),
+        ["/layers/0/label/colour"]
+    );
+    assert_eq!(
+        paths(&with_label(
+            r#"{ "show": "always", "format": { "places": 2 } }"#
+        )),
+        ["/layers/0/label/format/places"]
+    );
+    // A label must be an object.
+    assert_eq!(paths(&with_label(r#""always""#)), ["/layers/0/label"]);
+}
+
+#[test]
+fn label_decimals_must_be_a_whole_number_from_0_to_10() {
+    for bad in ["-1", "1.5", r#""2""#] {
+        let json = with_label(&format!(
+            r#"{{ "show": "hover", "format": {{ "decimals": {bad} }} }}"#
+        ));
+        assert_eq!(paths(&json), ["/layers/0/label/format/decimals"], "{bad}");
+    }
+    let got = issues(&with_label(
+        r#"{ "show": "hover", "format": { "decimals": 11 } }"#,
+    ));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/layers/0/label/format/decimals");
+    assert!(
+        got[0].message.contains("between 0 and 10"),
+        "{}",
+        got[0].message
+    );
+}
+
+#[test]
+fn label_problems_in_the_second_layer_point_at_it() {
+    let json = r#"{
+      "data": { "t": { "c": ["a"], "v": [1] } },
+      "axes": [ { "id": "x", "orient": "bottom" }, { "id": "y", "orient": "left" } ],
+      "layers": [
+        { "mark": "bar", "data": "t", "encoding": { "x": { "field": "c" }, "y": { "field": "v" } } },
+        { "mark": "bar", "data": "t", "encoding": { "x": { "field": "c" }, "y": { "field": "v" } },
+          "label": { "show": "always", "format": { "decimals": 99 } } }
+      ]
+    }"#;
+    assert_eq!(paths(json), ["/layers/1/label/format/decimals"]);
+}

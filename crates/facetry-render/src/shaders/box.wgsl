@@ -30,6 +30,8 @@ struct Vertex {
     @location(2) box_min: vec3<f32>,
     @location(3) box_max: vec3<f32>,
     @location(4) color: vec4<f32>,
+    // 1 while the pointer is over this bar: it is lightened a little.
+    @location(5) hover: f32,
 }
 
 struct Varying {
@@ -44,7 +46,8 @@ fn vs_main(v: Vertex) -> Varying {
     let ambient = globals.light.w;
     let lambert = max(dot(v.normal, globals.light.xyz), 0.0);
     let shade = ambient + (1.0 - ambient) * lambert;
-    return Varying(globals.view_proj * vec4<f32>(world, 1.0), v.color.rgb * shade);
+    let lit = mix(v.color.rgb * shade, vec3<f32>(1.0), 0.12 * v.hover);
+    return Varying(globals.view_proj * vec4<f32>(world, 1.0), lit);
 }
 
 @fragment
