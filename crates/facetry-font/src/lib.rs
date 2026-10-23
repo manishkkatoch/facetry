@@ -9,8 +9,11 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-/// The atlas image: an 8-bit RGB PNG whose three channels are the MSDF.
-pub const ATLAS_PNG: &[u8] = include_bytes!("../assets/inter-regular-msdf.png");
+/// The atlas image as raw 8-bit RGB (row-major, top row first, `width * height * 3` bytes);
+/// the three channels are the MSDF. Raw rather than PNG so the wasm needs no image decoder:
+/// the zero-filled background is dropped by wasm-opt and the rest compresses as well as a PNG.
+/// `tools/font-atlas` writes it (and a PNG preview next to it).
+pub const ATLAS_RGB: &[u8] = include_bytes!("../assets/inter-regular-msdf.rgb");
 const METRICS_JSON: &str = include_str!("../assets/inter-regular-metrics.json");
 
 /// Where the atlas came from and how to read distances out of it.
@@ -96,6 +99,12 @@ mod tests {
     #[test]
     fn unknown_chars_fall_back_to_question_mark() {
         assert_eq!(FontMetrics::inter().glyph('é').ch, '?');
+    }
+
+    #[test]
+    fn raw_atlas_matches_the_recorded_size() {
+        let a = &FontMetrics::inter().atlas;
+        assert_eq!(ATLAS_RGB.len(), (a.width * a.height * 3) as usize);
     }
 
     #[test]

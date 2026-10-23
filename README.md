@@ -215,7 +215,8 @@ Only needed if you change the font, glyph set, atlas size or distance range (con
 cargo run -p font-atlas --release
 ```
 
-This rewrites `crates/facetry-font/assets/inter-regular-msdf.png` and
+This rewrites `crates/facetry-font/assets/inter-regular-msdf.rgb` (raw RGB, embedded),
+`inter-regular-msdf.png` (the same pixels, for viewing; a test checks they agree) and
 `inter-regular-metrics.json` from `tools/font-atlas/fonts/Inter-Regular.ttf` (Inter 4.1, SIL Open
 Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files are embedded with
 `include_bytes!`) and update the scene snapshots, since layout uses the glyph widths.

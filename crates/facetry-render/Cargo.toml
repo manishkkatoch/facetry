@@ -10,7 +10,6 @@ publish.workspace = true
 facetry-core.workspace = true
 facetry-font.workspace = true
 wgpu.workspace = true
-png.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
 
