@@ -343,6 +343,7 @@ dependencies = [
  "facetry-font",
  "facetry-render",
  "js-sys",
+ "log",
  "serde-wasm-bindgen",
  "wasm-bindgen",
  "wasm-bindgen-futures",

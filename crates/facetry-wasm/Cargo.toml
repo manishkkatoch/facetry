@@ -21,6 +21,9 @@ wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 console_error_panic_hook.workspace = true
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+# Not used directly: cargo unifies features, so this compiles every `log::` call in wgpu-core and
+# naga out of release builds (no logger is ever installed). Saves ~29 KB gzip on the WebGL module.
+log = { version = "0.4", features = ["release_max_level_off"] }
 
 [package.metadata.wasm-pack.profile.release]
 # We run wasm-opt ourselves (scripts/build-wasm.sh) so the version is pinned via npm.
