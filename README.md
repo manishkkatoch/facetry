@@ -51,6 +51,14 @@ chart.destroy();
 (with `issues`, every problem found, each a JSON-pointer `path` plus a `message`; nothing is
 drawn until the spec is valid), `gpu-unavailable`, `invalid-options` or `render-failed`.
 
+`backend: "auto"` (the default) uses WebGPU when `navigator.gpu` exists and yields an adapter,
+otherwise WebGL2; if WebGPU then fails to start (adapter, device or surface), it retries once on
+WebGL2. `"webgpu"` and `"webgl2"` never fall back and reject with `gpu-unavailable`. The package
+ships **two wasm modules** and downloads only the one it needs: a small WebGPU-only module and a
+larger WebGL2-only one that is fetched lazily where WebGPU is missing (see [Bundle size](#bundle-size)).
+Asking a module for a backend it was not built with (only possible when using the wasm directly)
+also rejects with `gpu-unavailable`, with a message saying which backend the build contains.
+
 ### The spec
 
 - `data`: named, columnar tables. A column is an array of numbers (`null` = missing) or an array
@@ -139,12 +147,13 @@ playground and the golden-image test.
 ```
 crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene and Scene3d
                         (no GPU/browser deps)
-crates/facetry-font     the bundled MSDF font (atlas PNG + metrics JSON) and text measuring
+crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
 crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines (2D); box, line and world-text
                         pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32)
-crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors
+crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors; features `webgpu`
+                        (default) and `webgl` choose the backend, built once per module
 tools/font-atlas        offline tool that generates the MSDF atlas (not part of the build)
-packages/facetry        npm package (TypeScript): loads wasm once, ResizeObserver + DPR
+packages/facetry        npm package (TypeScript): lazily loads one of two wasm modules, ResizeObserver + DPR
                         sizing, orbit/zoom/reset gestures, renders only when dirty
 examples/specs          example chart specs (JSON)
 examples/playground     Vite app + Playwright tests (smoke, playground, golden images, orbit)
@@ -169,13 +178,14 @@ the bars), then text.
 
 ```sh
 pnpm install
-pnpm build:wasm            # wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints size
+pnpm build:wasm            # both modules: wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints sizes
 pnpm -r build              # tsc for the package, tsc + vite build for the playground
 pnpm dev                   # playground dev server; add ?backend=webgl2 to force the fallback
 
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy -p facetry-core -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+cargo clippy -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl -- -D warnings
 cargo test --workspace     # unit, property (proptest) and snapshot (insta) tests
 
 pnpm --filter playground exec playwright install chromium   # once
@@ -223,17 +233,22 @@ Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files ar
 
 ## Bundle size
 
-Release build (`opt-level = "z"`, LTO) after `wasm-opt -Oz`, measured with `scripts/wasm-size.sh`:
+The package ships two wasm modules built from the same source (`scripts/build-wasm.sh`, release
+profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` prints these numbers:
 
-| | M0 | M1 | M4 (3D) |
-|---|---|---|---|
-| `facetry_wasm_bg.wasm` raw | 1,350,614 bytes (1318 KiB) | 2,294,489 bytes (2240 KiB) | 2,338,652 bytes (2283 KiB) |
-| gzip -9 | 542,366 bytes (529 KiB) | 972,603 bytes (949 KiB) | 992,327 bytes (969 KiB) |
+| | raw | gzip -9 | brotli -q 11 | loaded |
+|---|---:|---:|---:|---|
+| `facetry_wasm` (WebGPU only) | 563,245 B (550 KiB) | 254,991 B (249 KiB) | 212,008 B (207 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,187,106 B (2136 KiB) | 897,869 B (877 KiB) | 711,806 B (695 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
 
-3D added about 43 KiB raw (19 KiB gzipped, +2%): three more shaders (the shader translator was
-already there), the 3D layout, and glam.
+History of the single combined module (both backends), for comparison:
 
-Most of it is wgpu (wgpu-core and the GL backend, kept so the WebGL2 fallback works). M1 roughly
-doubled it: it now ships shaders, so the wasm includes the shader translator (WGSL parser,
-validator, GLSL writer; wgpu needs it at runtime to compile our WGSL for WebGL2), plus the
-embedded font atlas (~77 KB PNG), serde and a PNG decoder. (Not yet profiled symbol by symbol.)
+| | M0 | M1 | M4 (3D) | combined, before splitting |
+|---|---|---|---|---|
+| raw | 1,350,614 | 2,294,489 | 2,338,652 | 2,338,652 |
+| gzip -9 | 542,366 | 972,603 | 992,327 | 992,327 |
+
+Why two modules: wgpu only needs wgpu-core, its GL backend and the naga shader translator (WGSL
+parser, validator, GLSL writer) when it has to run WebGL2 itself; on WebGPU the browser compiles
+the WGSL. That machinery was 75% of the combined module. `docs/wasm-size.md` has the profile
+(`scripts/wasm-profile.sh`), the experiments and the remaining ideas.

@@ -33,7 +33,8 @@ All sizes are bytes. "gzip" is `gzip -9`, "brotli" is brotli quality 11, window 
 ## How to reproduce
 
 ```
-scripts/wasm-profile.sh [TOP_N]    # ~2 min cold; output in target/wasm-profile/ (git-ignored)
+scripts/wasm-profile.sh [TOP_N]    # ~2 min cold; output in target/wasm-profile-webgl/ (git-ignored)
+                                   # PROFILE_MODULE=webgpu profiles the small module instead
 ```
 
 It builds the same release wasm with its own cargo target dir and
@@ -109,7 +110,7 @@ includes the three items above).
 `naga::front::wgsl::Frontend::parse` 26,137; GLSL `write_expr` 25,817;
 `wgsl::error::Error::as_parse_error` 23,761; the async `Chart::create` future 20,534;
 `png::decoder::StreamingDecoder::parse_u32` 15,199 (inlined decoder body).
-Full table: `target/wasm-profile/twiggy-top.txt` after running the script.
+Full table: `target/wasm-profile-webgl/twiggy-top.txt` after running the script.
 
 ## Experiments
 
@@ -377,3 +378,50 @@ modified by them.
 * i1 to i3, j: combinations of the above.
 * Hello triangle: separate crate with the same `[profile.release]`, wgpu 30.0.1 with
   `["std", "wgsl", "webgpu", "webgl"]` and `["std", "wgsl", "webgpu"]`.
+
+## Applied
+
+Recommendations 1 to 3 were implemented afterwards (commits on this branch). The numbers
+above describe the single combined module at `4093a7b`; the sections below describe what
+ships now. Recommendations 4 onwards are not applied.
+
+| Module | Built with | Raw | gzip -9 | brotli -q 11 | vs old combined module (gzip) |
+|---|---|---:|---:|---:|---:|
+| `facetry_wasm` | `--no-default-features --features webgpu` | 563,245 | 254,991 | 212,008 | -737,326 (-74.3%) |
+| `facetry_wasm_gl` | `--no-default-features --features webgl` | 2,187,106 | 897,869 | 711,806 | -94,448 (-9.5%) |
+| old combined module | both backends | 2,338,652 | 992,317 | 791,216 | |
+
+Measured with `scripts/wasm-size.sh` after `scripts/build-wasm.sh`. They are within 1 KB of
+the experiment variants i2 (562,312 / 254,364 / 211,630) and i3 (2,185,244 / 897,012 /
+711,102); the small difference is the new "backend not built" error paths and the
+adapter-before-surface ordering in `Renderer::new`.
+
+What changed:
+
+1. **Two modules** (`facetry-render`/`facetry-wasm` features `webgpu` (default) and `webgl`;
+   wgpu's `webgpu`/`webgl` features are no longer unconditional). `scripts/build-wasm.sh`
+   builds both into `packages/facetry/wasm`. The TypeScript loader imports each lazily
+   (`import()`), once per page. `"webgpu"` uses the small module, `"webgl2"` the large one,
+   `"auto"` uses the small one when `navigator.gpu.requestAdapter()` yields an adapter and
+   the large one otherwise, and retries once on the large one if the WebGPU module then
+   fails to start with anything but a bad spec or bad options. A module asked for a backend
+   it does not contain rejects with `gpu-unavailable` and a message naming what it has.
+   To keep the canvas usable for that retry, the WebGPU-only module requests adapter and
+   device *before* creating the surface, because `getContext("webgpu")` locks a canvas to
+   that context type for good. In the playground build (Vite), the two wasm files and their
+   glue files are separate chunks and the entry chunk is 12 KB.
+2. **Raw atlas.** `tools/font-atlas` writes `inter-regular-msdf.rgb` next to the PNG;
+   `facetry-font` embeds the raw bytes and the `png` crate is gone from the shipped
+   dependency tree. A test in the tool crate decodes the PNG and requires it to equal the
+   committed raw bytes; re-running the tool regenerates both images and the metrics
+   byte for byte.
+3. **`log` with `release_max_level_off`** in `facetry-wasm`.
+
+(`scripts/wasm-profile.sh` now profiles the WebGL module by default; its stripped output is within 0.1% of the shipped file, 1.9 KB smaller because it skips wasm-pack's extra flags.)
+
+Not verified here: the WebGPU module has never run against a real WebGPU device in this
+environment (headless Chromium without a GPU has none). What was exercised: it builds, its
+glue and wasm load, and requesting WebGPU in headless fails with `gpu-unavailable`
+(Playwright). The adapter-before-surface ordering and the JS probe are untested on real
+WebGPU; open the Pages playground in a WebGPU browser and check `chart.backend === "webgpu"`
+before releasing.

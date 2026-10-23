@@ -23,6 +23,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p facetry-core -p facetry-font -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - run: cargo clippy -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl -- -D warnings
       - run: cargo test --workspace
       - name: No pending or untracked snapshot files
         run: test -z "$(git status --porcelain)"
@@ -42,7 +43,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build wasm (wasm-pack + wasm-opt) and print size
+      - name: Build both wasm modules (wasm-pack + wasm-opt) and print sizes
         run: scripts/build-wasm.sh
       - run: pnpm -r build
       - run: pnpm --filter playground exec playwright install --with-deps chromium
