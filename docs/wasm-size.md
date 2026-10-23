@@ -425,3 +425,34 @@ glue and wasm load, and requesting WebGPU in headless fails with `gpu-unavailabl
 (Playwright). The adapter-before-surface ordering and the JS probe are untested on real
 WebGPU; open the Pages playground in a WebGPU browser and check `chart.backend === "webgpu"`
 before releasing.
+
+## Later growth: axis labels, PNG snapshots, value labels and hover
+
+Measured with the same pipeline (`scripts/build-wasm.sh`: wasm-pack, then `wasm-opt -Oz`); the
+WebGPU-only module per commit of that branch (each commit built from a clean checkout):
+
+| Commit | WebGPU raw | WebGPU gzip | Δ gzip |
+|---|---:|---:|---:|
+| before (main at the shrink) | 563,245 | 254,991 | |
+| 2D top/right margin | 563,546 | 255,107 | +116 |
+| 3D axis labels placed per frame (label planner, 4 KiB state table, shader slot) | 575,761 | 260,630 | +5,523 |
+| `chart.snapshot()` (offscreen target, read-back, un-padding, un-premultiply) | 582,771 | 264,456 | +3,826 |
+| value labels, picking, hover, events | 601,511 | 272,819 | +8,363 |
+
+The WebGL2 module went from 897,869 to 917,046 gzip (+19,177); the same code, about the same
+size, since the wgpu GL backend itself does not change.
+
+Where it goes (`scripts/wasm-profile.sh` on a WebGPU build with all four commits): the new code
+is spread thin, not one big item. The snapshot commit (+3.8 KB gzip) is `snapshotStart` and
+`snapshotPoll` with their wasm-bindgen shims, the GPU copy and map calls and the read-back
+conversion. The label planner (+5.5 KB) is the placement maths plus a rebuilt text pipeline
+layout. The last commit (+8.4 KB) is serde code for the new spec types, validation, label
+layout in both builders, picking, the hover paths and `markInfo`/`datum` building through
+`js_sys::Reflect`. Three trims were applied after the first measurement (together -3.3 KB
+gzip, 276,164 to 272,819): no hull sort in the label planner (the box's silhouette is tested
+face by face), no `HashMap`/`VecDeque` there, and no `Debug` formatting of texture formats in
+the snapshot error path. Not done: replacing the serde-based spec reader (see e3 above) would
+remove more than all of this at once.
+
+PNG encoding is deliberately not in the wasm (that was the point of removing `png`); the
+browser's encoder is used from TypeScript.
