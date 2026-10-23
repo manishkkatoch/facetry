@@ -16,6 +16,38 @@ pub struct Globals {
     pub _pad: [f32; 3],
 }
 
+/// Uniforms shared by the 3D shaders (matches `Globals` in `box.wgsl`, `line3d.wgsl` and
+/// `text3d.wgsl`). 144 bytes, a multiple of 16 as WebGL2 needs. Rewritten every frame from
+/// the camera, which is all that changes when the user orbits.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct Globals3 {
+    pub view_proj: [[f32; 4]; 4],
+    /// Camera position (xyz).
+    pub eye: [f32; 4],
+    /// `x`: the camera's azimuth in degrees (`0..360`), which lines and labels test their
+    /// `azimuths` range against. The rest is spare (elevation, distance, perspective flag).
+    pub view: [f32; 4],
+    /// Direction *to* the light (xyz, unit length) and the ambient fraction (w).
+    pub light: [f32; 4],
+    /// Render target size in pixels.
+    pub viewport: [f32; 2],
+    /// Atlas size in pixels.
+    pub atlas: [f32; 2],
+    pub px_range: f32,
+    pub _pad: [f32; 3],
+}
+
+/// Depth buffer format: 24 bits is plenty for one chart and is supported everywhere,
+/// including WebGL2.
+pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+/// An item's azimuth range as the shaders read it: `[from, to)` in degrees, wrapping when
+/// `from > to`. No range means always: `[0, 360)`, which every azimuth is inside.
+pub fn show_range(range: Option<facetry_core::scene3d::AzimuthRange>) -> [f32; 2] {
+    range.map_or([0.0, 360.0], |r| [r.from, r.to])
+}
+
 /// Corners of the unit quad as a triangle strip: (0,0) top-left, (1,1) bottom-right.
 pub const QUAD: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
 
@@ -82,5 +114,16 @@ mod tests {
     #[test]
     fn globals_match_the_wgsl_block_size() {
         assert_eq!(std::mem::size_of::<Globals>(), 32);
+        assert_eq!(std::mem::size_of::<Globals3>(), 144);
+    }
+
+    #[test]
+    fn no_range_means_always() {
+        use facetry_core::scene3d::AzimuthRange;
+        assert_eq!(show_range(None), [0.0, 360.0]);
+        assert_eq!(
+            show_range(Some(AzimuthRange::new(90.0, 180.0))),
+            [90.0, 180.0]
+        );
     }
 }

@@ -1,12 +1,16 @@
 use facetry_core::scene::Scene;
+use facetry_core::scene3d::Scene3d;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
+use glam::Vec3;
 use wgpu::util::DeviceExt as _;
 
 use crate::Error;
-use crate::gpu::{self, Globals};
+use crate::camera::Camera;
+use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
 use crate::rect::{self, RectPipeline};
-use crate::text::{self, GlyphInstance, TextPipeline};
+use crate::solid::{self, BoxPipeline, LinePipeline};
+use crate::text::{self, Atlas, Glyph3Instance, GlyphInstance, Text3dPipeline, TextPipeline};
 
 /// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
 const MSAA_SAMPLES: u32 = 4;
@@ -33,6 +37,27 @@ impl BackendPreference {
     }
 }
 
+/// Direction *toward* the light in world space: from above, a little to the right and the
+/// front, so at the default camera the top is brightest, the front mid and the right side
+/// darker (the left and back faces get ambient only).
+const LIGHT_TO: [f32; 3] = [0.55, 0.8, 0.45];
+/// Share of a face's colour it keeps with no light at all.
+const AMBIENT: f32 = 0.5;
+/// Looking at the box's exact centre leaves the bottom of the picture (axis titles hang
+/// below the front edge) cramped and the top empty, so the camera looks this far (in world
+/// units) below the centre, which lifts the box a little.
+const FRAMING_LIFT: f32 = 0.12;
+
+/// The pipelines and buffers only 3D charts need, created the first time a 3D scene arrives
+/// so 2D charts do not pay for them.
+#[derive(Debug)]
+struct Solid {
+    globals: wgpu::Buffer,
+    boxes: BoxPipeline,
+    lines: LinePipeline,
+    text: Text3dPipeline,
+}
+
 /// Owns the GPU objects (instance, adapter info, device, queue) and the window surface,
 /// and draws a [`Scene`] with them.
 #[derive(Debug)]
@@ -49,7 +74,15 @@ pub struct Renderer {
     /// The multisampled colour target, resolved into the surface each frame. `None` when
     /// `samples == 1` or the surface has no area.
     msaa_view: Option<wgpu::TextureView>,
+    /// Depth buffer for the 3D pass (same sample count as the colour target); only exists
+    /// while a 3D scene is shown.
+    depth_view: Option<wgpu::TextureView>,
     globals: wgpu::Buffer,
+    atlas: Atlas,
+    solid: Option<Solid>,
+    /// The plot box's size when a 3D scene is active (`None`: draw the 2D scene).
+    box_size: Option<[f32; 3]>,
+    camera: Camera,
     quad: wgpu::Buffer,
     rects: RectPipeline,
     text: TextPipeline,
@@ -147,7 +180,8 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
         let rects = RectPipeline::new(&device, config.format, samples, &globals);
-        let text = TextPipeline::new(&device, &queue, config.format, samples, &globals)?;
+        let atlas = Atlas::new(&device, &queue)?;
+        let text = TextPipeline::new(&device, &atlas, config.format, samples, &globals);
 
         let mut renderer = Self {
             surface,
@@ -158,7 +192,12 @@ impl Renderer {
             background: Theme::default().background,
             samples,
             msaa_view: None,
+            depth_view: None,
             globals,
+            atlas,
+            solid: None,
+            box_size: None,
+            camera: Camera::default(),
             quad,
             rects,
             text,
@@ -205,24 +244,34 @@ impl Renderer {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
         }
-        self.msaa_view = (self.drawable && self.samples > 1).then(|| {
+        self.rebuild_targets();
+    }
+
+    /// (Re)creates the textures that depend on the surface size: the multisampled colour
+    /// target, and the depth buffer while a 3D scene is active.
+    fn rebuild_targets(&mut self) {
+        let target = |label, format, samples| {
             self.device
                 .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("msaa colour target"),
+                    label: Some(label),
                     size: wgpu::Extent3d {
                         width: self.config.width,
                         height: self.config.height,
                         depth_or_array_layers: 1,
                     },
                     mip_level_count: 1,
-                    sample_count: self.samples,
+                    sample_count: samples,
                     dimension: wgpu::TextureDimension::D2,
-                    format: self.config.format,
+                    format,
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                     view_formats: &[],
                 })
                 .create_view(&wgpu::TextureViewDescriptor::default())
-        });
+        };
+        self.msaa_view = (self.drawable && self.samples > 1)
+            .then(|| target("msaa colour target", self.config.format, self.samples));
+        self.depth_view = (self.drawable && self.box_size.is_some())
+            .then(|| target("depth target", DEPTH_FORMAT, self.samples));
     }
 
     /// Samples per pixel actually in use: 4 (MSAA) or 1 when the device cannot multisample.
@@ -238,16 +287,15 @@ impl Renderer {
     /// Converts a colour to what the render target expects: linear for sRGB formats (the GPU
     /// encodes on write), already gamma-encoded for plain ones such as `Rgba8Unorm`.
     fn encode_color(&self, color: Color) -> [f32; 4] {
-        if self.config.format.is_srgb() {
-            color.to_array()
-        } else {
-            color.to_srgb()
-        }
+        encode_color(self.config.format, color)
     }
 
     /// Uploads a scene: the next `render` draws it. Cheap enough to call on every resize or
     /// data change (one buffer write per list).
     pub fn set_scene(&mut self, scene: &Scene) {
+        if self.box_size.take().is_some() {
+            self.rebuild_targets(); // drops the depth buffer
+        }
         self.background = scene.background;
         let rects = rect::instances(scene, |c| self.encode_color(c));
         self.rects.set_instances(&self.device, &self.queue, &rects);
@@ -260,7 +308,93 @@ impl Renderer {
         self.text.set_instances(&self.device, &self.queue, &glyphs);
     }
 
-    /// Draws one frame: the background, then gridlines, bars, axis rules and text.
+    /// Uploads a 3D scene: the next `render` draws it from the current camera. Orbiting does
+    /// not call this; only a new spec or a resize does.
+    pub fn set_scene_3d(&mut self, scene: &Scene3d) {
+        self.background = scene.background;
+        let (device, format, samples) = (&self.device, self.config.format, self.samples);
+        let atlas = &self.atlas;
+        let solid = self.solid.get_or_insert_with(|| {
+            let globals = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("globals 3d"),
+                size: std::mem::size_of::<Globals3>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            Solid {
+                boxes: BoxPipeline::new(device, format, samples, &globals),
+                lines: LinePipeline::new(device, format, samples, &globals),
+                text: Text3dPipeline::new(device, atlas, format, samples, &globals),
+                globals,
+            }
+        });
+        let encode = |c| encode_color(self.config.format, c);
+        solid.boxes.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::box_instances(scene, encode),
+        );
+        solid.lines.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::line_instances(scene, encode),
+        );
+        let font = FontMetrics::inter();
+        let mut glyphs: Vec<Glyph3Instance> = Vec::new();
+        for t in &scene.texts {
+            text::layout_glyphs_3d(t, encode(t.color), font, &mut glyphs);
+        }
+        // Outlines first (every label's, so no outline covers another label's letters), then
+        // the letters themselves.
+        let mut instances = text::halo_instances(&glyphs, encode(scene.background), scene.halo_px);
+        instances.extend(glyphs);
+        solid
+            .text
+            .set_instances(&self.device, &self.queue, &instances);
+        let entering = self.box_size.is_none();
+        self.box_size = Some(scene.size);
+        if entering {
+            self.rebuild_targets(); // creates the depth buffer
+        }
+    }
+
+    /// Sets the camera for the next `render`. Cheap: it only changes a uniform.
+    pub fn set_camera(&mut self, camera: Camera) {
+        self.camera = camera;
+    }
+
+    /// The globals for this frame, from the camera and the viewport.
+    fn globals_3d(&self, size: [f32; 3]) -> Globals3 {
+        let size = Vec3::from(size);
+        let (centre, radius) = (
+            size / 2.0 - Vec3::Y * FRAMING_LIFT,
+            facetry_core::framing_radius(size.to_array()),
+        );
+        let (w, h) = (self.config.width as f32, self.config.height as f32);
+        let eye = self.camera.eye(centre, radius);
+        let font = FontMetrics::inter();
+        Globals3 {
+            view_proj: self
+                .camera
+                .view_proj(w / h.max(1.0), centre, radius)
+                .to_cols_array_2d(),
+            eye: eye.extend(1.0).to_array(),
+            view: [
+                self.camera.azimuth,
+                self.camera.elevation,
+                self.camera.distance,
+                1.0,
+            ],
+            light: Vec3::from(LIGHT_TO).normalize().extend(AMBIENT).to_array(),
+            viewport: [w, h],
+            atlas: [font.atlas.width as f32, font.atlas.height as f32],
+            px_range: font.atlas.px_range,
+            _pad: [0.0; 3],
+        }
+    }
+
+    /// Draws one frame. 2D: the background, then gridlines, bars, axis rules and text. 3D:
+    /// bars (depth-tested), then lines (depth-tested against the bars), then text on top.
     pub fn render(&mut self) -> Result<(), Error> {
         if !self.drawable {
             return Ok(());
@@ -287,6 +421,13 @@ impl Renderer {
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        if let (Some(size), Some(solid)) = (self.box_size, &self.solid) {
+            self.queue.write_buffer(
+                &solid.globals,
+                0,
+                bytemuck::bytes_of(&self.globals_3d(size)),
+            );
+        }
         self.queue.write_buffer(
             &self.globals,
             0,
@@ -329,17 +470,47 @@ impl Renderer {
                         store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: self.depth_view.as_ref().map(|view| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
+                    }
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // No depth test in 2D: draw order alone decides what is on top.
-            self.rects.draw(&mut pass, &self.quad);
-            self.text.draw(&mut pass, &self.quad);
+            match (&self.solid, self.box_size) {
+                (Some(solid), Some(_)) => {
+                    solid.boxes.draw(&mut pass);
+                    solid.lines.draw(&mut pass, &self.quad);
+                    // Labels are drawn last and ignore depth: they sit just outside the box,
+                    // and a label hidden behind a bar is worse than one drawn over it.
+                    solid.text.draw(&mut pass, &self.quad);
+                }
+                // No depth test in 2D: draw order alone decides what is on top.
+                _ => {
+                    self.rects.draw(&mut pass, &self.quad);
+                    self.text.draw(&mut pass, &self.quad);
+                }
+            }
         }
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
         Ok(())
+    }
+}
+
+/// Converts a colour to what a render target of `format` expects: linear for sRGB formats
+/// (the GPU encodes on write), already gamma-encoded for plain ones such as `Rgba8Unorm`.
+fn encode_color(format: wgpu::TextureFormat, color: Color) -> [f32; 4] {
+    if format.is_srgb() {
+        color.to_array()
+    } else {
+        color.to_srgb()
     }
 }

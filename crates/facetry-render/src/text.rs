@@ -2,11 +2,13 @@
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::scene::{Anchor, Rotation, Text};
+use facetry_core::scene3d::{Text3, VAlign};
 use facetry_font::FontMetrics;
 
 use crate::Error;
-use crate::gpu::{InstanceBuffer, QUAD_LAYOUT};
+use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, show_range};
 use crate::rect::uniform_entry;
+use crate::solid::{PipelineDesc, pipeline};
 
 /// One glyph quad. The quad's corners are `origin`, `origin + axis_x`, `origin + axis_y` and
 /// both: two edge vectors instead of a width and height, so rotated text is just different
@@ -100,21 +102,15 @@ fn decode_atlas() -> Result<(u32, u32, Vec<u8>), Error> {
     Ok((info.width, info.height, rgba))
 }
 
+/// The glyph atlas on the GPU, shared by the 2D and 3D text pipelines.
 #[derive(Debug)]
-pub struct TextPipeline {
-    pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
-    instances: InstanceBuffer,
+pub struct Atlas {
+    view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
 }
 
-impl TextPipeline {
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-        samples: u32,
-        globals: &wgpu::Buffer,
-    ) -> Result<Self, Error> {
+impl Atlas {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self, Error> {
         let (width, height, pixels) = decode_atlas()?;
         let size = wgpu::Extent3d {
             width,
@@ -151,13 +147,18 @@ impl TextPipeline {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        Ok(Self { view, sampler })
+    }
 
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("text shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
-        });
+    /// The bind group layout and group shared by both text pipelines: globals, atlas, sampler.
+    fn bind(
+        &self,
+        device: &wgpu::Device,
+        name: &str,
+        globals: &wgpu::Buffer,
+    ) -> (wgpu::PipelineLayout, wgpu::BindGroup) {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("text bind group layout"),
+            label: Some(&format!("{name} bind group layout")),
             entries: &[
                 uniform_entry(0),
                 wgpu::BindGroupLayoutEntry {
@@ -179,7 +180,7 @@ impl TextPipeline {
             ],
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("text bind group"),
+            label: Some(&format!("{name} bind group")),
             layout: &layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -188,19 +189,43 @@ impl TextPipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
+                    resource: wgpu::BindingResource::TextureView(&self.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("text pipeline layout"),
+            label: Some(&format!("{name} pipeline layout")),
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
+        (pipeline_layout, bind_group)
+    }
+}
+
+#[derive(Debug)]
+pub struct TextPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    instances: InstanceBuffer,
+}
+
+impl TextPipeline {
+    pub fn new(
+        device: &wgpu::Device,
+        atlas: &Atlas,
+        format: wgpu::TextureFormat,
+        samples: u32,
+        globals: &wgpu::Buffer,
+    ) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("text shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
+        });
+        let (pipeline_layout, bind_group) = atlas.bind(device, "text", globals);
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
         ];
@@ -243,11 +268,11 @@ impl TextPipeline {
             multiview_mask: None,
             cache: None,
         });
-        Ok(Self {
+        Self {
             pipeline,
             bind_group,
             instances: InstanceBuffer::new("glyph instances"),
-        })
+        }
     }
 
     pub fn set_instances(
@@ -255,6 +280,168 @@ impl TextPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         items: &[GlyphInstance],
+    ) {
+        self.instances.set(device, queue, items);
+    }
+
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
+        let Some((buffer, count)) = self.instances.bound() else {
+            return;
+        };
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, quad.slice(..));
+        pass.set_vertex_buffer(1, buffer.slice(..));
+        pass.draw(0..4, 0..count);
+    }
+}
+
+/// One glyph of a world-anchored label: a [`GlyphInstance`]'s quad, relative to where the
+/// label's `anchor` lands on screen, plus the azimuth range it is shown in (see `line3d.wgsl`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct Glyph3Instance {
+    pub anchor: [f32; 3],
+    pub origin: [f32; 2],
+    pub axis_x: [f32; 2],
+    pub axis_y: [f32; 2],
+    pub uv: [f32; 4],
+    pub color: [f32; 4],
+    pub show: [f32; 2],
+}
+
+/// Lays out a 3D label with the 2D glyph code: the text is placed around the pixel origin
+/// `(0, 0)` (shifted by `offset_px` and the vertical alignment), and the shader later moves
+/// that origin to the projected anchor.
+pub fn layout_glyphs_3d(
+    text: &Text3,
+    color: [f32; 4],
+    font: &FontMetrics,
+    out: &mut Vec<Glyph3Instance>,
+) {
+    // The 2D layout puts the baseline at y; shift it so the requested point of the text's
+    // height lands on the anchor (screen y points down, so the baseline is *below* the top).
+    let shift = match text.valign {
+        VAlign::Top => font.cap_height * text.size_px,
+        VAlign::Middle => font.cap_height * text.size_px / 2.0,
+        VAlign::Baseline => 0.0,
+    };
+    let flat = Text {
+        key: String::new(),
+        text: text.text.clone(),
+        x: text.offset_px[0],
+        y: text.offset_px[1] + shift,
+        size_px: text.size_px,
+        color: text.color,
+        anchor: text.align,
+        rotation: Rotation::None,
+    };
+    let show = show_range(text.azimuths);
+    let mut glyphs = Vec::new();
+    layout_glyphs(&flat, color, font, &mut glyphs);
+    out.extend(glyphs.into_iter().map(|g| Glyph3Instance {
+        anchor: text.anchor,
+        origin: g.origin,
+        axis_x: g.axis_x,
+        axis_y: g.axis_y,
+        uv: g.uv,
+        color: g.color,
+        show,
+    }));
+}
+
+/// Copies of `glyphs` shifted `radius` pixels in eight directions and painted `color`: drawn
+/// before the glyphs themselves they form an outline. (The MSDF atlas encodes too little
+/// distance range for the shader to grow glyphs at this size, so we draw copies instead.)
+pub fn halo_instances(
+    glyphs: &[Glyph3Instance],
+    color: [f32; 4],
+    radius: f32,
+) -> Vec<Glyph3Instance> {
+    const DIRECTIONS: [[f32; 2]; 8] = [
+        [1.0, 0.0],
+        [-1.0, 0.0],
+        [0.0, 1.0],
+        [0.0, -1.0],
+        [0.7, 0.7],
+        [-0.7, 0.7],
+        [0.7, -0.7],
+        [-0.7, -0.7],
+    ];
+    let mut out = Vec::with_capacity(glyphs.len() * DIRECTIONS.len());
+    for g in glyphs {
+        for d in DIRECTIONS {
+            out.push(Glyph3Instance {
+                origin: [g.origin[0] + d[0] * radius, g.origin[1] + d[1] * radius],
+                color,
+                ..*g
+            });
+        }
+    }
+    out
+}
+
+#[derive(Debug)]
+pub struct Text3dPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    instances: InstanceBuffer,
+}
+
+impl Text3dPipeline {
+    pub fn new(
+        device: &wgpu::Device,
+        atlas: &Atlas,
+        format: wgpu::TextureFormat,
+        samples: u32,
+        globals: &wgpu::Buffer,
+    ) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("text3d shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text3d.wgsl").into()),
+        });
+        let (layout, bind_group) = atlas.bind(device, "text3d", globals);
+        let instance_attrs = wgpu::vertex_attr_array![
+            1 => Float32x3, 2 => Float32x2, 3 => Float32x2, 4 => Float32x2, 5 => Float32x4,
+            6 => Float32x4, 7 => Float32x2
+        ];
+        let pipeline = pipeline(
+            device,
+            &PipelineDesc {
+                label: "text3d pipeline",
+                module: &module,
+                layout: &layout,
+                buffers: &[
+                    Some(QUAD_LAYOUT),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Glyph3Instance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attrs,
+                    }),
+                ],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                cull_mode: None,
+                // Labels ignore depth: they sit outside the box and must stay readable even
+                // when a bar is in the way (see `Renderer::render`).
+                depth_write: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                blend: wgpu::BlendState::ALPHA_BLENDING,
+            },
+            format,
+            samples,
+        );
+        Self {
+            pipeline,
+            bind_group,
+            instances: InstanceBuffer::new("glyph3 instances"),
+        }
+    }
+
+    pub fn set_instances(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        items: &[Glyph3Instance],
     ) {
         self.instances.set(device, queue, items);
     }
@@ -354,5 +541,67 @@ mod tests {
             assert!(g.uv.iter().all(|&v| (0.0..=1.0).contains(&v)));
             assert!(g.uv[0] < g.uv[2] && g.uv[1] < g.uv[3]);
         }
+    }
+
+    fn text3(valign: VAlign, align: Anchor) -> Text3 {
+        Text3 {
+            key: "t".into(),
+            text: "Hx".into(),
+            anchor: [1.0, 2.0, 3.0],
+            offset_px: [10.0, 20.0],
+            size_px: 20.0,
+            color: Color::linear(0.0, 0.0, 0.0, 1.0),
+            align,
+            valign,
+            azimuths: None,
+        }
+    }
+
+    fn glyphs3(t: &Text3) -> Vec<Glyph3Instance> {
+        let mut out = Vec::new();
+        layout_glyphs_3d(t, [0.0; 4], FontMetrics::inter(), &mut out);
+        out
+    }
+
+    #[test]
+    fn world_labels_share_one_anchor_and_hang_around_the_offset() {
+        let g = glyphs3(&text3(VAlign::Baseline, Anchor::Start));
+        assert_eq!(g.len(), 2);
+        assert!(g.iter().all(|g| g.anchor == [1.0, 2.0, 3.0]));
+        // Start-aligned: the first glyph begins just right of the x offset.
+        assert!((g[0].origin[0] - 10.0).abs() < 0.2 * 20.0);
+        // Baseline-aligned: the glyph's bottom is at the y offset.
+        let bottom = g[0].origin[1] + g[0].axis_y[1];
+        assert!((bottom - 20.0).abs() < 0.2 * 20.0, "{bottom}");
+    }
+
+    #[test]
+    fn vertical_alignment_moves_the_baseline_by_the_cap_height() {
+        let cap = FontMetrics::inter().cap_height * 20.0;
+        let y = |v| glyphs3(&text3(v, Anchor::Start))[0].origin[1];
+        assert!((y(VAlign::Top) - y(VAlign::Baseline) - cap).abs() < 1e-3);
+        assert!((y(VAlign::Middle) - y(VAlign::Baseline) - cap / 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn halos_are_painted_copies_around_each_glyph() {
+        let g = glyphs3(&text3(VAlign::Middle, Anchor::Middle));
+        let halo = halo_instances(&g, [1.0; 4], 2.0);
+        assert_eq!(halo.len(), g.len() * 8);
+        assert!(halo.iter().all(|h| h.color == [1.0; 4]));
+        // Every copy is within the radius of the glyph it came from.
+        for (i, h) in halo.iter().enumerate() {
+            let src = g[i / 8];
+            let d = ((h.origin[0] - src.origin[0]).powi(2) + (h.origin[1] - src.origin[1]).powi(2))
+                .sqrt();
+            assert!(d > 0.0 && d <= 2.0 + 1e-3, "{d}");
+            assert_eq!((h.anchor, h.axis_x, h.uv), (src.anchor, src.axis_x, src.uv));
+        }
+    }
+
+    #[test]
+    fn world_labels_default_to_every_azimuth() {
+        let g = glyphs3(&text3(VAlign::Middle, Anchor::Middle))[0];
+        assert_eq!(g.show, [0.0, 360.0]);
     }
 }

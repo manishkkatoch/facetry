@@ -1,11 +1,14 @@
 //! GPU rendering on top of wgpu. Compiles natively and for `wasm32-unknown-unknown`.
 
+mod camera;
 mod error;
 mod gpu;
 mod rect;
 mod renderer;
+mod solid;
 mod text;
 
+pub use camera::{Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection};
 pub use error::Error;
 pub use renderer::{BackendPreference, Renderer};
 
@@ -17,7 +20,7 @@ mod shader_tests {
     use naga::back::glsl;
     use naga::valid::{Capabilities, ValidationFlags, Validator};
 
-    fn check(name: &str, source: &str) {
+    fn check(name: &str, source: &str, globals_size: u32) {
         let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{name}: {e}"));
         // The uniform block must match the Rust struct and be a multiple of 16 bytes (a
         // WebGL2 requirement that native validation does not enforce).
@@ -30,7 +33,7 @@ mod shader_tests {
                 other => panic!("{other:?}"),
             })
             .expect("Globals struct");
-        assert_eq!(globals, 32, "{name}: Globals size");
+        assert_eq!(globals, globals_size, "{name}: Globals size");
         let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
             .validate(&module)
             .unwrap_or_else(|e| panic!("{name}: {e:?}"));
@@ -70,11 +73,27 @@ mod shader_tests {
 
     #[test]
     fn rect_shader_is_valid_and_webgl2_translatable() {
-        check("rect", include_str!("shaders/rect.wgsl"));
+        check("rect", include_str!("shaders/rect.wgsl"), 32);
     }
 
     #[test]
     fn text_shader_is_valid_and_webgl2_translatable() {
-        check("text", include_str!("shaders/text.wgsl"));
+        check("text", include_str!("shaders/text.wgsl"), 32);
+    }
+
+    // The 3D shaders share one 144-byte `Globals` (see `gpu::Globals3`).
+    #[test]
+    fn box_shader_is_valid_and_webgl2_translatable() {
+        check("box", include_str!("shaders/box.wgsl"), 144);
+    }
+
+    #[test]
+    fn line3d_shader_is_valid_and_webgl2_translatable() {
+        check("line3d", include_str!("shaders/line3d.wgsl"), 144);
+    }
+
+    #[test]
+    fn text3d_shader_is_valid_and_webgl2_translatable() {
+        check("text3d", include_str!("shaders/text3d.wgsl"), 144);
     }
 }
