@@ -4,10 +4,12 @@
 //!
 //! 1. Resolve layers and build one scale per axis (the data decides the domains).
 //! 2. Vertical room: the bottom axis (ticks, labels, title) has a known height, which fixes
-//!    the plot's top and bottom, hence the y-axis length, hence how many ticks fit.
+//!    the plot's top and bottom, hence the y-axis length, hence how many ticks fit. The top
+//!    keeps room for half of the top tick label, which is centred on the plot's top edge.
 //! 3. Horizontal room: the y tick labels' *measured widths* (plus titles) fix the left and
 //!    right margins, hence the plot's left and right edges.
 //! 4. Now the x band scale has its range, so we know whether x labels overlap and thin them.
+//!    If the last label sticks out past the canvas, the plot is narrowed to make room.
 //! 5. Emit gridlines, bars, axes and text.
 //!
 //! All sizes below are written in CSS pixels and multiplied by the device pixel ratio.
@@ -150,7 +152,8 @@ pub fn build_scene_with_theme(
     }
 
     // --- 2. vertical room -----------------------------------------------------------------
-    let top = pad.round();
+    // The top tick label is centred on the plot's top edge, so half of it sticks out above.
+    let top = (pad + label_h / 2.0).round();
     let mut bottom_block = 0.0;
     if let Some(p) = plan_index(&plans, Orient::Bottom).map(|i| &plans[i]) {
         bottom_block = line + tick_len + label_gap + label_h;
@@ -204,38 +207,56 @@ pub fn build_scene_with_theme(
         width
     };
     let plot_left = (pad + side_block(Orient::Left)).round();
-    let plot_right = (w - pad - side_block(Orient::Right))
+    let mut plot_right = (w - pad - side_block(Orient::Right))
         .round()
         .max(plot_left + 1.0);
 
     // --- 4. x band scale and label thinning -------------------------------------------------
+    // Two passes: the labels depend on the band width, and if the last one then sticks out
+    // past the canvas the plot is narrowed (which changes the band width) to fit it.
     let mut x_labels: Vec<(usize, String)> = Vec::new();
-    for p in &mut plans {
-        let AxisScale::Band(band) = &mut p.scale else {
-            continue;
-        };
-        *band = Band::new(
-            band.domain().to_vec(),
-            (plot_left, plot_right),
-            BAND_PADDING_INNER,
-            BAND_PADDING_OUTER,
-        );
-        let widest = band
-            .domain()
+    for pass in 0..2 {
+        for p in &mut plans {
+            let AxisScale::Band(band) = &mut p.scale else {
+                continue;
+            };
+            *band = Band::new(
+                band.domain().to_vec(),
+                (plot_left, plot_right),
+                BAND_PADDING_INNER,
+                BAND_PADDING_OUTER,
+            );
+            let widest = band
+                .domain()
+                .iter()
+                .map(|l| f64::from(measure.width(l, label_size)))
+                .fold(0.0, f64::max);
+            // Show every n-th label, the smallest n for which neighbours keep a clear gap.
+            let every = ((widest + MIN_LABEL_GAP * s) / band.step().max(1.0))
+                .ceil()
+                .max(1.0) as usize;
+            x_labels = band
+                .domain()
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| i % every == 0)
+                .map(|(i, l)| (i, l.clone()))
+                .collect();
+        }
+        let overflow = plans
             .iter()
-            .map(|l| f64::from(measure.width(l, label_size)))
-            .fold(0.0, f64::max);
-        // Show every n-th label, the smallest n for which neighbours keep a clear gap.
-        let every = ((widest + MIN_LABEL_GAP * s) / band.step().max(1.0))
-            .ceil()
-            .max(1.0) as usize;
-        x_labels = band
-            .domain()
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| i % every == 0)
-            .map(|(i, l)| (i, l.clone()))
-            .collect();
+            .find_map(|p| match (&p.scale, x_labels.last()) {
+                (AxisScale::Band(band), Some((i, label))) => Some(
+                    f64::from(measure.width(label, label_size)) / 2.0 + MIN_LABEL_GAP * s / 2.0
+                        - (w - band.center(*i)),
+                ),
+                _ => None,
+            })
+            .unwrap_or(0.0);
+        if pass == 1 || overflow <= 0.0 {
+            break;
+        }
+        plot_right = (plot_right - overflow).ceil().max(plot_left + 1.0);
     }
 
     // --- 5. emit ----------------------------------------------------------------------------
