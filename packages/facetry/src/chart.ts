@@ -1,4 +1,9 @@
-import { Chart as WasmChart, type ChartSpec } from "../wasm/facetry_wasm.js";
+import {
+  Chart as WasmChart,
+  type CameraState,
+  type CameraUpdate,
+  type ChartSpec,
+} from "../wasm/facetry_wasm.js";
 import { FacetryError } from "./errors.js";
 import { loadWasm } from "./wasm.js";
 
@@ -19,6 +24,8 @@ export class Chart {
   readonly #observer: ResizeObserver;
   #raf = 0;
   #destroyed = false;
+  /** Releases the pointer/wheel listeners added in the constructor. */
+  readonly #removeListeners: () => void;
   #resolveFirstFrame!: () => void;
   #rejectFirstFrame!: (e: unknown) => void;
 
@@ -42,6 +49,8 @@ export class Chart {
     this.firstFrame.catch(() => {});
     this.#observer = new ResizeObserver(() => this.#syncSize());
     this.#observer.observe(canvas);
+    this.#removeListeners = this.#attachOrbitControls();
+    this.#syncInteraction();
     this.requestRender();
   }
 
@@ -76,6 +85,37 @@ export class Chart {
     } catch (e) {
       throw FacetryError.from(e);
     }
+    this.#syncInteraction();
+    this.requestRender();
+  }
+
+  /**
+   * The 3D camera: `{ type, azimuth, elevation, distance }` (degrees; distance in plot-box
+   * radii). For a 2D chart these are the defaults and have no effect.
+   */
+  get camera(): CameraState {
+    return this.#inner.camera;
+  }
+
+  /**
+   * Moves the 3D camera; any subset of `type`, `azimuth`, `elevation`, `distance`. Values are
+   * clamped (elevation 5-85 degrees). Does not rebuild the chart, only redraws. Does nothing
+   * in a 2D chart.
+   */
+  setCamera(update: CameraUpdate): void {
+    if (this.#destroyed) return;
+    try {
+      this.#inner.setCamera(update);
+    } catch (e) {
+      throw FacetryError.from(e);
+    }
+    this.requestRender();
+  }
+
+  /** Returns the 3D camera to the spec's `camera` (or the defaults). */
+  resetCamera(): void {
+    if (this.#destroyed) return;
+    this.#inner.resetCamera();
     this.requestRender();
   }
 
@@ -104,10 +144,80 @@ export class Chart {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#observer.disconnect();
+    this.#removeListeners();
     cancelAnimationFrame(this.#raf);
     this.#raf = 0;
     this.#rejectFirstFrame(new FacetryError("destroyed", "chart destroyed before first frame"));
     this.#inner.free();
+  }
+
+  /** Cursor and touch behaviour follow the spec: orbiting may be switched on or off by `update`. */
+  #syncInteraction(): void {
+    const on = this.#inner.orbitEnabled;
+    this.#canvas.style.touchAction = on ? "none" : "";
+    this.#canvas.style.cursor = on ? "grab" : "";
+  }
+
+  /**
+   * Drag to orbit, wheel to zoom, double-click to reset. The handlers are always attached
+   * but do nothing unless the chart is 3D with `interaction.orbit` on. They only change the
+   * camera inside Rust and ask for a frame; the scene is not rebuilt.
+   */
+  #attachOrbitControls(): () => void {
+    const canvas = this.#canvas;
+    let drag: { id: number; x: number; y: number } | null = null;
+
+    const down = (e: PointerEvent) => {
+      if (!this.#inner.orbitEnabled || e.button !== 0 || drag) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      // Capture keeps the drag going when the pointer leaves the canvas.
+      canvas.setPointerCapture(e.pointerId);
+      canvas.style.cursor = "grabbing";
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      // CSS pixels, so a drag turns the chart by the same angle on any screen density.
+      this.#inner.orbit(e.clientX - drag.x, e.clientY - drag.y);
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      this.requestRender();
+    };
+    const up = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag = null;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      canvas.style.cursor = this.#inner.orbitEnabled ? "grab" : "";
+    };
+    const wheel = (e: WheelEvent) => {
+      if (!this.#inner.orbitEnabled) return;
+      // Keep the page from scrolling while the pointer is over an interactive chart.
+      e.preventDefault();
+      // Normalise to pixels: some mice report lines or pages.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+      this.#inner.zoom(e.deltaY * unit);
+      this.requestRender();
+    };
+    const dblclick = () => {
+      if (!this.#inner.orbitEnabled) return;
+      this.#inner.resetCamera();
+      this.requestRender();
+    };
+
+    canvas.addEventListener("pointerdown", down);
+    canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    // Not passive: we call preventDefault to stop the page scrolling.
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    canvas.addEventListener("dblclick", dblclick);
+    return () => {
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointercancel", up);
+      canvas.removeEventListener("wheel", wheel);
+      canvas.removeEventListener("dblclick", dblclick);
+    };
   }
 
   #syncSize(): void {

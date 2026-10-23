@@ -20,7 +20,8 @@ pub type Table = BTreeMap<String, Column>;
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct ChartSpec {
-    /// `"2d"` (the default). `"3d"` is reserved and rejected for now.
+    /// `"2d"` (the default) or `"3d"`. 3D enables `orient: "depth"` axes, the `z` encoding,
+    /// `camera` and `interaction`.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub dimension: Dimension,
@@ -41,6 +42,73 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub layers: Vec<LayerSpec>,
+    /// Where the viewer starts in a 3D chart. Rejected in 2D.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub camera: Option<CameraSpec>,
+    /// How the viewer may move the camera (3D only; ignored in 2D).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub interaction: Option<InteractionSpec>,
+}
+
+impl ChartSpec {
+    /// Whether dragging/wheeling should move the camera: only in 3D, on unless
+    /// `interaction.orbit` is `false`.
+    pub fn orbit_enabled(&self) -> bool {
+        self.dimension == Dimension::ThreeD
+            && self
+                .interaction
+                .as_ref()
+                .and_then(|i| i.orbit)
+                .unwrap_or(true)
+    }
+}
+
+/// The starting camera of a 3D chart. Every field is optional; the renderer fills in
+/// defaults (perspective, azimuth 35, elevation 25, distance 2.7) and clamps wild values
+/// (elevation to 5-85 degrees, distance to a sensible range), so any numbers are safe.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct CameraSpec {
+    /// `"perspective"` (default) or `"orthographic"`.
+    #[serde(default, rename = "type")]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub kind: Option<CameraKind>,
+    /// Degrees around the vertical axis. 0 looks at the front of the chart; positive moves
+    /// the camera to the right.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub azimuth: Option<f64>,
+    /// Degrees above the floor (5 to 85).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub elevation: Option<f64>,
+    /// Distance from the plot box's centre, in units of the box's radius (half its diagonal,
+    /// at least 1, so flat charts are framed like cubes).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub distance: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum CameraKind {
+    #[default]
+    Perspective,
+    Orthographic,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct InteractionSpec {
+    /// Drag to orbit, wheel to zoom, double-click to reset. Default: `true` in 3D.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub orbit: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -172,7 +240,7 @@ impl<'de> Deserialize<'de> for Column {
     }
 }
 
-/// Where an axis sits. `Depth` belongs to 3D charts and is rejected for now.
+/// Where an axis sits. `Depth` (the z axis) belongs to 3D charts; `Right` to 2D ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(rename_all = "lowercase")]
@@ -242,6 +310,11 @@ pub struct Encoding {
     pub x: PositionEncoding,
     /// Must be a numeric field (linear scale).
     pub y: PositionEncoding,
+    /// 3D only: a categorical field (band scale) that spreads bars along the depth axis.
+    /// Optional: without it the bars form a single row at the front.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub z: Option<PositionEncoding>,
     /// A fixed colour, or a categorical field mapped onto the theme palette.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
@@ -258,7 +331,7 @@ pub struct Encoding {
 pub struct PositionEncoding {
     pub field: String,
     /// Id of the axis to bind to. Default: the first declared axis that fits the channel
-    /// (`bottom` for x, `left` or `right` for y).
+    /// (`bottom` for x, `left` or `right` for y, `depth` for z).
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub axis: Option<String>,

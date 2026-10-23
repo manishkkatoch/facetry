@@ -506,7 +506,7 @@ pub fn build_scene_with_theme(
 
 /// The y domain: a fixed one from the spec, or the extent of the bound layers' data
 /// (extended to include 0 unless `zero: false`). Never degenerate, so scales stay invertible.
-fn y_domain<'a>(
+pub(crate) fn y_domain<'a>(
     axis: &AxisSpec,
     layers: impl Iterator<Item = &'a ResolvedLayer<'a>>,
 ) -> (f64, f64) {
@@ -537,7 +537,7 @@ fn y_domain<'a>(
 
 /// One colour scale shared by every layer that colours by field, so the same category has
 /// the same colour in every layer.
-fn color_scale(layers: &[ResolvedLayer], theme: &Theme) -> Ordinal {
+pub(crate) fn color_scale(layers: &[ResolvedLayer], theme: &Theme) -> Ordinal {
     let mut domain: Vec<String> = Vec::new();
     for layer in layers {
         if let ColorSource::Field { dict, .. } = layer.color {

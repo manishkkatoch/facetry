@@ -3,10 +3,12 @@
 GPU-accelerated charts for JS/TS apps, written in Rust and compiled to WebAssembly.
 Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, WebGL2 otherwise.
 
-**Status: M1 (2D bar chart).** A `Chart` draws a bar chart from a declarative JSON spec:
+**Status: M1 (2D bar chart) plus M4 (3D bars), built ahead of stacking, lines and pies to get
+feedback on the riskiest part first.** A `Chart` draws a bar chart from a declarative JSON spec:
 validation, band and linear scales with "nice" ticks, layout, axes (lines, ticks, gridlines,
-labels, titles), MSDF text and instanced rectangles. Lines, arcs, stacking, legends, tooltips,
-animation and 3D come in later milestones.
+labels, titles), MSDF text and instanced rectangles; with `dimension: "3d"` the bars are
+lit, depth-tested boxes you can orbit (see [3D charts](#3d-charts)). Lines, arcs, stacking,
+legends, tooltips and animation come in later milestones.
 
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
@@ -65,6 +67,69 @@ drawn until the spec is valid), `gpu-unavailable`, `invalid-options` or `render-
 - Tick labels use thousands separators (`1,200`) and as many decimals as the tick step needs
   (`0.25`, never `0.30000000000000004`).
 
+### 3D charts
+
+```ts
+const spec: ChartSpec = {
+  dimension: "3d",
+  data: { sales: { quarter: [/* ... */], region: [/* ... */], revenue: [/* ... */] } },
+  axes: [
+    { id: "x", orient: "bottom", title: "Quarter" },
+    { id: "y", orient: "left", title: "Revenue" },
+    { id: "z", orient: "depth", title: "Region" },
+  ],
+  layers: [
+    {
+      mark: "bar",
+      data: "sales",
+      encoding: {
+        x: { field: "quarter", axis: "x" },
+        y: { field: "revenue", axis: "y" },
+        z: { field: "region", axis: "z" }, // optional: without it the bars form one row at the front
+        color: { field: "region" },
+      },
+    },
+  ],
+  camera: { type: "perspective", azimuth: 35, elevation: 25, distance: 2.7 }, // all optional
+  interaction: { orbit: true }, // the default in 3D
+};
+```
+
+- `z` is a categorical field (band scale), bound to an `orient: "depth"` axis. The first category
+  is the front row. Bars stand on square cells (`x` categories by `z` categories) and are 1 unit
+  high; `y` maps the value domain onto that height, with negative values hanging below zero.
+- `camera`: `type` is `perspective` (default, 40 degree field of view) or `orthographic`;
+  `azimuth` degrees around the chart (0 = front, positive = camera moves right); `elevation`
+  degrees above the floor, clamped to 5-85; `distance` in box radii (half the plot box's diagonal,
+  at least 1), clamped to 1.3-8. Defaults: 35, 25, 2.7.
+- `dimension: "3d"` allows `depth` axes, the `z` channel, `camera` and `interaction`; these are
+  validation errors in 2D (with paths such as `/layers/0/encoding/z`). Right axes are not
+  supported in 3D yet.
+
+**Camera controls.** In a 3D chart (with `interaction.orbit` not `false`) drag to orbit, use the
+wheel to zoom and double-click to reset. From code:
+
+```ts
+chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance
+chart.camera;                                      // { type, azimuth, elevation, distance }
+chart.resetCamera();                               // back to the spec's camera
+```
+
+The camera lives in Rust and moving it only rewrites one uniform and asks for a frame: the
+scene is **not** rebuilt, and nothing renders until something changes. `chart.update(spec)`
+keeps the orbited camera unless the spec's `camera` changed.
+
+How 3D differs under the hood: `build_scene_3d` produces a `Scene3d` in world units (boxes, lines,
+labels anchored at world points). What depends on the viewpoint (back-wall gridlines; which
+floor edge carries each axis, so labels stay on the near or outer side) is emitted for each
+45 degree sector of azimuth, tagged with its range, and the vertex shaders drop the variants the
+camera is not in. Labels are projected from their anchor and then laid out in screen pixels, so
+they face the viewer and keep their size; they draw last, without depth testing, with an
+outline in the background colour so they stay legible over bars. Known limits: tick labels are
+thinned for the starting camera and not again when zooming; an axis that points straight at the
+camera (azimuth near 0/90/180/270 for one of the two floor axes) has its labels stacked tightly,
+and some labels can be drawn over a bar that stands in front of them.
+
 The TypeScript types are generated from the Rust definitions, so they cannot drift.
 Example specs live in `examples/specs/` and are shared by the Rust snapshot tests, the
 playground and the golden-image test.
@@ -72,22 +137,27 @@ playground and the golden-image test.
 ## Layout
 
 ```
-crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene (no GPU/browser deps)
+crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene and Scene3d
+                        (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (atlas PNG + metrics JSON) and text measuring
-crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines, 4x MSAA (native + wasm32)
+crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines (2D); box, line and world-text
+                        pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32)
 crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors
 tools/font-atlas        offline tool that generates the MSDF atlas (not part of the build)
 packages/facetry        npm package (TypeScript): loads wasm once, ResizeObserver + DPR
-                        sizing, renders only when dirty
+                        sizing, orbit/zoom/reset gestures, renders only when dirty
 examples/specs          example chart specs (JSON)
-examples/playground     Vite app + Playwright tests (smoke, playground, golden image)
+examples/playground     Vite app + Playwright tests (smoke, playground, golden images, orbit)
 scripts/                build-wasm.sh, wasm-size.sh
 ```
 
 How a frame is made: `spec` -> `validate` -> `build_scene(spec, viewport, dpr, font metrics)` ->
 `Scene` (flat lists of keyed rects, rules and texts in device pixels) -> `Renderer::set_scene`
 (instance buffers) -> one render pass: gridlines, bars, axis rules, then text. Resizing rebuilds
-the scene, because margins, tick counts and label thinning depend on the size.
+the scene, because margins, tick counts and label thinning depend on the size. A 3D frame is
+`build_scene_3d` -> `Scene3d` -> `Renderer::set_scene_3d`; each render pass clears colour and
+depth, draws bars (depth-tested, culled back faces, Lambert lighting), then lines (tested against
+the bars), then text.
 
 ## Prerequisites
 
@@ -119,7 +189,9 @@ Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromi
 `pnpm dev` (or `pnpm -r build && pnpm --filter playground preview`) serves a page with the chart,
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
-`?backend=webgl2` (force the fallback), `?example=bar-colored`, `?ui=0` (only the chart).
+`?backend=webgl2` (force the fallback), `?example=bar-colored` (or `bar3d-grid`, `bar3d-row`,
+`bar3d-negative`), `?ui=0` (only the chart). 3D examples show the current camera in the toolbar;
+`facetryChart` on `window` is the live chart for poking at from the console.
 
 ### Snapshots and golden images
 
@@ -127,9 +199,9 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
   example spec. After an intentional layout change: `INSTA_UPDATE=always cargo test -p facetry-core`
   (or `cargo insta review`), then look at the diff in git before committing. CI sets
   `INSTA_UPDATE=no`, so any difference fails.
-- **Golden image** (`examples/playground/tests/__golden__/bar-basic.png`): Playwright screenshots
-  the basic bar example in Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows
-  1% of pixels to differ. To regenerate after an intentional visual change:
+- **Golden images** (`examples/playground/tests/__golden__/bar-basic.png` and `bar3d-grid.png`):
+  Playwright screenshots the basic bar example and the 3D grid example (default camera) in
+  Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
   then **look at the PNG** before committing it.
 
@@ -152,14 +224,15 @@ Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files ar
 
 Release build (`opt-level = "z"`, LTO) after `wasm-opt -Oz`, measured with `scripts/wasm-size.sh`:
 
-| | size |
-|---|---|
-| | M0 | M1 |
-|---|---|---|
-| `facetry_wasm_bg.wasm` raw | 1,350,614 bytes (1318 KiB) | 2,294,489 bytes (2240 KiB) |
-| gzip -9 | 542,366 bytes (529 KiB) | 972,603 bytes (949 KiB) |
+| | M0 | M1 | M4 (3D) |
+|---|---|---|---|
+| `facetry_wasm_bg.wasm` raw | 1,350,614 bytes (1318 KiB) | 2,294,489 bytes (2240 KiB) | 2,338,652 bytes (2283 KiB) |
+| gzip -9 | 542,366 bytes (529 KiB) | 972,603 bytes (949 KiB) | 992,327 bytes (969 KiB) |
 
-Most of that is wgpu (wgpu-core and the GL backend, kept so the WebGL2 fallback works). M1 roughly
+3D added about 43 KiB raw (19 KiB gzipped, +2%): three more shaders (the shader translator was
+already there), the 3D layout, and glam.
+
+Most of it is wgpu (wgpu-core and the GL backend, kept so the WebGL2 fallback works). M1 roughly
 doubled it: it now ships shaders, so the wasm includes the shader translator (WGSL parser,
 validator, GLSL writer; wgpu needs it at runtime to compile our WGSL for WebGL2), plus the
 embedded font atlas (~77 KB PNG), serde and a PNG decoder. (Not yet profiled symbol by symbol.)

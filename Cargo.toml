@@ -25,6 +25,7 @@ serde-wasm-bindgen = "0.6.5"
 tsify = { version = "0.5.8", default-features = false, features = ["js"] }
 png = "0.18.1"
 bytemuck = { version = "1.25", features = ["derive"] }
+glam = "0.32"
 insta = { version = "1.49", features = ["json"] }
 proptest = "1.12"
 

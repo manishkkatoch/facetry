@@ -13,8 +13,8 @@ use tsify::Tsify;
 
 use crate::Color;
 use crate::spec::{
-    AxisSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec, Orient, PositionEncoding,
-    Table,
+    AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec, Orient,
+    PositionEncoding, Table,
 };
 
 /// One problem with a spec.
@@ -89,9 +89,13 @@ pub(crate) struct ResolvedLayer<'a> {
     /// Indices into `spec.axes`.
     pub x_axis: usize,
     pub y_axis: usize,
+    /// 3D only; `None` when the layer has no `z` encoding (a single row of bars).
+    pub z_axis: Option<usize>,
     pub x_codes: &'a [u32],
     pub x_dict: &'a [String],
     pub y: &'a [f64],
+    pub z_codes: &'a [u32],
+    pub z_dict: &'a [String],
     pub color: ColorSource<'a>,
     pub key: Option<&'a Column>,
 }
@@ -101,6 +105,9 @@ impl ResolvedLayer<'_> {
     /// total (no out-of-bounds) even for a spec that was never validated.
     pub fn rows(&self) -> usize {
         let mut n = self.x_codes.len().min(self.y.len());
+        if self.z_axis.is_some() {
+            n = n.min(self.z_codes.len());
+        }
         if let ColorSource::Field { codes, .. } = self.color {
             n = n.min(codes.len());
         }
@@ -137,6 +144,18 @@ const Y: Channel = Channel {
     name: "y",
     allowed: &[Orient::Left, Orient::Right],
     needs: "a left or right axis",
+};
+
+/// In 3D the value axis is the left one only; right axes are not supported there (yet).
+const Y_3D: Channel = Channel {
+    name: "y",
+    allowed: &[Orient::Left],
+    needs: "a left axis",
+};
+const Z: Channel = Channel {
+    name: "z",
+    allowed: &[Orient::Depth],
+    needs: "a depth axis",
 };
 
 fn orient_name(o: Orient) -> &'static str {
@@ -236,8 +255,20 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     let mut issues = Vec::new();
     let enc = &layer.encoding;
 
+    let three_d = spec.dimension == Dimension::ThreeD;
     let x_axis = resolve_axis(spec, i, X, &enc.x, &mut issues);
-    let y_axis = resolve_axis(spec, i, Y, &enc.y, &mut issues);
+    let y_axis = resolve_axis(spec, i, if three_d { Y_3D } else { Y }, &enc.y, &mut issues);
+    let mut z_axis = None;
+    if let Some(z) = &enc.z {
+        if three_d {
+            z_axis = resolve_axis(spec, i, Z, z, &mut issues);
+        } else {
+            issues.push(Issue::new(
+                at(&["encoding", "z"]),
+                "the z channel needs `dimension: \"3d\"`",
+            ));
+        }
+    }
 
     let Some(table) = spec.data.get(&layer.data) else {
         let known: Vec<_> = spec.data.keys().map(String::as_str).collect();
@@ -297,6 +328,30 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
         }
     }
 
+    // z is categorical like x, with the same leniency for an empty column.
+    let (mut z_codes, mut z_dict): (&[u32], &[String]) = (&[], &[]);
+    if let (true, Some(z)) = (three_d, &enc.z) {
+        if let Some(col) = column(
+            table,
+            &z.field,
+            at(&["encoding", "z", "field"]),
+            &mut issues,
+        ) {
+            match col {
+                Column::Categorical { codes, dict } => (z_codes, z_dict) = (codes, dict),
+                c if c.is_empty() => {}
+                c => issues.push(Issue::new(
+                    at(&["encoding", "z", "field"]),
+                    format!(
+                        "field {:?} is {}, but the z channel needs a categorical (string) field",
+                        z.field,
+                        c.kind()
+                    ),
+                )),
+            }
+        }
+    }
+
     let color = resolve_color(
         table,
         enc.color.as_ref(),
@@ -319,9 +374,12 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
             index: i,
             x_axis,
             y_axis,
+            z_axis,
             x_codes,
             x_dict,
             y: y_values,
+            z_codes,
+            z_dict,
             color,
             key,
         }),
@@ -376,7 +434,8 @@ fn resolve_color<'a>(
     }
 }
 
-fn validate_axes(axes: &[AxisSpec], issues: &mut Vec<Issue>) {
+fn validate_axes(axes: &[AxisSpec], dimension: Dimension, issues: &mut Vec<Issue>) {
+    let three_d = dimension == Dimension::ThreeD;
     for (i, axis) in axes.iter().enumerate() {
         let n = i.to_string();
         let at = |rest: &[&str]| {
@@ -391,9 +450,13 @@ fn validate_axes(axes: &[AxisSpec], issues: &mut Vec<Issue>) {
             ));
         }
         match axis.orient {
-            Orient::Depth => issues.push(Issue::new(
+            Orient::Depth if !three_d => issues.push(Issue::new(
                 at(&["orient"]),
-                "depth axes belong to 3D charts, which are not supported yet",
+                "depth axes need `dimension: \"3d\"`",
+            )),
+            Orient::Right if three_d => issues.push(Issue::new(
+                at(&["orient"]),
+                "right axes are not supported in 3D charts yet; use `left`",
             )),
             o if axes[..i].iter().any(|a| a.orient == o) => issues.push(Issue::new(
                 at(&["orient"]),
@@ -402,10 +465,13 @@ fn validate_axes(axes: &[AxisSpec], issues: &mut Vec<Issue>) {
             _ => {}
         }
         if let Some(scale) = &axis.scale {
-            if axis.orient == Orient::Bottom {
+            if matches!(axis.orient, Orient::Bottom | Orient::Depth) {
                 issues.push(Issue::new(
                     at(&["scale"]),
-                    "scale overrides apply to numeric axes (left/right); a bottom axis shows categories",
+                    format!(
+                        "scale overrides apply to numeric axes (left/right); a {} axis shows categories",
+                        orient_name(axis.orient)
+                    ),
                 ));
             }
             if let Some([lo, hi]) = scale.domain {
@@ -420,6 +486,28 @@ fn validate_axes(axes: &[AxisSpec], issues: &mut Vec<Issue>) {
     }
 }
 
+/// Numbers only need to be finite (the renderer clamps the angles) and the distance positive.
+fn validate_camera(camera: &CameraSpec, issues: &mut Vec<Issue>) {
+    let fields = [
+        ("azimuth", camera.azimuth),
+        ("elevation", camera.elevation),
+        ("distance", camera.distance),
+    ];
+    for (name, value) in fields {
+        match value {
+            Some(v) if !v.is_finite() => issues.push(Issue::new(
+                pointer(&["camera", name]),
+                format!("{name} must be a finite number"),
+            )),
+            Some(v) if name == "distance" && v <= 0.0 => issues.push(Issue::new(
+                pointer(&["camera", name]),
+                "distance must be greater than 0",
+            )),
+            _ => {}
+        }
+    }
+}
+
 /// Checks `spec` and returns every problem found (empty means it will draw).
 ///
 /// Empty data is **valid**: a table whose columns have no rows draws the axes (numeric
@@ -427,11 +515,13 @@ fn validate_axes(axes: &[AxisSpec], issues: &mut Vec<Issue>) {
 pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
     let mut issues = Vec::new();
 
-    if spec.dimension == Dimension::ThreeD {
-        issues.push(Issue::new(
-            pointer(&["dimension"]),
-            "3D charts are not supported yet; use \"2d\"",
-        ));
+    match (spec.dimension, &spec.camera) {
+        (Dimension::TwoD, Some(_)) => issues.push(Issue::new(
+            pointer(&["camera"]),
+            "a camera needs `dimension: \"3d\"`",
+        )),
+        (Dimension::ThreeD, Some(camera)) => validate_camera(camera, &mut issues),
+        _ => {}
     }
 
     for (name, table) in &spec.data {
@@ -448,7 +538,7 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
         }
     }
 
-    validate_axes(&spec.axes, &mut issues);
+    validate_axes(&spec.axes, spec.dimension, &mut issues);
 
     for i in 0..spec.layers.len() {
         if let Err(mut layer_issues) = resolve_layer(spec, i) {
