@@ -10,6 +10,13 @@ publish.workspace = true
 # cdylib is the .wasm; rlib lets `cargo test`/clippy build the crate natively.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Which browser GPU backend(s) this module contains. The npm package ships two modules:
+# the default (WebGPU only) and one built with `--no-default-features --features webgl`.
+default = ["webgpu"]
+webgpu = ["facetry-render/webgpu"]
+webgl = ["facetry-render/webgl"]
+
 [dependencies]
 # `ts` makes the spec types generate their TypeScript declarations.
 facetry-core = { workspace = true, features = ["ts"] }

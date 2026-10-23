@@ -27,12 +27,40 @@ pub enum BackendPreference {
     WebGl2,
 }
 
+/// Whether this build contains the browser WebGPU backend. Always true off the web.
+const HAS_WEBGPU: bool = cfg!(any(not(target_arch = "wasm32"), feature = "webgpu"));
+/// Whether this build contains the WebGL2 (GL) backend. Always true off the web.
+const HAS_WEBGL: bool = cfg!(any(not(target_arch = "wasm32"), feature = "webgl"));
+
 impl BackendPreference {
-    fn backends(self) -> wgpu::Backends {
+    /// The wgpu backends to try. A backend this build was compiled without is an error, not
+    /// a silent fallback: the JS loader chooses the module, so asking one for the other's
+    /// backend is a bug worth reporting. `Auto` means "whatever this build has".
+    fn backends(self) -> Result<wgpu::Backends, Error> {
+        let missing = |what: &str, has: &str| {
+            Error::GpuUnavailable(format!(
+                "this build of facetry does not include the {what} backend (it contains {has} only)"
+            ))
+        };
         match self {
-            Self::Auto => wgpu::Backends::PRIMARY | wgpu::Backends::GL,
-            Self::WebGpu => wgpu::Backends::BROWSER_WEBGPU,
-            Self::WebGl2 => wgpu::Backends::GL,
+            Self::Auto => {
+                if cfg!(target_arch = "wasm32") {
+                    let mut backends = wgpu::Backends::empty();
+                    if HAS_WEBGPU {
+                        backends |= wgpu::Backends::BROWSER_WEBGPU;
+                    }
+                    if HAS_WEBGL {
+                        backends |= wgpu::Backends::GL;
+                    }
+                    Ok(backends)
+                } else {
+                    Ok(wgpu::Backends::PRIMARY | wgpu::Backends::GL)
+                }
+            }
+            Self::WebGpu if HAS_WEBGPU => Ok(wgpu::Backends::BROWSER_WEBGPU),
+            Self::WebGpu => Err(missing("WebGPU", "WebGL2")),
+            Self::WebGl2 if HAS_WEBGL => Ok(wgpu::Backends::GL),
+            Self::WebGl2 => Err(missing("WebGL2", "WebGPU")),
         }
     }
 }
@@ -107,17 +135,29 @@ impl Renderer {
             |what: &str, e: &dyn std::fmt::Display| Error::GpuUnavailable(format!("{what}: {e}"));
 
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        desc.backends = preference.backends();
+        desc.backends = preference.backends()?;
+        let has_gl = desc.backends.contains(wgpu::Backends::GL);
+        let mut target = Some(target.into());
         // `Instance::new` is sync and cannot tell whether `navigator.gpu` really yields an
         // adapter, so for the web this probes first and drops WebGPU if it doesn't.
         let instance = wgpu::util::new_instance_with_webgpu_detection(desc).await;
 
-        let surface = instance
-            .create_surface(target)
-            .map_err(|e| unavailable("creating surface", &e))?;
+        // Creating the surface calls `canvas.getContext(...)`, which locks the canvas to that
+        // context type for good. WebGL needs the surface to find its adapter, but WebGPU does
+        // not, so a WebGPU-only module asks for adapter and device first: if they fail, the
+        // canvas is still untouched and the caller can retry with the WebGL module.
+        let surface_first = !cfg!(target_arch = "wasm32") || has_gl;
+        let mut surface = None;
+        if surface_first {
+            surface = Some(
+                instance
+                    .create_surface(target.take().expect("target is used once"))
+                    .map_err(|e| unavailable("creating surface", &e))?,
+            );
+        }
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
+                compatible_surface: surface.as_ref(),
                 ..Default::default()
             })
             .await
@@ -137,6 +177,12 @@ impl Renderer {
             .await
             .map_err(|e| unavailable("requesting device", &e))?;
 
+        let surface = match surface {
+            Some(surface) => surface,
+            None => instance
+                .create_surface(target.take().expect("target is used once"))
+                .map_err(|e| unavailable("creating surface", &e))?,
+        };
         let mut config = surface.get_default_config(&adapter, 1, 1).ok_or_else(|| {
             Error::GpuUnavailable("surface is incompatible with the adapter".into())
         })?;

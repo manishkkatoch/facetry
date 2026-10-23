@@ -1,5 +1,11 @@
 //! GPU rendering on top of wgpu. Compiles natively and for `wasm32-unknown-unknown`.
 
+#[cfg(all(
+    target_arch = "wasm32",
+    not(any(feature = "webgpu", feature = "webgl"))
+))]
+compile_error!("on wasm32, enable the `webgpu` and/or `webgl` feature of facetry-render");
+
 mod camera;
 mod error;
 mod gpu;

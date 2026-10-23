@@ -46,6 +46,7 @@ fn start() {
 
 /// An `Error` named `FacetryError` carrying a machine-readable `code` property
 /// (`"gpu-unavailable"`, `"invalid-options"`, `"invalid-spec"`, `"render-failed"`).
+/// `gpu-unavailable` also covers asking this module for a backend it was built without.
 fn js_error(code: &str, message: &str) -> JsValue {
     let error = js_sys::Error::new(message);
     error.set_name("FacetryError");

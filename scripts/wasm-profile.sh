@@ -3,13 +3,17 @@
 # keeps the `name` section (and nothing else), then summarises it with twiggy.
 #
 #   scripts/wasm-profile.sh [TOP_N]      TOP_N = rows in the `twiggy top` table (default 40)
+#   PROFILE_MODULE=webgpu scripts/wasm-profile.sh   profile the WebGPU module instead
 #
-# Outputs, under target/wasm-profile/ (git-ignored):
+# Profiles one of the two shipped modules: `webgl` (default; the big one, facetry_wasm_gl) or
+# `webgpu` (facetry_wasm).
+#
+# Outputs, under target/wasm-profile-<module>/ (git-ignored):
 #   facetry_wasm_bg.named.wasm   wasm-opt -Oz -g output (function names kept; larger)
 #   facetry_wasm_bg.wasm         same bytes with names stripped: must equal the normal build
 #   twiggy-top.txt, twiggy-dominators.txt, rollup.txt
 #
-# The normal build is untouched: this uses its own cargo target dir and only overrides the
+# The normal build is untouched: this uses its own cargo target dir (one per module) and only overrides the
 # release profile through environment variables (strip=none keeps wasm-ld's name section).
 # Needs: cargo, the wasm32 target, the wasm-bindgen CLI matching Cargo.lock (wasm-pack
 # installs it under ~/.cache/.wasm-pack), wasm-opt (binaryen), twiggy, python3.
@@ -17,7 +21,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TOP=${1:-40}
-OUT=target/wasm-profile
+MODULE=${PROFILE_MODULE:-webgl}
+if [ "$MODULE" = webgl ]; then SHIPPED=facetry_wasm_gl; else SHIPPED=facetry_wasm; fi
+OUT=target/wasm-profile-$MODULE
 mkdir -p "$OUT"
 
 if command -v wasm-bindgen >/dev/null; then BINDGEN=wasm-bindgen
@@ -27,7 +33,8 @@ FEATURES=(--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-e
   --enable-mutable-globals --enable-reference-types --enable-multivalue)
 
 CARGO_TARGET_DIR="$OUT/cargo" CARGO_PROFILE_RELEASE_STRIP=none \
-  cargo build -p facetry-wasm --target wasm32-unknown-unknown --release
+  cargo build -p facetry-wasm --target wasm32-unknown-unknown --release \
+  --no-default-features --features "$MODULE"
 "$BINDGEN" --target web --out-dir "$OUT/pkg" --out-name facetry_wasm \
   "$OUT/cargo/wasm32-unknown-unknown/release/facetry_wasm.wasm"
 
@@ -37,7 +44,7 @@ CARGO_TARGET_DIR="$OUT/cargo" CARGO_PROFILE_RELEASE_STRIP=none \
 
 echo "named (with name section): $(wc -c <"$OUT/facetry_wasm_bg.named.wasm") bytes"
 echo "stripped (comparable to the shipped build): $(wc -c <"$OUT/facetry_wasm_bg.wasm") bytes"
-echo "shipped build (scripts/build-wasm.sh), if present: $(wc -c <packages/facetry/wasm/facetry_wasm_bg.wasm 2>/dev/null || echo n/a) bytes"
+echo "shipped build (scripts/build-wasm.sh), if present: $(wc -c <packages/facetry/wasm/${SHIPPED}_bg.wasm 2>/dev/null || echo n/a) bytes"
 
 NAMED="$OUT/facetry_wasm_bg.named.wasm"
 twiggy top -n "$TOP" "$NAMED" | tee "$OUT/twiggy-top.txt"
