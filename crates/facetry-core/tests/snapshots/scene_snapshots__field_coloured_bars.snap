@@ -1,0 +1,576 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [
+    {
+      "key": "layer0/Apple",
+      "x": 89.0,
+      "y": 325.0,
+      "w": 63.0,
+      "h": 114.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Banana",
+      "x": 167.0,
+      "y": 116.0,
+      "w": 63.0,
+      "h": 323.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "layer0/Cherry",
+      "x": 246.0,
+      "y": 386.0,
+      "w": 63.0,
+      "h": 53.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "layer0/Date",
+      "x": 325.0,
+      "y": 240.0,
+      "w": 62.0,
+      "h": 199.0,
+      "color": "#72b7b2"
+    },
+    {
+      "key": "layer0/Elderberry",
+      "x": 403.0,
+      "y": 346.0,
+      "w": 63.0,
+      "h": 93.0,
+      "color": "#54a24b"
+    },
+    {
+      "key": "layer0/Fig",
+      "x": 482.0,
+      "y": 297.0,
+      "w": 62.0,
+      "h": 142.0,
+      "color": "#eeca3b"
+    },
+    {
+      "key": "layer0/Grape",
+      "x": 560.0,
+      "y": 40.0,
+      "w": 63.0,
+      "h": 399.0,
+      "color": "#b279a2"
+    },
+    {
+      "key": "layer0/Honeydew",
+      "x": 639.0,
+      "y": 373.0,
+      "w": 63.0,
+      "h": 66.0,
+      "color": "#ff9da6"
+    },
+    {
+      "key": "layer0/Kiwi",
+      "x": 717.0,
+      "y": 268.0,
+      "w": 63.0,
+      "h": 171.0,
+      "color": "#4c78a8"
+    }
+  ],
+  "rules": [
+    {
+      "key": "axis:y/grid:0",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 439.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:500",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 392.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:1000",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 344.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:1500",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 297.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:2000",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 249.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:2500",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 202.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:3000",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 154.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:3500",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 107.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:4000",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 59.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:4500",
+      "kind": "grid",
+      "x": 81.0,
+      "y": 12.0,
+      "w": 707.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 80.0,
+      "y": 439.0,
+      "w": 708.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Apple",
+      "kind": "tick",
+      "x": 120.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Banana",
+      "kind": "tick",
+      "x": 199.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Cherry",
+      "kind": "tick",
+      "x": 277.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Date",
+      "kind": "tick",
+      "x": 356.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Elderberry",
+      "kind": "tick",
+      "x": 434.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Fig",
+      "kind": "tick",
+      "x": 513.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Grape",
+      "kind": "tick",
+      "x": 592.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Honeydew",
+      "kind": "tick",
+      "x": 670.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Kiwi",
+      "kind": "tick",
+      "x": 749.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 80.0,
+      "y": 12.0,
+      "w": 1.0,
+      "h": 427.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:500",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 392.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:1000",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 344.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:1500",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 297.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:2000",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 249.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:2500",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 202.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:3000",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 154.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:3500",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 107.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:4000",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 59.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:4500",
+      "kind": "tick",
+      "x": 74.0,
+      "y": 12.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Apple",
+      "text": "Apple",
+      "x": 120.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Banana",
+      "text": "Banana",
+      "x": 199.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Cherry",
+      "text": "Cherry",
+      "x": 277.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Date",
+      "text": "Date",
+      "x": 356.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Elderberry",
+      "text": "Elderberry",
+      "x": 434.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Fig",
+      "text": "Fig",
+      "x": 513.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Grape",
+      "text": "Grape",
+      "x": 592.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Honeydew",
+      "text": "Honeydew",
+      "x": 670.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Kiwi",
+      "text": "Kiwi",
+      "x": 749.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Fruit",
+      "x": 435.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0",
+      "text": "0",
+      "x": 70.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:500",
+      "text": "500",
+      "x": 70.0,
+      "y": 396.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:1000",
+      "text": "1,000",
+      "x": 70.0,
+      "y": 348.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:1500",
+      "text": "1,500",
+      "x": 70.0,
+      "y": 301.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:2000",
+      "text": "2,000",
+      "x": 70.0,
+      "y": 253.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:2500",
+      "text": "2,500",
+      "x": 70.0,
+      "y": 206.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:3000",
+      "text": "3,000",
+      "x": 70.0,
+      "y": 158.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:3500",
+      "text": "3,500",
+      "x": 70.0,
+      "y": 111.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:4000",
+      "text": "4,000",
+      "x": 70.0,
+      "y": 63.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:4500",
+      "text": "4,500",
+      "x": 70.0,
+      "y": 16.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Harvest (tons)",
+      "x": 25.0,
+      "y": 226.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    }
+  ]
+}

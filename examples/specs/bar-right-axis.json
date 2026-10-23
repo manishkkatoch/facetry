@@ -1,0 +1,34 @@
+{
+  "data": {
+    "kpi": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4"],
+      "revenue": [120, 90, 140, 110],
+      "margin": [0.12, 0.08, 0.21, 0.16]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "revenue", "orient": "left", "title": "Revenue" },
+    { "id": "margin", "orient": "right", "title": "Margin" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "kpi",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "revenue", "axis": "revenue" },
+        "color": { "value": "#4C78A8" }
+      }
+    },
+    {
+      "mark": "bar",
+      "data": "kpi",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "margin", "axis": "margin" },
+        "color": { "value": "#F58518B3" }
+      }
+    }
+  ]
+}

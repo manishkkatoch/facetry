@@ -1,0 +1,23 @@
+{
+  "data": {
+    "fruit": {
+      "name": ["Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape", "Honeydew", "Kiwi"],
+      "tons": [1200, 3400, 560, 2100, 980, 1500, 4200, 700, 1800]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Fruit" },
+    { "id": "y", "orient": "left", "title": "Harvest (tons)" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "fruit",
+      "encoding": {
+        "x": { "field": "name" },
+        "y": { "field": "tons" },
+        "color": { "field": "name" }
+      }
+    }
+  ]
+}

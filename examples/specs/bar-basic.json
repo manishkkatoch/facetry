@@ -1,0 +1,25 @@
+{
+  "dimension": "2d",
+  "data": {
+    "sales": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4"],
+      "revenue": [120, 90, 140, 110]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "y", "orient": "left", "title": "Revenue" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "sales",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "revenue", "axis": "y" },
+        "color": { "value": "#4C78A8" },
+        "key": { "field": "quarter" }
+      }
+    }
+  ]
+}

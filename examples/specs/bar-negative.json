@@ -1,0 +1,23 @@
+{
+  "data": {
+    "pnl": {
+      "month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      "profit": [12.5, -8, 20.25, -15.5, 4, 9.75]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Month" },
+    { "id": "y", "orient": "left", "title": "Profit (k$)" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "pnl",
+      "encoding": {
+        "x": { "field": "month" },
+        "y": { "field": "profit" },
+        "color": { "value": "#4C78A8" }
+      }
+    }
+  ]
+}
