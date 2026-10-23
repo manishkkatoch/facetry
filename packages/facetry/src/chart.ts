@@ -1,14 +1,18 @@
-import {
+import type {
   Chart as WasmChart,
-  type CameraState,
-  type CameraUpdate,
-  type ChartSpec,
+  CameraState,
+  CameraUpdate,
+  ChartSpec,
 } from "../wasm/facetry_wasm.js";
 import { FacetryError } from "./errors.js";
-import { loadWasm } from "./wasm.js";
+import { loadModule, webgpuLooksUsable, type ModuleKind } from "./wasm.js";
 
 export interface ChartOptions {
-  /** GPU API. `"auto"` (default) uses WebGPU when available, else WebGL2. */
+  /**
+   * GPU API. `"auto"` (default) uses WebGPU when the browser has it, else WebGL2; if WebGPU
+   * then fails to start, it retries once on WebGL2. `"webgpu"` and `"webgl2"` never fall back.
+   * Only the module for the chosen API is downloaded.
+   */
   backend?: "auto" | "webgpu" | "webgl2";
   /** Overrides the theme's background colour (`#rrggbb` or `#rrggbbaa`). */
   clearColor?: string;
@@ -63,14 +67,40 @@ export class Chart {
     spec: ChartSpec,
     options: ChartOptions = {},
   ): Promise<Chart> {
+    const wanted = options.backend ?? "auto";
     try {
-      await loadWasm();
-      // The GPU surface is configured from the canvas's pixel size, so set it first.
-      const { dpr } = sizeCanvas(canvas);
-      return new Chart(canvas, await WasmChart.create(canvas, spec, options, dpr));
+      const first: ModuleKind =
+        wanted === "webgl2" || (wanted === "auto" && !(await webgpuLooksUsable()))
+          ? "webgl2"
+          : "webgpu";
+      try {
+        return await Chart.#createOn(first, canvas, spec, options);
+      } catch (e) {
+        // A WebGPU false positive (adapter or device creation fails after `navigator.gpu`
+        // looked fine). Bad specs and options would fail the same way on WebGL2.
+        const code = FacetryError.from(e).code;
+        if (wanted !== "auto" || first !== "webgpu" || code === "invalid-spec" || code === "invalid-options") {
+          throw e;
+        }
+        return await Chart.#createOn("webgl2", canvas, spec, options);
+      }
     } catch (e) {
       throw FacetryError.from(e);
     }
+  }
+
+  static async #createOn(
+    kind: ModuleKind,
+    canvas: HTMLCanvasElement,
+    spec: ChartSpec,
+    options: ChartOptions,
+  ): Promise<Chart> {
+    const glue = await loadModule(kind);
+    // The GPU surface is configured from the canvas's pixel size, so set it first.
+    const { dpr } = sizeCanvas(canvas);
+    // The module only contains one backend, so it must be told which; "auto" means "yours".
+    const inner = await glue.Chart.create(canvas, spec, { ...options, backend: kind }, dpr);
+    return new Chart(canvas, inner);
   }
 
   /**
