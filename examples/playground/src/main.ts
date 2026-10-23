@@ -19,6 +19,7 @@ const cameraReadout = document.querySelector<HTMLElement>("#camera")!;
 const select = document.querySelector<HTMLSelectElement>("#example")!;
 const textarea = document.querySelector<HTMLTextAreaElement>("#json")!;
 const applyButton = document.querySelector<HTMLButtonElement>("#apply")!;
+const saveButton = document.querySelector<HTMLButtonElement>("#save-png")!;
 const issuesList = document.querySelector<HTMLUListElement>("#issues")!;
 const root = document.documentElement;
 
@@ -100,6 +101,13 @@ try {
   showIssues(err.issues);
   throw e;
 }
+
+saveButton.addEventListener("click", () => {
+  chart.downloadPNG(`facetry-${select.value}.png`).catch((e: unknown) => {
+    const err = FacetryError.from(e);
+    status.textContent = `Error (${err.code}): ${err.message}`;
+  });
+});
 
 select.addEventListener("change", () => {
   const spec = examples.get(select.value)!;

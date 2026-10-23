@@ -114,6 +114,19 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// A blank scene with the default theme's background, for something to hold before the
+    /// first layout.
+    pub fn empty() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            background: crate::Theme::default().background,
+            rects: Vec::new(),
+            rules: Vec::new(),
+            texts: Vec::new(),
+        }
+    }
+
     /// Back-to-front draw order: gridlines, bars, then axis lines and ticks. Text goes on top
     /// of everything and is drawn separately.
     pub fn boxes_in_draw_order(&self) -> impl Iterator<Item = (Bounds, Color)> + '_ {

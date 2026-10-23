@@ -3,11 +3,11 @@
 
 use facetry_core::spec::Dimension;
 use facetry_core::{
-    ChartSpec, Color, Issue, Theme, build_scene_3d_with_theme, build_scene_with_theme, parse_spec,
-    validate,
+    ChartSpec, Color, Issue, Scene, Scene3d, Theme, build_scene_3d_with_theme,
+    build_scene_with_theme, parse_spec, validate,
 };
 use facetry_font::FontMetrics;
-use facetry_render::{BackendPreference, Camera, Projection, Renderer};
+use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -30,6 +30,12 @@ export interface CameraState {
 
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
+
+/** The size, in pixels, of the image `Chart.snapshotStart` is producing. */
+export interface SnapshotMeta {
+    width: number;
+    height: number;
+}
 "#;
 
 #[wasm_bindgen]
@@ -122,7 +128,22 @@ pub struct Chart {
     camera: Camera,
     /// Device pixels per CSS pixel; scales fonts, margins and line widths in the layout.
     dpr: f32,
+    /// What is on screen, kept for putting back after a snapshot.
+    scene: SceneKind,
+    /// A snapshot being read back from the GPU.
+    pending: Option<Snapshot>,
 }
+
+/// The laid-out chart, 2D or 3D.
+#[derive(Debug)]
+enum SceneKind {
+    TwoD(Scene),
+    ThreeD(Scene3d),
+}
+
+/// Snapshots are at most this many times the CSS size: beyond that the picture is huge and
+/// the extra pixels buy nothing a viewer could see.
+const MAX_SNAPSHOT_SCALE: f64 = 4.0;
 
 #[wasm_bindgen]
 impl Chart {
@@ -163,6 +184,8 @@ impl Chart {
             spec,
             theme,
             dpr: dpr as f32,
+            scene: SceneKind::TwoD(Scene::empty()),
+            pending: None,
         };
         chart.relayout();
         Ok(chart)
@@ -287,6 +310,87 @@ impl Chart {
         object.into()
     }
 
+    /// Starts a PNG snapshot: lays the chart out for `scale` device pixels per CSS pixel
+    /// (capped at 4 and at the GPU's texture limit), draws it from the current camera into an
+    /// offscreen texture, and starts copying that back. The canvas is untouched and keeps its
+    /// state. Returns the image's `{ width, height }`; call `snapshotPoll` until it yields the
+    /// pixels. `transparent` leaves the background clear instead of the theme's.
+    #[wasm_bindgen(js_name = snapshotStart, unchecked_return_type = "SnapshotMeta")]
+    pub fn snapshot_start(&mut self, scale: f64, transparent: bool) -> Result<JsValue, JsValue> {
+        if self.pending.is_some() {
+            return Err(js_error(
+                "render-failed",
+                "a snapshot is already being read back",
+            ));
+        }
+        if !(scale.is_finite() && scale > 0.0) {
+            return Err(invalid_options("`scale` must be a positive number"));
+        }
+        let dpr = f64::from(self.dpr);
+        let (css_w, css_h) = {
+            let (w, h) = self.renderer.size();
+            (f64::from(w) / dpr, f64::from(h) / dpr)
+        };
+        if css_w < 1.0 || css_h < 1.0 {
+            return Err(js_error(
+                "render-failed",
+                "the chart has no size to snapshot",
+            ));
+        }
+        let limit = f64::from(self.renderer.max_dimension());
+        let scale = scale.min(MAX_SNAPSHOT_SCALE).min(limit / css_w.max(css_h));
+        let size = (
+            ((css_w * scale).round().max(1.0)).min(limit) as u32,
+            ((css_h * scale).round().max(1.0)).min(limit) as u32,
+        );
+
+        // Lay the same chart out for the snapshot's size (text stays crisp at any scale),
+        // draw it, then put the on-screen layout back whatever happened.
+        let font = FontMetrics::inter();
+        match &self.spec.dimension {
+            Dimension::ThreeD => {
+                let scene =
+                    build_scene_3d_with_theme(&self.spec, size, scale as f32, font, &self.theme);
+                self.renderer.set_scene_3d(&scene);
+            }
+            Dimension::TwoD => {
+                let scene =
+                    build_scene_with_theme(&self.spec, size, scale as f32, font, &self.theme);
+                self.renderer.set_scene(&scene);
+            }
+        }
+        let started = self.renderer.snapshot(size.0, size.1, transparent);
+        self.reload_scene();
+        let snapshot = started.map_err(|e| js_error(e.code(), &e.to_string()))?;
+        self.pending = Some(snapshot);
+
+        let object = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&object, &"width".into(), &size.0.into());
+        let _ = js_sys::Reflect::set(&object, &"height".into(), &size.1.into());
+        Ok(object.into())
+    }
+
+    /// `undefined` while the snapshot started by `snapshotStart` is still being copied back
+    /// (try again after yielding to the event loop); then its RGBA pixels, row by row, top to
+    /// bottom, not premultiplied.
+    #[wasm_bindgen(js_name = snapshotPoll, unchecked_return_type = "Uint8ClampedArray | undefined")]
+    pub fn snapshot_poll(&mut self) -> Result<JsValue, JsValue> {
+        let Some(snapshot) = &self.pending else {
+            return Err(js_error("render-failed", "no snapshot was started"));
+        };
+        match self.renderer.poll_snapshot(snapshot) {
+            Ok(None) => Ok(JsValue::UNDEFINED),
+            Ok(Some(pixels)) => {
+                self.pending = None;
+                Ok(js_sys::Uint8ClampedArray::from(pixels.as_slice()).into())
+            }
+            Err(e) => {
+                self.pending = None;
+                Err(js_error(e.code(), &e.to_string()))
+            }
+        }
+    }
+
     /// Draws one frame.
     pub fn render(&mut self) -> Result<(), JsValue> {
         self.renderer
@@ -314,26 +418,35 @@ impl Chart {
 
     /// spec + size -> scene -> GPU buffers.
     fn relayout(&mut self) {
-        if self.is_3d() {
-            let scene = build_scene_3d_with_theme(
+        self.scene = if self.is_3d() {
+            SceneKind::ThreeD(build_scene_3d_with_theme(
                 &self.spec,
                 self.renderer.size(),
                 self.dpr,
                 FontMetrics::inter(),
                 &self.theme,
-            );
-            self.renderer.set_scene_3d(&scene);
-            self.renderer.set_camera(self.camera);
-            return;
+            ))
+        } else {
+            SceneKind::TwoD(build_scene_with_theme(
+                &self.spec,
+                self.renderer.size(),
+                self.dpr,
+                FontMetrics::inter(),
+                &self.theme,
+            ))
+        };
+        self.reload_scene();
+    }
+
+    /// Uploads the current scene (and camera) to the GPU again.
+    fn reload_scene(&mut self) {
+        match &self.scene {
+            SceneKind::ThreeD(scene) => {
+                self.renderer.set_scene_3d(scene);
+                self.renderer.set_camera(self.camera);
+            }
+            SceneKind::TwoD(scene) => self.renderer.set_scene(scene),
         }
-        let scene = build_scene_with_theme(
-            &self.spec,
-            self.renderer.size(),
-            self.dpr,
-            FontMetrics::inter(),
-            &self.theme,
-        );
-        self.renderer.set_scene(&scene);
     }
 }
 

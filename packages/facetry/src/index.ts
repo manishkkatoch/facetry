@@ -1,4 +1,4 @@
-export { Chart, type ChartOptions } from "./chart.js";
+export { Chart, type ChartOptions, type SnapshotOptions } from "./chart.js";
 export { FacetryError, type FacetryErrorCode, type SpecIssue } from "./errors.js";
 // The spec types are generated from the Rust definitions (tsify), so they cannot drift.
 export type {

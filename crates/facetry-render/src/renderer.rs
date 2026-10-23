@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use facetry_core::scene::Scene;
 use facetry_core::scene3d::Scene3d;
 use facetry_core::{Color, Theme};
@@ -8,6 +11,7 @@ use wgpu::util::DeviceExt as _;
 use crate::Error;
 use crate::camera::Camera;
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
+use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
 use crate::rect::{self, RectPipeline};
 use crate::solid::{self, BoxPipeline, LinePipeline};
@@ -423,6 +427,11 @@ impl Renderer {
         self.camera = camera;
     }
 
+    /// The largest width or height a surface or snapshot may have.
+    pub fn max_dimension(&self) -> u32 {
+        self.max_dimension
+    }
+
     /// The globals for a frame drawn into a target of `target` pixels, from the camera.
     fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
         let (centre, radius) = Camera::plot_frame(size);
@@ -592,6 +601,203 @@ impl Renderer {
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
         Ok(())
+    }
+
+    /// Draws the loaded scene, from the current camera, into a fresh `width` x `height`
+    /// texture (its own multisampled colour, resolve and depth targets, same format as the
+    /// surface so the same pipelines and colour handling apply) and starts copying it back.
+    /// The surface is untouched. With `transparent` the background is clear instead of the
+    /// theme's.
+    ///
+    /// The caller loads the scene laid out for this size first, and loads the on-screen one
+    /// again afterwards. Finish with
+    /// [`poll_snapshot`](Self::poll_snapshot) until it yields the pixels.
+    pub fn snapshot(
+        &mut self,
+        width: u32,
+        height: u32,
+        transparent: bool,
+    ) -> Result<Snapshot, Error> {
+        let fail = |m: &str| Error::RenderFailed(format!("snapshot: {m}"));
+        if width == 0 || height == 0 || width.max(height) > self.max_dimension {
+            return Err(fail(&format!(
+                "size {width}x{height} is outside 1..={} (the device's texture limit)",
+                self.max_dimension
+            )));
+        }
+        use wgpu::TextureFormat as F;
+        let (bgra, srgb) = match self.config.format {
+            F::Rgba8Unorm => (false, false),
+            F::Rgba8UnormSrgb => (false, true),
+            F::Bgra8Unorm => (true, false),
+            F::Bgra8UnormSrgb => (true, true),
+            _ => return Err(fail("the surface format is not an 8-bit RGBA or BGRA one")),
+        };
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = |label, format, samples, usage| {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size,
+                mip_level_count: 1,
+                sample_count: samples,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let format = self.config.format;
+        let resolved = texture(
+            "snapshot colour",
+            format,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let resolved_view = resolved.create_view(&wgpu::TextureViewDescriptor::default());
+        let msaa_view = (self.samples > 1).then(|| {
+            texture(
+                "snapshot msaa",
+                format,
+                self.samples,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            )
+            .create_view(&wgpu::TextureViewDescriptor::default())
+        });
+        let depth_view = self.box_size.map(|_| {
+            texture(
+                "snapshot depth",
+                DEPTH_FORMAT,
+                self.samples,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            )
+            .create_view(&wgpu::TextureViewDescriptor::default())
+        });
+
+        let padded_row = image::padded_bytes_per_row(width);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("snapshot readback"),
+            size: u64::from(padded_row) * u64::from(height),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        self.write_frame_uniforms((width, height));
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("snapshot"),
+            });
+        let clear = if transparent {
+            [0.0; 4]
+        } else {
+            self.encode_color(self.background)
+        };
+        let (view, resolve) = match &msaa_view {
+            Some(msaa) => (msaa, Some(&resolved_view)),
+            None => (&resolved_view, None),
+        };
+        self.record_pass(&mut encoder, view, resolve, depth_view.as_ref(), clear);
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &resolved,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            size,
+        );
+        self.queue.submit([encoder.finish()]);
+        // The next on-screen frame must rewrite the globals and label table for its own size.
+        self.label_key = None;
+
+        let state = Arc::new(AtomicU8::new(PENDING));
+        let done = Arc::clone(&state);
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                done.store(
+                    if result.is_ok() { READY } else { FAILED },
+                    Ordering::Release,
+                );
+            });
+        Ok(Snapshot {
+            buffer,
+            width,
+            height,
+            padded_row,
+            format: ReadbackFormat {
+                bgra,
+                srgb,
+                premultiplied: transparent,
+            },
+            state,
+        })
+    }
+
+    /// Checks on a snapshot: `Ok(None)` while the GPU is still copying (call again later,
+    /// yielding to the event loop in between: in browsers the copy finishes there), or the
+    /// tightly packed RGBA8 pixels, rows top to bottom, not premultiplied.
+    pub fn poll_snapshot(&self, snapshot: &Snapshot) -> Result<Option<Vec<u8>>, Error> {
+        // WebGPU resolves the mapping from the event loop; the GL backend needs this nudge.
+        let _ = self.device.poll(wgpu::PollType::Poll);
+        match snapshot.state.load(Ordering::Acquire) {
+            PENDING => Ok(None),
+            READY => {
+                let pixels = {
+                    let mapped = snapshot
+                        .buffer
+                        .slice(..)
+                        .get_mapped_range()
+                        .map_err(|e| Error::RenderFailed(format!("snapshot: {e}")))?;
+                    image::to_rgba(
+                        &mapped,
+                        snapshot.width,
+                        snapshot.height,
+                        snapshot.padded_row,
+                        snapshot.format,
+                    )
+                };
+                snapshot.buffer.unmap();
+                Ok(Some(pixels))
+            }
+            _ => Err(Error::RenderFailed(
+                "snapshot: reading the image back from the GPU failed".into(),
+            )),
+        }
+    }
+}
+
+const PENDING: u8 = 0;
+const READY: u8 = 1;
+const FAILED: u8 = 2;
+
+/// A snapshot being copied back from the GPU; see [`Renderer::snapshot`].
+#[derive(Debug)]
+pub struct Snapshot {
+    buffer: wgpu::Buffer,
+    width: u32,
+    height: u32,
+    padded_row: u32,
+    format: ReadbackFormat,
+    state: Arc<AtomicU8>,
+}
+
+impl Snapshot {
+    /// Width and height in pixels.
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
     }
 }
 

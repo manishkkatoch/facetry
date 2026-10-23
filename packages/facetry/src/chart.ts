@@ -18,6 +18,21 @@ export interface ChartOptions {
   clearColor?: string;
 }
 
+export interface SnapshotOptions {
+  /**
+   * Pixels per CSS pixel of the picture: 1 gives the canvas's size in CSS pixels, 2 twice
+   * that. Default: the current `devicePixelRatio`, which reproduces the canvas exactly. At
+   * most 4, and never beyond the GPU's texture size limit. The chart is laid out again at
+   * this scale, so text stays crisp.
+   */
+  scale?: number;
+  /** `"theme"` (default): the chart's background colour. `"transparent"`: no background. */
+  background?: "theme" | "transparent";
+}
+
+/** Give up on a snapshot the GPU never finishes copying after this long. */
+const SNAPSHOT_TIMEOUT_MS = 15_000;
+
 /**
  * A chart bound to a canvas. Create with {@link Chart.create}; call {@link destroy} when done.
  * Give the canvas a CSS size (the chart fills it); the pixel size follows automatically.
@@ -32,6 +47,8 @@ export class Chart {
   readonly #removeListeners: () => void;
   #resolveFirstFrame!: () => void;
   #rejectFirstFrame!: (e: unknown) => void;
+  /** The last queued snapshot, so the next one starts after it (the GPU copy is not reentrant). */
+  #snapshotTail: Promise<void> | null = null;
 
   /** Resolves after the first frame has been drawn; rejects if drawing fails first. */
   readonly firstFrame: Promise<void>;
@@ -117,6 +134,90 @@ export class Chart {
     }
     this.#syncInteraction();
     this.requestRender();
+  }
+
+  /**
+   * A PNG of the chart exactly as it is now: the current spec and, in 3D, the current orbit
+   * camera. The chart is drawn again into an offscreen texture (so the canvas is not
+   * disturbed and keeps rendering), without any hover highlight or hover-only label. See
+   * {@link SnapshotOptions}.
+   */
+  snapshot(options: SnapshotOptions = {}): Promise<Blob> {
+    let scale: number;
+    let transparent: boolean;
+    try {
+      if (this.#destroyed) throw new FacetryError("destroyed", "chart is destroyed");
+      scale = options.scale ?? (window.devicePixelRatio || 1);
+      if (typeof scale !== "number" || !Number.isFinite(scale) || scale <= 0) {
+        throw new FacetryError("invalid-options", "`scale` must be a positive number");
+      }
+      const background = options.background ?? "theme";
+      if (background !== "theme" && background !== "transparent") {
+        throw new FacetryError(
+          "invalid-options",
+          `\`background\` must be "theme" or "transparent", got ${JSON.stringify(background)}`,
+        );
+      }
+      transparent = background === "transparent";
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    // The first snapshot starts right now (so it shows the state at the time of the call);
+    // later ones wait their turn.
+    const job = () => this.#takeSnapshot(scale, transparent);
+    const result = this.#snapshotTail ? this.#snapshotTail.then(job) : job();
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    this.#snapshotTail = tail;
+    void tail.then(() => {
+      if (this.#snapshotTail === tail) this.#snapshotTail = null;
+    });
+    return result;
+  }
+
+  /**
+   * Saves {@link snapshot} as a file through the browser's download mechanism. `options` are
+   * those of `snapshot`.
+   */
+  async downloadPNG(filename = "facetry.png", options?: SnapshotOptions): Promise<void> {
+    const blob = await this.snapshot(options);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Not at once: some browsers start the download after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async #takeSnapshot(scale: number, transparent: boolean): Promise<Blob> {
+    let meta: { width: number; height: number };
+    try {
+      meta = this.#inner.snapshotStart(scale, transparent);
+    } catch (e) {
+      throw FacetryError.from(e);
+    }
+    const started = performance.now();
+    for (;;) {
+      if (this.#destroyed) throw new FacetryError("destroyed", "chart destroyed during a snapshot");
+      let pixels: Uint8ClampedArray | undefined;
+      try {
+        pixels = this.#inner.snapshotPoll();
+      } catch (e) {
+        throw FacetryError.from(e);
+      }
+      if (pixels) return encodePng(pixels, meta.width, meta.height);
+      if (performance.now() - started > SNAPSHOT_TIMEOUT_MS) {
+        throw new FacetryError("render-failed", "the GPU did not finish the snapshot in time");
+      }
+      // Yield to the event loop: in browsers, that is where the GPU copy completes.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   /**
@@ -267,4 +368,24 @@ function sizeCanvas(canvas: HTMLCanvasElement): { width: number; height: number;
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   return { width, height, dpr };
+}
+
+/** Encodes RGBA pixels (not premultiplied) as a PNG with the browser's own encoder. */
+async function encodePng(pixels: Uint8ClampedArray, width: number, height: number): Promise<Blob> {
+  const image = new ImageData(pixels as Uint8ClampedArray<ArrayBuffer>, width, height);
+  if (typeof OffscreenCanvas !== "undefined") {
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext("2d")!.putImageData(image, 0, 0);
+    return canvas.convertToBlob({ type: "image/png" });
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")!.putImageData(image, 0, 0);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new FacetryError("render-failed", "PNG encoding failed"))),
+      "image/png",
+    ),
+  );
 }
