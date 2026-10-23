@@ -1,9 +1,13 @@
 //! JS-facing API. Everything exported here becomes part of the npm package's wasm module;
 //! the idiomatic TypeScript wrapper lives in `packages/facetry`.
 
-use facetry_core::{ChartSpec, Color, Issue, Theme, build_scene_with_theme, parse_spec, validate};
+use facetry_core::spec::Dimension;
+use facetry_core::{
+    ChartSpec, Color, Issue, Theme, build_scene_3d_with_theme, build_scene_with_theme, parse_spec,
+    validate,
+};
 use facetry_font::FontMetrics;
-use facetry_render::{BackendPreference, Renderer};
+use facetry_render::{BackendPreference, Camera, Projection, Renderer};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -15,6 +19,17 @@ export interface ChartOptions {
     /** Background colour override as `#rrggbb` or `#rrggbbaa` (sRGB). */
     clearColor?: string;
 }
+
+/** The 3D camera right now (see `Chart.camera`). Angles are degrees; `distance` is in plot-box radii. */
+export interface CameraState {
+    type: "perspective" | "orthographic";
+    azimuth: number;
+    elevation: number;
+    distance: number;
+}
+
+/** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
+export type CameraUpdate = Partial<CameraState>;
 "#;
 
 #[wasm_bindgen]
@@ -101,6 +116,9 @@ pub struct Chart {
     renderer: Renderer,
     spec: ChartSpec,
     theme: Theme,
+    /// 3D only. Lives here, not in the scene, so orbiting never rebuilds the scene: the
+    /// renderer just gets the new camera and the next frame uses it.
+    camera: Camera,
     /// Device pixels per CSS pixel; scales fonts, margins and line widths in the layout.
     dpr: f32,
 }
@@ -140,6 +158,7 @@ impl Chart {
             .map_err(|e| js_error(e.code(), &e.to_string()))?;
         let mut chart = Chart {
             renderer,
+            camera: Camera::from_spec(spec.camera.as_ref()),
             spec,
             theme,
             dpr: dpr as f32,
@@ -150,11 +169,18 @@ impl Chart {
 
     /// Replaces the spec and re-lays out. On an invalid spec this throws `invalid-spec` and
     /// the previous spec stays in effect. Call `render` afterwards.
+    ///
+    /// The camera is kept (the user may have orbited) unless the new spec's `camera` differs
+    /// from the old one's, in which case it restarts from the spec.
     pub fn update(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "ChartSpec")] spec: JsValue,
     ) -> Result<(), JsValue> {
-        self.spec = read_spec(spec)?;
+        let spec = read_spec(spec)?;
+        if spec.camera != self.spec.camera {
+            self.camera = Camera::from_spec(spec.camera.as_ref());
+        }
+        self.spec = spec;
         self.relayout();
         Ok(())
     }
@@ -165,6 +191,99 @@ impl Chart {
         self.dpr = dpr as f32;
         self.renderer.resize(width, height);
         self.relayout();
+    }
+
+    /// Whether this chart is 3D with orbiting enabled (`interaction.orbit`, default on).
+    /// The TypeScript wrapper only attaches pointer handlers when this is true.
+    #[wasm_bindgen(getter, js_name = orbitEnabled)]
+    pub fn orbit_enabled(&self) -> bool {
+        self.spec.orbit_enabled()
+    }
+
+    /// Turns the camera by a pointer drag of `(dx, dy)` pixels. Call `render` afterwards.
+    pub fn orbit(&mut self, dx_px: f64, dy_px: f64) {
+        if self.is_3d() {
+            self.camera.orbit(dx_px as f32, dy_px as f32);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Zooms by a wheel `delta` (positive: out, negative: in; a typical notch is about 100).
+    pub fn zoom(&mut self, delta: f64) {
+        if self.is_3d() {
+            self.camera.zoom(delta as f32);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Back to the spec's camera (or the defaults).
+    #[wasm_bindgen(js_name = resetCamera)]
+    pub fn reset_camera(&mut self) {
+        if self.is_3d() {
+            self.camera = Camera::from_spec(self.spec.camera.as_ref());
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Sets any of `type`, `azimuth`, `elevation`, `distance`; values are clamped. Throws
+    /// `invalid-options` if a field has the wrong type.
+    #[wasm_bindgen(js_name = setCamera)]
+    pub fn set_camera(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CameraUpdate")] update: JsValue,
+    ) -> Result<(), JsValue> {
+        let number = |key: &str| -> Result<Option<f32>, JsValue> {
+            let v = js_sys::Reflect::get(&update, &key.into())?;
+            if v.is_undefined() || v.is_null() {
+                return Ok(None);
+            }
+            v.as_f64()
+                .map(|n| Some(n as f32))
+                .ok_or_else(|| invalid_options(format!("camera `{key}` must be a number")))
+        };
+        let (azimuth, elevation, distance) = (
+            number("azimuth")?,
+            number("elevation")?,
+            number("distance")?,
+        );
+        let projection = match string_option(&update, "type")?.as_deref() {
+            None => None,
+            Some("perspective") => Some(Projection::Perspective),
+            Some("orthographic") => Some(Projection::Orthographic),
+            Some(other) => {
+                return Err(invalid_options(format!(
+                    "camera `type` must be \"perspective\" or \"orthographic\", got {other:?}"
+                )));
+            }
+        };
+        if self.is_3d() {
+            if let Some(p) = projection {
+                self.camera.projection = p;
+            }
+            self.camera.set(azimuth, elevation, distance);
+            self.renderer.set_camera(self.camera);
+        }
+        Ok(())
+    }
+
+    /// The camera now: `{ type, azimuth, elevation, distance }` (the spec's or default
+    /// values for a chart that was never orbited).
+    #[wasm_bindgen(getter, unchecked_return_type = "CameraState")]
+    pub fn camera(&self) -> JsValue {
+        let c = &self.camera;
+        let object = js_sys::Object::new();
+        let set = |key: &str, value: JsValue| {
+            // Setting a plain property on a fresh object cannot fail.
+            let _ = js_sys::Reflect::set(&object, &key.into(), &value);
+        };
+        // The camera is stored as f32; widening 2.7f32 to f64 gives 2.700000047..., so round
+        // to a precision far below anything visible.
+        let round = |v: f32| (f64::from(v) * 1e4).round() / 1e4;
+        set("type", c.projection.name().into());
+        set("azimuth", round(c.azimuth).into());
+        set("elevation", round(c.elevation).into());
+        set("distance", round(c.distance).into());
+        object.into()
     }
 
     /// Draws one frame.
@@ -188,8 +307,24 @@ impl Chart {
 }
 
 impl Chart {
+    fn is_3d(&self) -> bool {
+        self.spec.dimension == Dimension::ThreeD
+    }
+
     /// spec + size -> scene -> GPU buffers.
     fn relayout(&mut self) {
+        if self.is_3d() {
+            let scene = build_scene_3d_with_theme(
+                &self.spec,
+                self.renderer.size(),
+                self.dpr,
+                FontMetrics::inter(),
+                &self.theme,
+            );
+            self.renderer.set_scene_3d(&scene);
+            self.renderer.set_camera(self.camera);
+            return;
+        }
         let scene = build_scene_with_theme(
             &self.spec,
             self.renderer.size(),
