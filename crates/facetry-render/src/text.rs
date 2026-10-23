@@ -79,27 +79,20 @@ pub fn layout_glyphs(
     }
 }
 
-/// Decodes the embedded atlas PNG (8-bit RGB) to RGBA8 for upload; WebGPU has no RGB8 format.
+/// Expands the embedded raw RGB atlas to RGBA8 for upload; WebGPU has no RGB8 format.
 fn decode_atlas() -> Result<(u32, u32, Vec<u8>), Error> {
-    let fail = |e: &dyn std::fmt::Display| Error::RenderFailed(format!("decoding font atlas: {e}"));
-    let mut reader = png::Decoder::new(std::io::Cursor::new(facetry_font::ATLAS_PNG))
-        .read_info()
-        .map_err(|e| fail(&e))?;
-    let mut buf = vec![
-        0;
-        reader
-            .output_buffer_size()
-            .ok_or_else(|| fail(&"too large"))?
-    ];
-    let info = reader.next_frame(&mut buf).map_err(|e| fail(&e))?;
-    if info.color_type != png::ColorType::Rgb || info.bit_depth != png::BitDepth::Eight {
-        return Err(fail(&"expected an 8-bit RGB PNG"));
+    let atlas = &facetry_font::FontMetrics::inter().atlas;
+    let rgb = facetry_font::ATLAS_RGB;
+    if rgb.len() != atlas.width as usize * atlas.height as usize * 3 {
+        return Err(Error::RenderFailed(
+            "font atlas size does not match its metrics".into(),
+        ));
     }
-    let rgba = buf[..info.buffer_size()]
+    let rgba = rgb
         .chunks_exact(3)
         .flat_map(|p| [p[0], p[1], p[2], 255])
         .collect();
-    Ok((info.width, info.height, rgba))
+    Ok((atlas.width, atlas.height, rgba))
 }
 
 /// The glyph atlas on the GPU, shared by the 2D and 3D text pipelines.

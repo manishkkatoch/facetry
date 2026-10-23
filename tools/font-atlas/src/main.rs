@@ -1,8 +1,15 @@
 //! Offline tool: renders printable ASCII from the bundled TTF into one MSDF atlas.
 //!
-//! Run `cargo run -p font-atlas --release` (see the README). It rewrites the two files in
+//! Run `cargo run -p font-atlas --release` (see the README). It rewrites the files in
 //! `crates/facetry-font/assets/`, which are committed; nothing at build or run time needs
-//! this tool or the TTF.
+//! this tool or the TTF. Outputs:
+//!
+//! - `inter-regular-msdf.rgb`: the atlas as raw 8-bit RGB, row-major, top row first,
+//!   `width * height * 3` bytes. This is what `facetry-font` embeds, so the shipped wasm needs
+//!   no image decoder.
+//! - `inter-regular-msdf.png`: the same pixels as a PNG, for looking at (and for the test
+//!   below that proves the two agree). Not embedded anywhere.
+//! - `inter-regular-metrics.json`: glyph metrics.
 //!
 //! How an MSDF atlas works, briefly: for every pixel we store, in R/G/B, the signed distance
 //! to the nearest edge of the glyph outline, but each channel only "sees" a different subset
@@ -169,9 +176,10 @@ fn main() {
             .collect(),
     };
 
+    std::fs::write(out.join("inter-regular-msdf.rgb"), atlas.as_raw()).expect("write raw atlas");
     atlas
         .save(out.join("inter-regular-msdf.png"))
-        .expect("write atlas");
+        .expect("write atlas preview");
     let mut json = serde_json::to_string_pretty(&metrics).unwrap();
     json.push('\n');
     std::fs::write(out.join("inter-regular-metrics.json"), json).expect("write metrics");
@@ -179,4 +187,30 @@ fn main() {
         "wrote {ATLAS_WIDTH}x{atlas_height} atlas, {} glyphs",
         metrics.glyphs.len()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assets() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/facetry-font/assets")
+    }
+
+    /// The embedded raw atlas is byte-for-byte what decoding the PNG gives, and matches the
+    /// size recorded in the metrics.
+    #[test]
+    fn raw_atlas_equals_decoded_png() {
+        let png = image::open(assets().join("inter-regular-msdf.png"))
+            .expect("decode PNG")
+            .into_rgb8();
+        let raw = std::fs::read(assets().join("inter-regular-msdf.rgb")).expect("read raw atlas");
+        let info = &FontMetrics::inter().atlas;
+        assert_eq!((png.width(), png.height()), (info.width, info.height));
+        assert_eq!(raw.len(), (info.width * info.height * 3) as usize);
+        assert!(
+            raw == png.as_raw().as_slice(),
+            "raw atlas differs from the PNG"
+        );
+    }
 }

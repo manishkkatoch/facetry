@@ -6,20 +6,27 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# wasm32 only; native builds always use the native APIs and ignore these.
+webgpu = ["wgpu/webgpu"]
+webgl = ["wgpu/webgl"]
+
 [dependencies]
 facetry-core.workspace = true
 facetry-font.workspace = true
 wgpu.workspace = true
-png.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 wgpu = { workspace = true, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 
-# Both browser backends are compiled in; which one runs is decided at runtime.
+# In the browser, wgpu brings its own backends only when asked: `webgpu` is a thin shim over
+# the browser's API; `webgl` pulls in wgpu-core, the GL backend and naga (about three
+# quarters of a combined module). facetry-wasm is built twice, once with each, and the JS
+# loader picks one at runtime (see docs/wasm-size.md). Both may be enabled together.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wgpu = { workspace = true, features = ["std", "wgsl", "webgpu", "webgl"] }
+wgpu = { workspace = true, features = ["std", "wgsl"] }
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 
 [dev-dependencies]

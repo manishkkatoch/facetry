@@ -330,7 +330,6 @@ dependencies = [
  "facetry-font",
  "glam 0.32.1",
  "naga",
- "png",
  "web-sys",
  "wgpu",
 ]
@@ -344,6 +343,7 @@ dependencies = [
  "facetry-font",
  "facetry-render",
  "js-sys",
+ "log",
  "serde-wasm-bindgen",
  "wasm-bindgen",
  "wasm-bindgen-futures",
