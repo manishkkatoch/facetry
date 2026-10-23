@@ -993,12 +993,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.0,
         0.0,
-        0.0
+        0.6
       ],
       "b": [
         0.9,
         0.0,
-        0.0
+        0.6
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1013,12 +1013,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.15,
         0.0,
-        0.0
+        0.6
       ],
       "b": [
         0.15,
         0.0,
-        -0.03
+        0.63
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1033,12 +1033,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.45,
         0.0,
-        0.0
+        0.6
       ],
       "b": [
         0.45,
         0.0,
-        -0.03
+        0.63
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1053,12 +1053,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.75,
         0.0,
-        0.0
+        0.6
       ],
       "b": [
         0.75,
         0.0,
-        -0.03
+        0.63
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -1631,12 +1631,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/line@135",
       "kind": "axis",
       "a": [
-        0.0,
+        0.9,
         0.0,
         0.0
       ],
       "b": [
-        0.0,
+        0.9,
         0.0,
         0.6
       ],
@@ -1651,12 +1651,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/tick:Product A@135",
       "kind": "tick",
       "a": [
-        0.0,
+        0.9,
         0.0,
         0.45
       ],
       "b": [
-        -0.03,
+        0.93,
         0.0,
         0.45
       ],
@@ -1671,12 +1671,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/tick:Product B@135",
       "kind": "tick",
       "a": [
-        0.0,
+        0.9,
         0.0,
         0.15
       ],
       "b": [
-        -0.03,
+        0.93,
         0.0,
         0.15
       ],
@@ -2113,12 +2113,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.0,
         0.0,
-        0.6
+        0.0
       ],
       "b": [
         0.9,
         0.0,
-        0.6
+        0.0
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2133,12 +2133,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.15,
         0.0,
-        0.6
+        0.0
       ],
       "b": [
         0.15,
         0.0,
-        0.63
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2153,12 +2153,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.45,
         0.0,
-        0.6
+        0.0
       ],
       "b": [
         0.45,
         0.0,
-        0.63
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2173,12 +2173,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "a": [
         0.75,
         0.0,
-        0.6
+        0.0
       ],
       "b": [
         0.75,
         0.0,
-        0.63
+        -0.03
       ],
       "width_px": 1.5,
       "color": "#6e7781",
@@ -2751,12 +2751,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/line@315",
       "kind": "axis",
       "a": [
-        0.9,
+        0.0,
         0.0,
         0.0
       ],
       "b": [
-        0.9,
+        0.0,
         0.0,
         0.6
       ],
@@ -2771,12 +2771,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/tick:Product A@315",
       "kind": "tick",
       "a": [
-        0.9,
+        0.0,
         0.0,
         0.45
       ],
       "b": [
-        0.93,
+        -0.03,
         0.0,
         0.45
       ],
@@ -2791,12 +2791,12 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/tick:Product B@315",
       "kind": "tick",
       "a": [
-        0.9,
+        0.0,
         0.0,
         0.15
       ],
       "b": [
-        0.93,
+        -0.03,
         0.0,
         0.15
       ],
@@ -3249,15 +3249,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.15,
         0.0,
-        -0.03
+        0.63
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3270,15 +3270,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.45,
         0.0,
-        -0.03
+        0.63
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3291,15 +3291,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.75,
         0.0,
-        -0.03
+        0.63
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3312,15 +3312,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.45,
         0.0,
-        -0.03
+        0.63
       ],
       "offset_px": [
-        64.1,
+        -64.1,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 45.0,
@@ -3919,17 +3919,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/label:Product A@135",
       "text": "Product A",
       "anchor": [
-        -0.03,
+        0.93,
         0.0,
         0.45
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -3940,17 +3940,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/label:Product B@135",
       "text": "Product B",
       "anchor": [
-        -0.03,
+        0.93,
         0.0,
         0.15
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -3961,17 +3961,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/title@135",
       "text": "Product",
       "anchor": [
-        -0.03,
+        0.93,
         0.0,
         0.3
       ],
       "offset_px": [
-        98.26,
+        -98.26,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 135.0,
@@ -4425,15 +4425,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.15,
         0.0,
-        0.63
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4446,15 +4446,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.45,
         0.0,
-        0.63
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4467,15 +4467,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.75,
         0.0,
-        0.63
+        -0.03
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -4488,15 +4488,15 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "anchor": [
         0.45,
         0.0,
-        0.63
+        -0.03
       ],
       "offset_px": [
-        64.1,
+        -64.1,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 225.0,
@@ -5095,17 +5095,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/label:Product A@315",
       "text": "Product A",
       "anchor": [
-        0.93,
+        -0.03,
         0.0,
         0.45
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,
@@ -5116,17 +5116,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/label:Product B@315",
       "text": "Product B",
       "anchor": [
-        0.93,
+        -0.03,
         0.0,
         0.15
       ],
       "offset_px": [
-        4.0,
+        -4.0,
         0.0
       ],
       "size_px": 12.0,
       "color": "#57606a",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,
@@ -5137,17 +5137,17 @@ expression: "scene3d_for(\"bar3d-negative\")"
       "key": "axis:z/title@315",
       "text": "Product",
       "anchor": [
-        0.93,
+        -0.03,
         0.0,
         0.3
       ],
       "offset_px": [
-        98.26,
+        -98.26,
         0.0
       ],
       "size_px": 13.0,
       "color": "#1f2328",
-      "align": "start",
+      "align": "end",
       "valign": "middle",
       "azimuths": {
         "from": 315.0,

@@ -12,6 +12,7 @@ use serde::{Serialize, Serializer};
 
 use crate::Color;
 use crate::scene::{Anchor, RuleKind};
+use crate::spec::LabelShow;
 
 /// World units are fractions of the plot box, so 4 decimals is far below a pixel.
 fn w4_3<S: Serializer>(v: &[f32; 3], s: S) -> Result<S::Ok, S::Error> {
@@ -75,6 +76,12 @@ pub struct BoxMark {
     #[serde(serialize_with = "w4_3")]
     pub max: [f32; 3],
     pub color: Color,
+    /// The layer index and table row the bar came from (what hover and click events report).
+    /// Not in the snapshot: the key already encodes it.
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
 }
 
 /// A straight line segment in world space (gridline, axis edge or tick mark). It is drawn as
@@ -112,6 +119,26 @@ pub enum VAlign {
     Baseline,
 }
 
+/// What a label is, which decides whether the renderer may hide or move it as the camera
+/// turns. Axis labels depend on the viewpoint (an edge seen end-on squeezes its labels
+/// together), and that cannot be decided when the scene is built: it is decided per frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelRole {
+    /// Always drawn where it is (value labels).
+    #[default]
+    Fixed,
+    /// The `index`-th of `count` tick labels along axis `group` (see [`AXIS_X`], [`AXIS_Z`],
+    /// [`AXIS_Y`]).
+    Tick { group: u8, index: u16, count: u16 },
+    /// The title of axis `group`; shown in preference to tick labels.
+    Title { group: u8 },
+}
+
+/// Label groups: which axis a [`LabelRole`] belongs to.
+pub const AXIS_X: u8 = 0;
+pub const AXIS_Z: u8 = 1;
+pub const AXIS_Y: u8 = 2;
+
 /// A label. `anchor` is a point in the world; the text is then placed relative to where that
 /// point lands on screen: `align`/`valign` pick which point of the text sits there and
 /// `offset_px` (x right, y down, device pixels) nudges it. So labels always face the viewer
@@ -131,6 +158,18 @@ pub struct Text3 {
     pub valign: VAlign,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub azimuths: Option<AzimuthRange>,
+    /// Not in the snapshot: the key says which axis and category it is.
+    #[serde(skip)]
+    pub role: LabelRole,
+}
+
+/// The value label of a bar (`boxes[mark]`); see [`crate::scene::MarkLabel`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MarkLabel3 {
+    /// Index into [`Scene3d::boxes`].
+    pub mark: usize,
+    pub show: LabelShow,
+    pub text: Text3,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -149,4 +188,7 @@ pub struct Scene3d {
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     pub texts: Vec<Text3>,
+    /// Value labels of the bars that have one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<MarkLabel3>,
 }

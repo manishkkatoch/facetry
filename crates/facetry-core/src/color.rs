@@ -103,6 +103,17 @@ impl Color {
         }
     }
 
+    /// Relative luminance (0 black, 1 white), as WCAG defines it: weighted linear channels.
+    pub fn luminance(self) -> f32 {
+        0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b
+    }
+
+    /// WCAG contrast ratio between two colours, from 1 (identical) to 21 (black on white).
+    pub fn contrast(self, other: Self) -> f32 {
+        let (a, b) = (self.luminance(), other.luminance());
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
     /// The channels as `[r, g, b, a]` (linear).
     pub const fn to_array(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a]
@@ -148,6 +159,15 @@ mod tests {
         let [r, g, b, a] = c.to_srgb();
         assert!(close(r, 51.0 / 255.0) && close(g, 102.0 / 255.0) && close(b, 153.0 / 255.0));
         assert_eq!(a, 1.0);
+    }
+
+    #[test]
+    fn contrast_is_21_for_black_on_white_and_symmetric() {
+        let black = Color::from_hex("#000000").unwrap();
+        let white = Color::from_hex("#ffffff").unwrap();
+        assert!((black.contrast(white) - 21.0).abs() < 1e-3);
+        assert_eq!(black.contrast(white), white.contrast(black));
+        assert!((white.contrast(white) - 1.0).abs() < 1e-6);
     }
 
     #[test]

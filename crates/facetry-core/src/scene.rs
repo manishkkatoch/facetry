@@ -8,6 +8,7 @@
 use serde::{Serialize, Serializer};
 
 use crate::Color;
+use crate::spec::LabelShow;
 
 /// Snapshots round to 2 decimals so harmless float noise cannot churn them.
 fn px<S: Serializer>(v: &f32, s: S) -> Result<S::Ok, S::Error> {
@@ -38,6 +39,14 @@ impl Bounds {
     }
 }
 
+impl Bounds {
+    /// Whether the point is inside (left and top edges count, right and bottom do not, so
+    /// two bars that touch never both claim a pixel).
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
+    }
+}
+
 /// A filled rectangle (a bar).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Rect {
@@ -45,6 +54,12 @@ pub struct Rect {
     #[serde(flatten)]
     pub bounds: Bounds,
     pub color: Color,
+    /// Where the bar came from: the layer index and the row of that layer's table. What
+    /// hover and click events report; not part of the snapshot (the key already encodes it).
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
 }
 
 /// What a rule is, which decides when it is drawn: gridlines go *behind* bars, axis lines
@@ -101,6 +116,17 @@ pub struct Text {
     pub rotation: Rotation,
 }
 
+/// A value label that belongs to a bar. The text is laid out like any other, but whether it
+/// is drawn can depend on the pointer, so it lives apart from [`Scene::texts`]: the renderer
+/// draws `Always` labels with the rest and the `Hover` one of the hovered bar on top.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MarkLabel {
+    /// Index into [`Scene::rects`].
+    pub mark: usize,
+    pub show: LabelShow,
+    pub text: Text,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Scene {
     pub width: u32,
@@ -111,9 +137,32 @@ pub struct Scene {
     /// Gridlines, axis lines and ticks, gridlines first.
     pub rules: Vec<Rule>,
     pub texts: Vec<Text>,
+    /// Value labels of the bars that have one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<MarkLabel>,
 }
 
 impl Scene {
+    /// A blank scene with the default theme's background, for something to hold before the
+    /// first layout.
+    pub fn empty() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            background: crate::Theme::default().background,
+            rects: Vec::new(),
+            rules: Vec::new(),
+            texts: Vec::new(),
+            labels: Vec::new(),
+        }
+    }
+
+    /// The bar under the pixel `(x, y)`, as an index into `rects`. Bars drawn later are on
+    /// top, so the last one that contains the point wins.
+    pub fn pick(&self, x: f32, y: f32) -> Option<usize> {
+        self.rects.iter().rposition(|r| r.bounds.contains(x, y))
+    }
+
     /// Back-to-front draw order: gridlines, bars, then axis lines and ticks. Text goes on top
     /// of everything and is drawn separately.
     pub fn boxes_in_draw_order(&self) -> impl Iterator<Item = (Bounds, Color)> + '_ {

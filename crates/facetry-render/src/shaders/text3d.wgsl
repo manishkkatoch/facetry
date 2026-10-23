@@ -4,6 +4,11 @@
 // half is the same as text.wgsl (keep them in sync).
 //
 // Like lines, labels carry an azimuth range; see line3d.wgsl.
+//
+// Axis labels are also managed per frame from the CPU (see labels.rs): a label with a `slot`
+// looks itself up in the `labels` table, whose entry says whether to draw it (x = 1) and how
+// many pixels to nudge it (yz) so it clears the plot box. Labels that always show (value
+// labels) have slot -1 and skip the table.
 
 struct Globals {
     view_proj: mat4x4<f32>,
@@ -26,6 +31,13 @@ struct Globals {
 @group(0) @binding(1) var atlas_texture: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
 
+// One entry per label slot: x visible (0 or 1), y and z the nudge in pixels, w spare. 256
+// entries (4 KiB): the largest uniform block WebGL2 is guaranteed to allow is 16 KiB.
+struct LabelStates {
+    items: array<vec4<f32>, 256>,
+}
+@group(0) @binding(3) var<uniform> labels: LabelStates;
+
 struct Vertex {
     @location(0) corner: vec2<f32>,
     // Per instance:
@@ -36,6 +48,7 @@ struct Vertex {
     @location(5) uv: vec4<f32>,      // atlas rect: top-left u, v, bottom-right u, v
     @location(6) color: vec4<f32>,
     @location(7) show: vec2<f32>,    // azimuth range [from, to) in which to draw
+    @location(8) slot: f32,          // index into `labels`, or -1 for none
 }
 
 struct Varying {
@@ -58,6 +71,14 @@ fn vs_main(v: Vertex) -> Varying {
     if !in_range(v.show) {
         return Varying(vec4<f32>(2.0, 2.0, 2.0, 1.0), vec2<f32>(0.0), v.color);
     }
+    var nudge = vec2<f32>(0.0);
+    if v.slot >= 0.0 {
+        let state = labels.items[u32(v.slot)];
+        if state.x < 0.5 {
+            return Varying(vec4<f32>(2.0, 2.0, 2.0, 1.0), vec2<f32>(0.0), v.color);
+        }
+        nudge = state.yz;
+    }
     let clip = globals.view_proj * vec4<f32>(v.anchor, 1.0);
     let ndc = clip.xy / clip.w;
     // Projected anchor in pixels (y down), rounded to a whole pixel so glyph edges stay
@@ -66,7 +87,7 @@ fn vs_main(v: Vertex) -> Varying {
         (ndc.x * 0.5 + 0.5) * globals.viewport.x,
         (0.5 - ndc.y * 0.5) * globals.viewport.y,
     ));
-    let px = anchor_px + v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
+    let px = anchor_px + nudge + v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
     let out_clip = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,

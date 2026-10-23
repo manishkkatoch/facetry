@@ -1,0 +1,540 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"bar-labels\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [
+    {
+      "key": "layer0/Q1",
+      "x": 92.0,
+      "y": 66.0,
+      "w": 114.0,
+      "h": 280.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q2",
+      "x": 234.0,
+      "y": 124.0,
+      "w": 114.0,
+      "h": 222.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q3",
+      "x": 376.0,
+      "y": 19.0,
+      "w": 114.0,
+      "h": 327.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q4",
+      "x": 518.0,
+      "y": 89.0,
+      "w": 114.0,
+      "h": 257.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q5",
+      "x": 660.0,
+      "y": 346.0,
+      "w": 114.0,
+      "h": 70.0,
+      "color": "#4c78a8"
+    }
+  ],
+  "rules": [
+    {
+      "key": "axis:y/grid:-400",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 439.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:-200",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 392.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/zero:0",
+      "kind": "axis",
+      "x": 78.0,
+      "y": 346.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/grid:200",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 299.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:400",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 252.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:600",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 206.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:800",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 159.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:1000",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 112.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:1200",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 66.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:1400",
+      "kind": "grid",
+      "x": 78.0,
+      "y": 19.0,
+      "w": 710.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 77.0,
+      "y": 439.0,
+      "w": 711.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q1",
+      "kind": "tick",
+      "x": 149.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q2",
+      "kind": "tick",
+      "x": 291.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q3",
+      "kind": "tick",
+      "x": 433.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q4",
+      "kind": "tick",
+      "x": 575.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q5",
+      "kind": "tick",
+      "x": 717.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 77.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:-400",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:-200",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 392.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 346.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:200",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 299.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:400",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 252.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:600",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 206.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:800",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 159.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:1000",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 112.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:1200",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 66.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:1400",
+      "kind": "tick",
+      "x": 71.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Q1",
+      "text": "Q1",
+      "x": 149.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q2",
+      "text": "Q2",
+      "x": 291.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q3",
+      "text": "Q3",
+      "x": 433.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q4",
+      "text": "Q4",
+      "x": 575.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q5",
+      "text": "Q5",
+      "x": 717.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Quarter",
+      "x": 433.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:-400",
+      "text": "-400",
+      "x": 67.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:-200",
+      "text": "-200",
+      "x": 67.0,
+      "y": 396.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0",
+      "text": "0",
+      "x": 67.0,
+      "y": 350.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:200",
+      "text": "200",
+      "x": 67.0,
+      "y": 303.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:400",
+      "text": "400",
+      "x": 67.0,
+      "y": 256.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:600",
+      "text": "600",
+      "x": 67.0,
+      "y": 210.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:800",
+      "text": "800",
+      "x": 67.0,
+      "y": 163.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:1000",
+      "text": "1,000",
+      "x": 67.0,
+      "y": 116.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:1200",
+      "text": "1,200",
+      "x": 67.0,
+      "y": 70.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:1400",
+      "text": "1,400",
+      "x": 67.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Revenue",
+      "x": 25.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    }
+  ],
+  "labels": [
+    {
+      "mark": 0,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q1/label",
+        "text": "1,200",
+        "x": 149.0,
+        "y": 62.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 1,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q2/label",
+        "text": "950",
+        "x": 291.0,
+        "y": 120.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 2,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q3/label",
+        "text": "1,400",
+        "x": 433.0,
+        "y": 32.0,
+        "size_px": 12.0,
+        "color": "#ffffff",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 3,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q4/label",
+        "text": "1,100",
+        "x": 575.0,
+        "y": 85.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 4,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q5/label",
+        "text": "-300",
+        "x": 717.0,
+        "y": 429.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ]
+}

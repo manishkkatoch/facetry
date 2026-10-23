@@ -1,13 +1,13 @@
 //! JS-facing API. Everything exported here becomes part of the npm package's wasm module;
 //! the idiomatic TypeScript wrapper lives in `packages/facetry`.
 
-use facetry_core::spec::Dimension;
+use facetry_core::spec::{Column, Dimension};
 use facetry_core::{
-    ChartSpec, Color, Issue, Theme, build_scene_3d_with_theme, build_scene_with_theme, parse_spec,
-    validate,
+    ChartSpec, Color, Issue, Scene, Scene3d, Theme, build_scene_3d_with_theme,
+    build_scene_with_theme, parse_spec, validate,
 };
 use facetry_font::FontMetrics;
-use facetry_render::{BackendPreference, Camera, Projection, Renderer};
+use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -30,6 +30,22 @@ export interface CameraState {
 
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
+
+/** A bar, as hover and click events report it. */
+export interface MarkInfo {
+    /** The mark's key (`layer0/Q3`, or whatever `encoding.key` made of it). */
+    key: string;
+    /** Index into the spec's `layers`. */
+    layer: number;
+    /** The bar's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`). */
+    datum: Record<string, number | string | null>;
+}
+
+/** The size, in pixels, of the image `Chart.snapshotStart` is producing. */
+export interface SnapshotMeta {
+    width: number;
+    height: number;
+}
 "#;
 
 #[wasm_bindgen]
@@ -122,7 +138,24 @@ pub struct Chart {
     camera: Camera,
     /// Device pixels per CSS pixel; scales fonts, margins and line widths in the layout.
     dpr: f32,
+    /// What is on screen, kept for picking and for putting back after a snapshot.
+    scene: SceneKind,
+    /// The bar under the pointer (an index into the scene's bars).
+    hover: Option<usize>,
+    /// A snapshot being read back from the GPU.
+    pending: Option<Snapshot>,
 }
+
+/// The laid-out chart, 2D or 3D.
+#[derive(Debug)]
+enum SceneKind {
+    TwoD(Scene),
+    ThreeD(Scene3d),
+}
+
+/// Snapshots are at most this many times the CSS size: beyond that the picture is huge and
+/// the extra pixels buy nothing a viewer could see.
+const MAX_SNAPSHOT_SCALE: f64 = 4.0;
 
 #[wasm_bindgen]
 impl Chart {
@@ -163,6 +196,9 @@ impl Chart {
             spec,
             theme,
             dpr: dpr as f32,
+            scene: SceneKind::TwoD(Scene::empty()),
+            hover: None,
+            pending: None,
         };
         chart.relayout();
         Ok(chart)
@@ -287,6 +323,161 @@ impl Chart {
         object.into()
     }
 
+    /// The bar under the pointer at `(x, y)` (CSS pixels from the canvas's top-left), as an
+    /// index to give `markInfo` and `setHover`; `-1` when there is none. A point-in-rectangle
+    /// test in 2D, a ray through every bar in 3D; both are microseconds.
+    pub fn pick(&self, x: f64, y: f64) -> i32 {
+        let (x, y) = (
+            (x * f64::from(self.dpr)) as f32,
+            (y * f64::from(self.dpr)) as f32,
+        );
+        let hit = match &self.scene {
+            SceneKind::TwoD(scene) => scene.pick(x, y),
+            SceneKind::ThreeD(scene) => self.renderer.pick_3d(&scene.boxes, x, y),
+        };
+        hit.map_or(-1, |i| i as i32)
+    }
+
+    /// Highlights bar `mark` (an index from `pick`; `-1` for none) and shows its value label
+    /// if the layer's `label.show` is `"hover"`. Call `render` afterwards.
+    #[wasm_bindgen(js_name = setHover)]
+    pub fn set_hover(&mut self, mark: i32) {
+        self.hover = usize::try_from(mark).ok();
+        self.renderer.set_hover(self.hover);
+    }
+
+    /// `{ key, layer, datum }` for bar `mark` (an index from `pick`), or `null`.
+    #[wasm_bindgen(js_name = markInfo, unchecked_return_type = "MarkInfo | null")]
+    pub fn mark_info(&self, mark: i32) -> JsValue {
+        let Ok(mark) = usize::try_from(mark) else {
+            return JsValue::NULL;
+        };
+        let (key, layer, row) = match &self.scene {
+            SceneKind::TwoD(s) => s.rects.get(mark).map(|r| (&r.key, r.layer, r.row)),
+            SceneKind::ThreeD(s) => s.boxes.get(mark).map(|b| (&b.key, b.layer, b.row)),
+        }
+        .map_or((None, 0, 0), |(k, l, r)| (Some(k), l, r));
+        let Some(key) = key else {
+            return JsValue::NULL;
+        };
+        let object = js_sys::Object::new();
+        let set = |name: &str, value: JsValue| {
+            // Setting a plain property on a fresh object cannot fail.
+            let _ = js_sys::Reflect::set(&object, &name.into(), &value);
+        };
+        set("key", key.as_str().into());
+        set("layer", (layer as f64).into());
+        set("datum", self.datum(layer, row));
+        object.into()
+    }
+
+    /// Where the middle of the bar with this key is, `{ x, y }` in CSS pixels from the
+    /// canvas's top-left (in 3D: where the box's centre projects, right now), or `undefined`
+    /// for an unknown key. For tests and for anchoring your own annotations.
+    #[wasm_bindgen(js_name = markPosition, unchecked_return_type = "{ x: number, y: number } | undefined")]
+    pub fn mark_position(&self, key: &str) -> JsValue {
+        let dpr = f64::from(self.dpr);
+        let device = match &self.scene {
+            SceneKind::TwoD(s) => s
+                .rects
+                .iter()
+                .find(|r| r.key == key)
+                .map(|r| [r.bounds.x + r.bounds.w / 2.0, r.bounds.y + r.bounds.h / 2.0]),
+            SceneKind::ThreeD(s) => s.boxes.iter().find(|b| b.key == key).and_then(|b| {
+                let centre = [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0);
+                self.renderer.project_3d(centre)
+            }),
+        };
+        let Some([x, y]) = device else {
+            return JsValue::UNDEFINED;
+        };
+        let object = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&object, &"x".into(), &(f64::from(x) / dpr).into());
+        let _ = js_sys::Reflect::set(&object, &"y".into(), &(f64::from(y) / dpr).into());
+        object.into()
+    }
+
+    /// Starts a PNG snapshot: lays the chart out for `scale` device pixels per CSS pixel
+    /// (capped at 4 and at the GPU's texture limit), draws it from the current camera into an
+    /// offscreen texture, and starts copying that back. The canvas is untouched and keeps its
+    /// state. Returns the image's `{ width, height }`; call `snapshotPoll` until it yields the
+    /// pixels. `transparent` leaves the background clear instead of the theme's.
+    #[wasm_bindgen(js_name = snapshotStart, unchecked_return_type = "SnapshotMeta")]
+    pub fn snapshot_start(&mut self, scale: f64, transparent: bool) -> Result<JsValue, JsValue> {
+        if self.pending.is_some() {
+            return Err(js_error(
+                "render-failed",
+                "a snapshot is already being read back",
+            ));
+        }
+        if !(scale.is_finite() && scale > 0.0) {
+            return Err(invalid_options("`scale` must be a positive number"));
+        }
+        let dpr = f64::from(self.dpr);
+        let (css_w, css_h) = {
+            let (w, h) = self.renderer.size();
+            (f64::from(w) / dpr, f64::from(h) / dpr)
+        };
+        if css_w < 1.0 || css_h < 1.0 {
+            return Err(js_error(
+                "render-failed",
+                "the chart has no size to snapshot",
+            ));
+        }
+        let limit = f64::from(self.renderer.max_dimension());
+        let scale = scale.min(MAX_SNAPSHOT_SCALE).min(limit / css_w.max(css_h));
+        let size = (
+            ((css_w * scale).round().max(1.0)).min(limit) as u32,
+            ((css_h * scale).round().max(1.0)).min(limit) as u32,
+        );
+
+        // Lay the same chart out for the snapshot's size (text stays crisp at any scale),
+        // draw it, then put the on-screen layout back whatever happened.
+        let font = FontMetrics::inter();
+        match &self.spec.dimension {
+            Dimension::ThreeD => {
+                let scene =
+                    build_scene_3d_with_theme(&self.spec, size, scale as f32, font, &self.theme);
+                self.renderer.set_scene_3d(&scene);
+            }
+            Dimension::TwoD => {
+                let scene =
+                    build_scene_with_theme(&self.spec, size, scale as f32, font, &self.theme);
+                self.renderer.set_scene(&scene);
+            }
+        }
+        let started = self.renderer.snapshot(size.0, size.1, transparent);
+        self.reload_scene();
+        let snapshot = started.map_err(|e| js_error(e.code(), &e.to_string()))?;
+        self.pending = Some(snapshot);
+
+        let object = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&object, &"width".into(), &size.0.into());
+        let _ = js_sys::Reflect::set(&object, &"height".into(), &size.1.into());
+        Ok(object.into())
+    }
+
+    /// `undefined` while the snapshot started by `snapshotStart` is still being copied back
+    /// (try again after yielding to the event loop); then its RGBA pixels, row by row, top to
+    /// bottom, not premultiplied.
+    #[wasm_bindgen(js_name = snapshotPoll, unchecked_return_type = "Uint8ClampedArray | undefined")]
+    pub fn snapshot_poll(&mut self) -> Result<JsValue, JsValue> {
+        let Some(snapshot) = &self.pending else {
+            return Err(js_error("render-failed", "no snapshot was started"));
+        };
+        match self.renderer.poll_snapshot(snapshot) {
+            Ok(None) => Ok(JsValue::UNDEFINED),
+            Ok(Some(pixels)) => {
+                self.pending = None;
+                Ok(js_sys::Uint8ClampedArray::from(pixels.as_slice()).into())
+            }
+            Err(e) => {
+                self.pending = None;
+                Err(js_error(e.code(), &e.to_string()))
+            }
+        }
+    }
+
     /// Draws one frame.
     pub fn render(&mut self) -> Result<(), JsValue> {
         self.renderer
@@ -312,28 +503,65 @@ impl Chart {
         self.spec.dimension == Dimension::ThreeD
     }
 
-    /// spec + size -> scene -> GPU buffers.
+    /// spec + size -> scene -> GPU buffers. The hover is dropped: the bars may have moved or
+    /// vanished (the TypeScript wrapper tells listeners and picks again).
     fn relayout(&mut self) {
-        if self.is_3d() {
-            let scene = build_scene_3d_with_theme(
+        self.scene = if self.is_3d() {
+            SceneKind::ThreeD(build_scene_3d_with_theme(
                 &self.spec,
                 self.renderer.size(),
                 self.dpr,
                 FontMetrics::inter(),
                 &self.theme,
-            );
-            self.renderer.set_scene_3d(&scene);
-            self.renderer.set_camera(self.camera);
-            return;
+            ))
+        } else {
+            SceneKind::TwoD(build_scene_with_theme(
+                &self.spec,
+                self.renderer.size(),
+                self.dpr,
+                FontMetrics::inter(),
+                &self.theme,
+            ))
+        };
+        self.hover = None;
+        self.reload_scene();
+    }
+
+    /// Uploads the current scene (and camera) to the GPU again, keeping the hover.
+    fn reload_scene(&mut self) {
+        match &self.scene {
+            SceneKind::ThreeD(scene) => {
+                self.renderer.set_scene_3d(scene);
+                self.renderer.set_camera(self.camera);
+            }
+            SceneKind::TwoD(scene) => self.renderer.set_scene(scene),
         }
-        let scene = build_scene_with_theme(
-            &self.spec,
-            self.renderer.size(),
-            self.dpr,
-            FontMetrics::inter(),
-            &self.theme,
-        );
-        self.renderer.set_scene(&scene);
+        self.renderer.set_hover(self.hover);
+    }
+
+    /// The row of a layer's table as a plain JS object (numbers, strings, `null` for a
+    /// missing number).
+    fn datum(&self, layer: usize, row: usize) -> JsValue {
+        let object = js_sys::Object::new();
+        let table = self
+            .spec
+            .layers
+            .get(layer)
+            .and_then(|l| self.spec.data.get(&l.data));
+        for (name, column) in table.into_iter().flatten() {
+            let value = match column {
+                Column::Numeric(v) => v
+                    .get(row)
+                    .filter(|x| x.is_finite())
+                    .map_or(JsValue::NULL, |&x| x.into()),
+                Column::Categorical { codes, dict } => codes
+                    .get(row)
+                    .and_then(|&c| dict.get(c as usize))
+                    .map_or(JsValue::NULL, |s| s.as_str().into()),
+            };
+            let _ = js_sys::Reflect::set(&object, &name.as_str().into(), &value);
+        }
+        object.into()
     }
 }
 

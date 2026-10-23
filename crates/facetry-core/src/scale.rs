@@ -107,6 +107,24 @@ pub fn format_number(v: f64, decimals: usize, thousands: bool) -> String {
     out
 }
 
+/// Text for a data value on a bar label: the axis number style (`1,200`) with `decimals`
+/// digits, or by default as few as the value needs (up to 4: `1200` is `1,200`, `0.25` is
+/// `0.25`, `2.5` is `2.5`).
+pub fn format_value(v: f64, decimals: Option<u32>) -> String {
+    let decimals = decimals.map_or_else(
+        || {
+            (0..4)
+                .find(|&d| {
+                    let p = 10f64.powi(d);
+                    ((v * p).round() / p - v).abs() <= 1e-9 * v.abs().max(1.0)
+                })
+                .unwrap_or(4) as usize
+        },
+        |d| d as usize,
+    );
+    format_number(v, decimals, true)
+}
+
 /// A continuous numeric scale: `domain` (data) to `range` (pixels), linearly.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Linear {
@@ -330,6 +348,18 @@ mod tests {
 
     fn labels(d0: f64, d1: f64, count: usize) -> Vec<String> {
         lin(d0, d1).ticks(count).labels()
+    }
+
+    #[test]
+    fn value_labels_use_the_axis_style_with_natural_or_fixed_decimals() {
+        assert_eq!(format_value(1200.0, None), "1,200");
+        assert_eq!(format_value(0.25, None), "0.25");
+        assert_eq!(format_value(-2.5, None), "-2.5");
+        assert_eq!(format_value(0.1 + 0.2, None), "0.3");
+        assert_eq!(format_value(1.23456789, None), "1.2346");
+        assert_eq!(format_value(1200.0, Some(2)), "1,200.00");
+        assert_eq!(format_value(2.567, Some(1)), "2.6");
+        assert_eq!(format_value(7.0, Some(0)), "7");
     }
 
     #[test]

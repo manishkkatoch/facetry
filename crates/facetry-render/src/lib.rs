@@ -9,6 +9,9 @@ compile_error!("on wasm32, enable the `webgpu` and/or `webgl` feature of facetry
 mod camera;
 mod error;
 mod gpu;
+mod image;
+pub mod labels;
+pub mod pick;
 mod rect;
 mod renderer;
 mod solid;
@@ -16,7 +19,7 @@ mod text;
 
 pub use camera::{Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection};
 pub use error::Error;
-pub use renderer::{BackendPreference, Renderer};
+pub use renderer::{BackendPreference, Renderer, Snapshot};
 
 #[cfg(test)]
 mod shader_tests {

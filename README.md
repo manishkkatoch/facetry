@@ -7,8 +7,10 @@ Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, 
 feedback on the riskiest part first.** A `Chart` draws a bar chart from a declarative JSON spec:
 validation, band and linear scales with "nice" ticks, layout, axes (lines, ticks, gridlines,
 labels, titles), MSDF text and instanced rectangles; with `dimension: "3d"` the bars are
-lit, depth-tested boxes you can orbit (see [3D charts](#3d-charts)). Lines, arcs, stacking,
-legends, tooltips and animation come in later milestones.
+lit, depth-tested boxes you can orbit (see [3D charts](#3d-charts)). Bars can carry value labels,
+report hover and click, and the current view can be saved as a PNG (see [Value labels, hover and
+click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Lines, arcs, stacking,
+legends and animation come in later milestones.
 
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
@@ -70,6 +72,8 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
   `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
   `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
   key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
+- `label` (optional, per layer): value labels on the bars, see
+  [below](#value-labels-hover-and-click).
 - Unknown fields are errors, so typos are caught. Empty data is valid: the axes are drawn (numeric
   domain `[0, 1]`, no categories) and there are no bars.
 - Tick labels use thousands separators (`1,200`) and as many decimals as the tick step needs
@@ -129,18 +133,108 @@ keeps the orbited camera unless the spec's `camera` changed.
 
 How 3D differs under the hood: `build_scene_3d` produces a `Scene3d` in world units (boxes, lines,
 labels anchored at world points). What depends on the viewpoint (back-wall gridlines; which
-floor edge carries each axis, so labels stay on the near or outer side) is emitted for each
-45 degree sector of azimuth, tagged with its range, and the vertex shaders drop the variants the
-camera is not in. Labels are projected from their anchor and then laid out in screen pixels, so
-they face the viewer and keep their size; they draw last, without depth testing, with an
-outline in the background colour so they stay legible over bars. Known limits: tick labels are
-thinned for the starting camera and not again when zooming; an axis that points straight at the
-camera (azimuth near 0/90/180/270 for one of the two floor axes) has its labels stacked tightly,
-and some labels can be drawn over a bar that stands in front of them.
+floor edge carries each axis; both floor axes sit on the two edges at the nearest corner, which
+form the lower outline of the picture) is emitted for each 45 degree sector of azimuth, tagged
+with its range, and the vertex shaders drop the variants the camera is not in. Labels are
+projected from their anchor and then laid out in screen pixels, so they face the viewer and keep
+their size; they draw last, without depth testing, with an outline in the background colour so
+they stay legible over bars.
+
+**Axis labels follow the camera.** Which tick labels are readable depends on the viewpoint: look
+along an axis and its labels land on top of each other. So every frame where the camera or size
+changed, the renderer computes, for the labels of the sector the camera is in, a small table:
+*draw it?* and *nudge it by how many pixels?*, and uploads it (4 KiB) for the shader to read. The
+glyph instances are never rewritten and the scene is not rebuilt. The rules
+(`crates/facetry-render/src/labels.rs`): a label is moved away from the plot box's projected
+centre, in screen space, just far enough to clear the box's projected outline (so no axis label
+is drawn over a bar); labels are then visited by priority (axis titles, y ticks, then the other
+axes' ticks, each axis first label, last label, middle, the middles of the halves, ...) and a
+label whose rectangle would touch one already kept is hidden. An axis seen end-on therefore keeps
+its first and last label (or just one) and its title; seen broadside it keeps as many as fit. It
+runs on the CPU because it takes a few dozen rectangle tests and is easy to unit-test there
+(the tests sweep the camera and check that no two visible labels overlap and none touches the
+box). Known limit: at very high elevations the axis lines themselves (not their labels) can pass
+over bars, and an axis with more than about 100 categories is labelled every n-th category.
 
 The TypeScript types are generated from the Rust definitions, so they cannot drift.
 Example specs live in `examples/specs/` and are shared by the Rust snapshot tests, the
 playground and the golden-image test.
+
+## Value labels, hover and click
+
+A layer can write each bar's value on it:
+
+```jsonc
+"layers": [{
+  "mark": "bar", "data": "sales", "encoding": { /* ... */ },
+  "label": { "show": "always", "format": { "decimals": 1 } }   // "always" | "hover"; format optional
+}]
+```
+
+- `show: "always"` labels every bar; `"hover"` only the bar under the pointer. No `label` block,
+  no labels. `format.decimals` (0 to 10) overrides the default, which uses as many decimals as the
+  value needs (up to 4); numbers use the axis style (`1,200`).
+- 2D: centred above the bar (below a negative bar); if that would leave the plot it goes inside
+  the bar's end, in whichever of the theme's text and background colours contrasts more with the
+  bar. 3D: hanging above the middle of the top face (below the bottom face of a negative bar),
+  outlined like the axis labels.
+- Bad values are validation errors with JSON-pointer paths (`/layers/0/label/show`,
+  `/layers/0/label/format/decimals`).
+
+```ts
+chart.on("hover", (mark) => { /* mark: { key, layer, datum } | null */ });
+chart.on("click", (mark) => console.log(mark.datum));   // { quarter: "Q3", revenue: 140 }
+chart.off("hover", listener);
+chart.markPosition("layer0/Q3");                        // { x, y } in CSS px, to aim at a bar
+```
+
+`hover` fires when the bar under the pointer changes, with `null` when the pointer leaves every
+bar (and when the chart is laid out again: after `update` or a resize you get `null`, then the bar
+that is now under the pointer). `datum` is the bar's row of the layer's table as a plain object
+(`null` for a missing number). `click` fires on a press and release that moved less than 4 CSS
+pixels, with `null` for a click on empty space; **a drag that orbits a 3D chart never clicks**.
+A throwing listener is logged and does not affect the others.
+
+The hovered bar is lightened (a per-instance flag, rewritten alone) and a `hover` label shows
+(a handful of glyphs in a small overlay buffer); the scene is not rebuilt and nothing else is
+uploaded. **Picking is done on the CPU**, with the same matrix the GPU draws with: in 2D a
+point-in-rectangle test (`Scene::pick`), in 3D a ray from the camera through the pixel intersected
+with every bar's box by the slab test, nearest hit wins (`facetry-render/src/pick.rs`). With at
+most about a thousand bars that is microseconds, needs no GPU read-back (a colour-ID pass would
+cost a frame of latency and an async buffer map per pointer move) and is covered by unit tests.
+The maths lives in the render crate because it needs the camera and `glam`; the 2D test is in
+core next to the scene it reads.
+
+## PNG snapshots
+
+```ts
+const blob = await chart.snapshot();                              // PNG of the chart as it is now
+const big = await chart.snapshot({ scale: 2, background: "transparent" });
+await chart.downloadPNG("sales.png", { scale: 2 });                  // saves a file
+```
+
+`snapshot` captures exactly the current state: the spec and, in 3D, the current orbit camera,
+without the hover highlight or hover-only labels. `scale` is pixels per CSS pixel (default: the
+current `devicePixelRatio`, which reproduces the canvas; at most 4 and never beyond the GPU's
+texture limit); `background` is `"theme"` (default) or `"transparent"`. The picture is not
+stretched: the chart is laid out again at the snapshot's size, so text stays crisp and margins
+and tick counts suit it.
+
+How: the renderer draws the re-laid-out scene with the current camera into an offscreen texture
+of its own (separate multisampled colour, resolve and depth targets, *in the same format as the
+canvas* so the same pipelines and colour handling apply and the exported colours are the ones on
+screen), copies it to a buffer (rows padded to 256 bytes), maps it asynchronously and un-pads the
+rows, swaps BGRA to RGBA when needed and, for a transparent background, divides the colours by
+alpha (in linear light for sRGB targets, where the GPU blended in linear light). Then the on-screen
+layout is put back, so the canvas keeps rendering as before. TypeScript hands the RGBA bytes to
+the browser's own PNG encoder (`OffscreenCanvas.convertToBlob`, or `canvas.toBlob`): no PNG
+encoder is added to the wasm (see [Bundle size](#bundle-size)). Snapshots queue: concurrent calls
+run one after the other, each showing the state at the time it was called.
+
+Tested in headless Chromium on the WebGL2 backend (an sRGB RGBA surface): sizes, scales, the
+transparent background, and agreement with the screen. The format conversions that matter on
+WebGPU (a non-sRGB, usually BGRA, surface) are unit-tested, but that path has not been run on a
+real WebGPU device.
 
 ## Layout
 
@@ -149,14 +243,17 @@ crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene and 
                         (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
 crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines (2D); box, line and world-text
-                        pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32)
+                        pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32);
+                        3D label placement (labels.rs), picking (pick.rs), PNG read-back
 crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors; features `webgpu`
                         (default) and `webgl` choose the backend, built once per module
 tools/font-atlas        offline tool that generates the MSDF atlas (not part of the build)
 packages/facetry        npm package (TypeScript): lazily loads one of two wasm modules, ResizeObserver + DPR
-                        sizing, orbit/zoom/reset gestures, renders only when dirty
+                        sizing, orbit/zoom/reset gestures, hover/click events, PNG snapshots,
+                        renders only when dirty
 examples/specs          example chart specs (JSON)
-examples/playground     Vite app + Playwright tests (smoke, playground, golden images, orbit)
+examples/playground     Vite app + Playwright tests (smoke, playground, golden images, orbit, hover,
+                        snapshot)
 scripts/                build-wasm.sh, wasm-size.sh
 ```
 
@@ -199,9 +296,11 @@ Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromi
 `pnpm dev` (or `pnpm -r build && pnpm --filter playground preview`) serves a page with the chart,
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
-`?backend=webgl2` (force the fallback), `?example=bar-colored` (or `bar3d-grid`, `bar3d-row`,
-`bar3d-negative`), `?ui=0` (only the chart). 3D examples show the current camera in the toolbar;
-`facetryChart` on `window` is the live chart for poking at from the console.
+`?backend=webgl2` (force the fallback), `?example=bar-colored` (or `bar-labels`, `bar3d-grid`,
+`bar3d-labels`, `bar3d-row`, `bar3d-negative`), `?ui=0` (only the chart). 3D examples show the
+current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
+the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
+console.
 
 ### Snapshots and golden images
 
@@ -209,8 +308,9 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
   example spec. After an intentional layout change: `INSTA_UPDATE=always cargo test -p facetry-core`
   (or `cargo insta review`), then look at the diff in git before committing. CI sets
   `INSTA_UPDATE=no`, so any difference fails.
-- **Golden images** (`examples/playground/tests/__golden__/bar-basic.png` and `bar3d-grid.png`):
-  Playwright screenshots the basic bar example and the 3D grid example (default camera) in
+- **Golden images** (`examples/playground/tests/__golden__/bar-basic.png`, `bar-labels.png` (value
+  labels, `always`) and `bar3d-grid.png`): Playwright screenshots the basic bar example, the
+  labelled one and the 3D grid example (default camera) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
   then **look at the PNG** before committing it.

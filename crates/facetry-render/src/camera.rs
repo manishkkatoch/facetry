@@ -9,6 +9,7 @@
 //! * distance is in units of the plot box's radius (half its diagonal, at least 1: see
 //!   `facetry_core::framing_radius`), so the same number frames a small and a big chart alike.
 
+use facetry_core::framing_radius;
 use facetry_core::scene3d::{DEFAULT_AZIMUTH, DEFAULT_DISTANCE, DEFAULT_ELEVATION, FOV_Y_DEGREES};
 use facetry_core::spec::{CameraKind, CameraSpec};
 use glam::{Mat4, Vec3};
@@ -20,6 +21,11 @@ pub const MAX_ELEVATION: f32 = 85.0;
 /// Closer than this the box fills the screen and clips the near plane; farther it is a dot.
 pub const MIN_DISTANCE: f32 = 1.3;
 pub const MAX_DISTANCE: f32 = 8.0;
+
+/// Looking at the plot box's exact centre leaves the bottom of the picture (axis titles hang
+/// below the front edge) cramped and the top empty, so the camera looks this far (in world
+/// units) below the centre, which lifts the box a little.
+const FRAMING_LIFT: f32 = 0.12;
 
 /// Degrees of rotation per dragged pixel.
 const ORBIT_SPEED: f32 = 0.4;
@@ -118,6 +124,23 @@ impl Camera {
         // `set` would then ignore instead of zooming all the way out).
         let factor = (delta * ZOOM_SPEED).clamp(-5.0, 5.0).exp();
         self.set(None, None, Some(self.distance * factor));
+    }
+
+    /// The point the camera looks at and the unit its distance is measured in, for a plot box
+    /// of `size`.
+    pub fn plot_frame(size: [f32; 3]) -> (Vec3, f32) {
+        (
+            Vec3::from(size) / 2.0 - Vec3::Y * FRAMING_LIFT,
+            framing_radius(size),
+        )
+    }
+
+    /// World to clip space for a plot box of `size` shown in a viewport of `viewport` pixels.
+    /// The one matrix used for drawing, for placing labels and for picking, so they can never
+    /// disagree about where a bar is on screen.
+    pub fn plot_view_proj(&self, size: [f32; 3], viewport: (f32, f32)) -> Mat4 {
+        let (centre, radius) = Self::plot_frame(size);
+        self.view_proj(viewport.0 / viewport.1.max(1.0), centre, radius)
     }
 
     /// Where the camera is, for a box with this `centre` and `radius`.

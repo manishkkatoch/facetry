@@ -70,6 +70,8 @@ test("double-click resets the camera to the spec's", async ({ page }) => {
   expect((await camera(page)).azimuth).not.toBe(35);
   await page.locator("#chart").dblclick({ position: { x: 400, y: 250 } });
   await expect.poll(() => camera(page)).toEqual({ type: "perspective", azimuth: 35, elevation: 25, distance: 2.7 });
+  // The pointer is over a bar, which is highlighted; move it off the chart's bars to compare.
+  await page.mouse.move(2, 2);
   await expect.poll(async () => changedPixels(initial, await pixels(page))).toBe(0);
 });
 
@@ -114,7 +116,7 @@ test("every 3D example in the dropdown draws without errors", async ({ page }) =
   await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
   const names = await page.locator("#example option").allTextContents();
   const threeD = names.filter((n) => n.startsWith("bar3d-"));
-  expect(threeD).toEqual(["bar3d-grid", "bar3d-negative", "bar3d-row"]);
+  expect(threeD).toEqual(["bar3d-grid", "bar3d-labels", "bar3d-negative", "bar3d-row"]);
   let updates = 0;
   for (const name of threeD) {
     await page.locator("#example").selectOption(name);
@@ -139,6 +141,8 @@ test("2D charts and orbit:false charts ignore gestures", async ({ page }) => {
   await page.mouse.move(400, 330, { steps: 4 });
   await page.mouse.up();
   await page.mouse.wheel(0, 200);
+  // (Over a bar the pointer highlights it, so look with the pointer elsewhere.)
+  await page.mouse.move(2, 2);
   expect(changedPixels(before, await pixels(page))).toBe(0);
 
   // Switch to a 3D example, then turn orbiting off in its spec.
@@ -156,6 +160,7 @@ test("2D charts and orbit:false charts ignore gestures", async ({ page }) => {
   await page.mouse.move(420, 300, { steps: 4 });
   await page.mouse.up();
   expect((await camera(page)).azimuth).toBe(35);
+  await page.mouse.move(2, 2);
   expect(changedPixels(still, await pixels(page))).toBe(0);
 });
 

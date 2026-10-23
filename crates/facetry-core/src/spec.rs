@@ -300,7 +300,45 @@ pub struct LayerSpec {
     /// Name of a table in `data`.
     pub data: String,
     pub encoding: Encoding,
+    /// Value labels on the bars. Default: none.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<LabelSpec>,
 }
+
+/// Value labels: the `y` value written above each bar (below a negative one).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct LabelSpec {
+    /// `"always"`: every bar has its label. `"hover"`: only the bar under the pointer.
+    pub show: LabelShow,
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub format: Option<LabelFormat>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum LabelShow {
+    Always,
+    Hover,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct LabelFormat {
+    /// Digits after the decimal point (0 to 10). Default: as many as the value needs, up to 4,
+    /// so `1200` reads `1,200` and `0.25` reads `0.25`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub decimals: Option<u32>,
+}
+
+/// Most decimals a label may ask for; beyond that `f64` digits are noise anyway.
+pub const MAX_LABEL_DECIMALS: u32 = 10;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "ts", derive(Tsify))]

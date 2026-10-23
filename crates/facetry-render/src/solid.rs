@@ -7,14 +7,19 @@ use facetry_core::scene3d::Scene3d;
 use crate::gpu::{DEPTH_FORMAT, InstanceBuffer, QUAD_LAYOUT, show_range};
 use crate::rect::uniform_entry;
 
-/// One bar: opposite corners and a colour.
+/// One bar: opposite corners, a colour and a hover flag (1 lightens it; rewritten alone when
+/// the pointer moves between bars).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct BoxInstance {
     pub min: [f32; 3],
     pub max: [f32; 3],
     pub color: [f32; 4],
+    pub hover: f32,
 }
+
+/// Byte offset of [`BoxInstance::hover`] inside an instance.
+pub const BOX_HOVER_OFFSET: usize = std::mem::offset_of!(BoxInstance, hover);
 
 /// One line: endpoints, width in pixels, colour, and the azimuth range it is drawn in.
 #[repr(C)]
@@ -36,6 +41,7 @@ pub fn box_instances(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec
             min: b.min,
             max: b.max,
             color: encode(b.color),
+            hover: 0.0,
         })
         .collect()
 }
@@ -225,7 +231,7 @@ impl BoxPipeline {
         });
         let cube_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
         let instance_attrs =
-            wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32x4];
+            wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32x4, 5 => Float32];
         let pipeline = pipeline(
             device,
             &PipelineDesc {
@@ -271,6 +277,17 @@ impl BoxPipeline {
         items: &[BoxInstance],
     ) {
         self.instances.set(device, queue, items);
+    }
+
+    /// Sets the hover flag of instance `index` (an index into the slice given to
+    /// `set_instances`).
+    pub fn set_hover(&self, queue: &wgpu::Queue, index: usize, on: bool) {
+        let offset = index * std::mem::size_of::<BoxInstance>() + BOX_HOVER_OFFSET;
+        self.instances.patch(
+            queue,
+            offset as u64,
+            bytemuck::bytes_of(&if on { 1.0_f32 } else { 0.0 }),
+        );
     }
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
@@ -429,7 +446,8 @@ mod tests {
 
     #[test]
     fn instance_structs_match_their_vertex_layouts() {
-        assert_eq!(std::mem::size_of::<BoxInstance>(), 40);
+        assert_eq!(std::mem::size_of::<BoxInstance>(), 44);
+        assert_eq!(BOX_HOVER_OFFSET, 40);
         assert_eq!(std::mem::size_of::<LineInstance>(), 56);
     }
 }

@@ -3,6 +3,7 @@ import type {
   CameraState,
   CameraUpdate,
   ChartSpec,
+  MarkInfo,
 } from "../wasm/facetry_wasm.js";
 import { FacetryError } from "./errors.js";
 import { loadModule, webgpuLooksUsable, type ModuleKind } from "./wasm.js";
@@ -18,6 +19,37 @@ export interface ChartOptions {
   clearColor?: string;
 }
 
+/** What hover and click events report: the bar, and the row of data it was drawn from. */
+export type MarkEvent = MarkInfo;
+
+/** The events {@link Chart.on} takes. `null` means "no bar" (the pointer left every bar). */
+export interface ChartEvents {
+  /** The bar under the pointer changed. */
+  hover: MarkEvent | null;
+  /**
+   * The pointer was pressed and released on a bar (or on empty space: `null`) without
+   * dragging. A drag that orbits a 3D chart never clicks.
+   */
+  click: MarkEvent | null;
+}
+
+export interface SnapshotOptions {
+  /**
+   * Pixels per CSS pixel of the picture: 1 gives the canvas's size in CSS pixels, 2 twice
+   * that. Default: the current `devicePixelRatio`, which reproduces the canvas exactly. At
+   * most 4, and never beyond the GPU's texture size limit. The chart is laid out again at
+   * this scale, so text stays crisp.
+   */
+  scale?: number;
+  /** `"theme"` (default): the chart's background colour. `"transparent"`: no background. */
+  background?: "theme" | "transparent";
+}
+
+/** Pointer movement (CSS pixels) beyond which a press is a drag, not a click. */
+const CLICK_SLOP = 4;
+/** Give up on a snapshot the GPU never finishes copying after this long. */
+const SNAPSHOT_TIMEOUT_MS = 15_000;
+
 /**
  * A chart bound to a canvas. Create with {@link Chart.create}; call {@link destroy} when done.
  * Give the canvas a CSS size (the chart fills it); the pixel size follows automatically.
@@ -32,6 +64,18 @@ export class Chart {
   readonly #removeListeners: () => void;
   #resolveFirstFrame!: () => void;
   #rejectFirstFrame!: (e: unknown) => void;
+  readonly #listeners: { [K in keyof ChartEvents]: Set<(e: ChartEvents[K]) => void> } = {
+    hover: new Set(),
+    click: new Set(),
+  };
+  /** The bar under the pointer (index into the chart's bars), -1 for none. */
+  #hover = -1;
+  /** Where the pointer last was over the canvas, in CSS pixels; null once it left. */
+  #pointer: { x: number; y: number } | null = null;
+  /** True while a drag is orbiting the chart. */
+  #dragging = false;
+  /** The last queued snapshot, so the next one starts after it (the GPU copy is not reentrant). */
+  #snapshotTail: Promise<void> | null = null;
 
   /** Resolves after the first frame has been drawn; rejects if drawing fails first. */
   readonly firstFrame: Promise<void>;
@@ -53,7 +97,7 @@ export class Chart {
     this.firstFrame.catch(() => {});
     this.#observer = new ResizeObserver(() => this.#syncSize());
     this.#observer.observe(canvas);
-    this.#removeListeners = this.#attachOrbitControls();
+    this.#removeListeners = this.#attachPointerControls();
     this.#syncInteraction();
     this.requestRender();
   }
@@ -116,7 +160,116 @@ export class Chart {
       throw FacetryError.from(e);
     }
     this.#syncInteraction();
+    this.#resetHover();
     this.requestRender();
+  }
+
+  /**
+   * Calls `listener` when the bar under the pointer changes (`"hover"`, with `null` when the
+   * pointer leaves every bar) or when a bar is clicked (`"click"`). Events carry
+   * `{ key, layer, datum }`: the mark's key, its layer index and the data row it was drawn
+   * from as a plain object. A click on empty space reports `null`.
+   */
+  on<K extends keyof ChartEvents>(type: K, listener: (event: ChartEvents[K]) => void): void {
+    this.#listeners[type].add(listener);
+  }
+
+  /** Removes a listener added with {@link on}. */
+  off<K extends keyof ChartEvents>(type: K, listener: (event: ChartEvents[K]) => void): void {
+    this.#listeners[type].delete(listener);
+  }
+
+  /**
+   * Where the middle of the bar with this `key` is, in CSS pixels from the canvas's top-left
+   * (in 3D: where its centre projects with the camera as it is now), or `undefined` for an
+   * unknown key. Handy for placing your own annotations and for tests.
+   */
+  markPosition(key: string): { x: number; y: number } | undefined {
+    return this.#inner.markPosition(key);
+  }
+
+  /**
+   * A PNG of the chart exactly as it is now: the current spec and, in 3D, the current orbit
+   * camera. The chart is drawn again into an offscreen texture (so the canvas is not
+   * disturbed and keeps rendering), without any hover highlight or hover-only label. See
+   * {@link SnapshotOptions}.
+   */
+  snapshot(options: SnapshotOptions = {}): Promise<Blob> {
+    let scale: number;
+    let transparent: boolean;
+    try {
+      if (this.#destroyed) throw new FacetryError("destroyed", "chart is destroyed");
+      scale = options.scale ?? (window.devicePixelRatio || 1);
+      if (typeof scale !== "number" || !Number.isFinite(scale) || scale <= 0) {
+        throw new FacetryError("invalid-options", "`scale` must be a positive number");
+      }
+      const background = options.background ?? "theme";
+      if (background !== "theme" && background !== "transparent") {
+        throw new FacetryError(
+          "invalid-options",
+          `\`background\` must be "theme" or "transparent", got ${JSON.stringify(background)}`,
+        );
+      }
+      transparent = background === "transparent";
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    // The first snapshot starts right now (so it shows the state at the time of the call);
+    // later ones wait their turn.
+    const job = () => this.#takeSnapshot(scale, transparent);
+    const result = this.#snapshotTail ? this.#snapshotTail.then(job) : job();
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    this.#snapshotTail = tail;
+    void tail.then(() => {
+      if (this.#snapshotTail === tail) this.#snapshotTail = null;
+    });
+    return result;
+  }
+
+  /**
+   * Saves {@link snapshot} as a file through the browser's download mechanism. `options` are
+   * those of `snapshot`.
+   */
+  async downloadPNG(filename = "facetry.png", options?: SnapshotOptions): Promise<void> {
+    const blob = await this.snapshot(options);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Not at once: some browsers start the download after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async #takeSnapshot(scale: number, transparent: boolean): Promise<Blob> {
+    let meta: { width: number; height: number };
+    try {
+      meta = this.#inner.snapshotStart(scale, transparent);
+    } catch (e) {
+      throw FacetryError.from(e);
+    }
+    const started = performance.now();
+    for (;;) {
+      if (this.#destroyed) throw new FacetryError("destroyed", "chart destroyed during a snapshot");
+      let pixels: Uint8ClampedArray | undefined;
+      try {
+        pixels = this.#inner.snapshotPoll();
+      } catch (e) {
+        throw FacetryError.from(e);
+      }
+      if (pixels) return encodePng(pixels, meta.width, meta.height);
+      if (performance.now() - started > SNAPSHOT_TIMEOUT_MS) {
+        throw new FacetryError("render-failed", "the GPU did not finish the snapshot in time");
+      }
+      // Yield to the event loop: in browsers, that is where the GPU copy completes.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   /**
@@ -139,6 +292,7 @@ export class Chart {
     } catch (e) {
       throw FacetryError.from(e);
     }
+    this.#repick();
     this.requestRender();
   }
 
@@ -146,6 +300,7 @@ export class Chart {
   resetCamera(): void {
     if (this.#destroyed) return;
     this.#inner.resetCamera();
+    this.#repick();
     this.requestRender();
   }
 
@@ -175,6 +330,8 @@ export class Chart {
     this.#destroyed = true;
     this.#observer.disconnect();
     this.#removeListeners();
+    this.#listeners.hover.clear();
+    this.#listeners.click.clear();
     cancelAnimationFrame(this.#raf);
     this.#raf = 0;
     this.#rejectFirstFrame(new FacetryError("destroyed", "chart destroyed before first frame"));
@@ -189,34 +346,86 @@ export class Chart {
   }
 
   /**
-   * Drag to orbit, wheel to zoom, double-click to reset. The handlers are always attached
-   * but do nothing unless the chart is 3D with `interaction.orbit` on. They only change the
-   * camera inside Rust and ask for a frame; the scene is not rebuilt.
+   * Pointer handling: drag to orbit, wheel to zoom, double-click to reset (3D with
+   * `interaction.orbit` on), and for every chart hover and click on bars. The handlers only
+   * change the camera or the hover inside Rust and ask for a frame; the scene is not rebuilt.
+   *
+   * A press becomes a drag once the pointer has moved more than a few pixels; until then it
+   * may still be a click. The orbit then starts from where the press was, so no movement is
+   * lost, and the release does not click.
    */
-  #attachOrbitControls(): () => void {
+  #attachPointerControls(): () => void {
     const canvas = this.#canvas;
-    let drag: { id: number; x: number; y: number } | null = null;
+    let press: { id: number; x: number; y: number; lastX: number; lastY: number } | null = null;
+
+    /** Pointer position in CSS pixels from the canvas's top-left. */
+    const at = (e: MouseEvent) => {
+      const box = canvas.getBoundingClientRect();
+      // Divides out any CSS transform that scales the canvas.
+      return {
+        x: (e.clientX - box.left) * (canvas.clientWidth / (box.width || 1)),
+        y: (e.clientY - box.top) * (canvas.clientHeight / (box.height || 1)),
+      };
+    };
+    const endDrag = () => {
+      this.#dragging = false;
+      canvas.style.cursor = this.#inner.orbitEnabled ? "grab" : "";
+    };
 
     const down = (e: PointerEvent) => {
-      if (!this.#inner.orbitEnabled || e.button !== 0 || drag) return;
-      drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      if (e.button !== 0 || press) return;
+      press = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY };
+      this.#pointer = at(e);
       // Capture keeps the drag going when the pointer leaves the canvas.
-      canvas.setPointerCapture(e.pointerId);
-      canvas.style.cursor = "grabbing";
+      if (this.#inner.orbitEnabled) canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
-      if (!drag || e.pointerId !== drag.id) return;
+      this.#pointer = at(e);
+      if (!press) {
+        this.#setHover(this.#inner.pick(this.#pointer.x, this.#pointer.y));
+        return;
+      }
+      if (e.pointerId !== press.id || !this.#inner.orbitEnabled) return;
+      if (!this.#dragging) {
+        if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= CLICK_SLOP) return;
+        this.#dragging = true;
+        canvas.style.cursor = "grabbing";
+        // The chart is about to move under the pointer: nothing is hovered while it does.
+        this.#setHover(-1);
+        press.lastX = press.x;
+        press.lastY = press.y;
+      }
       // CSS pixels, so a drag turns the chart by the same angle on any screen density.
-      this.#inner.orbit(e.clientX - drag.x, e.clientY - drag.y);
-      drag.x = e.clientX;
-      drag.y = e.clientY;
+      this.#inner.orbit(e.clientX - press.lastX, e.clientY - press.lastY);
+      press.lastX = e.clientX;
+      press.lastY = e.clientY;
       this.requestRender();
     };
     const up = (e: PointerEvent) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      drag = null;
+      if (!press || e.pointerId !== press.id) return;
+      const wasDrag = this.#dragging;
+      press = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-      canvas.style.cursor = this.#inner.orbitEnabled ? "grab" : "";
+      endDrag();
+      this.#pointer = at(e);
+      if (e.type === "pointercancel") return;
+      if (wasDrag) {
+        this.#repick();
+        return;
+      }
+      // A click: it hits what the pointer is over (looked up now, so it is right even if no
+      // move event came first, as with touch).
+      const mark = this.#inner.pick(this.#pointer.x, this.#pointer.y);
+      this.#emit("click", mark >= 0 ? this.#inner.markInfo(mark) : null);
+      if (e.pointerType !== "mouse") {
+        this.#pointer = null;
+        this.#setHover(-1);
+      }
+    };
+    const leave = () => {
+      if (press) return;
+      this.#pointer = null;
+      this.#setHover(-1);
     };
     const wheel = (e: WheelEvent) => {
       if (!this.#inner.orbitEnabled) return;
@@ -225,11 +434,13 @@ export class Chart {
       // Normalise to pixels: some mice report lines or pages.
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
       this.#inner.zoom(e.deltaY * unit);
+      this.#repick();
       this.requestRender();
     };
     const dblclick = () => {
       if (!this.#inner.orbitEnabled) return;
       this.#inner.resetCamera();
+      this.#repick();
       this.requestRender();
     };
 
@@ -237,6 +448,7 @@ export class Chart {
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("pointerleave", leave);
     // Not passive: we call preventDefault to stop the page scrolling.
     canvas.addEventListener("wheel", wheel, { passive: false });
     canvas.addEventListener("dblclick", dblclick);
@@ -245,9 +457,46 @@ export class Chart {
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", up);
+      canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("dblclick", dblclick);
     };
+  }
+
+  /** Makes `mark` the hovered bar (-1: none), redraws, and tells `hover` listeners. */
+  #setHover(mark: number): void {
+    if (mark === this.#hover || this.#destroyed) return;
+    this.#hover = mark;
+    this.#inner.setHover(mark);
+    this.requestRender();
+    this.#emit("hover", mark >= 0 ? this.#inner.markInfo(mark) : null);
+  }
+
+  /** Looks again at what is under the last known pointer position (the chart moved, not the pointer). */
+  #repick(): void {
+    if (this.#pointer && !this.#dragging) {
+      this.#setHover(this.#inner.pick(this.#pointer.x, this.#pointer.y));
+    }
+  }
+
+  /** The chart was laid out again: its bars are new, so nothing is hovered until we look again. */
+  #resetHover(): void {
+    if (this.#hover !== -1) {
+      this.#hover = -1;
+      this.#emit("hover", null);
+    }
+    this.#repick();
+  }
+
+  #emit<K extends keyof ChartEvents>(type: K, event: ChartEvents[K]): void {
+    for (const listener of [...this.#listeners[type]]) {
+      try {
+        listener(event);
+      } catch (e) {
+        // A throwing listener must not break the chart or the other listeners.
+        console.error(e);
+      }
+    }
   }
 
   #syncSize(): void {
@@ -255,6 +504,7 @@ export class Chart {
     const { width, height, dpr } = sizeCanvas(this.#canvas);
     // Layout depends on the size (margins, tick counts, label thinning), not just the surface.
     this.#inner.resize(width, height, dpr);
+    this.#resetHover();
     this.requestRender();
   }
 }
@@ -267,4 +517,24 @@ function sizeCanvas(canvas: HTMLCanvasElement): { width: number; height: number;
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   return { width, height, dpr };
+}
+
+/** Encodes RGBA pixels (not premultiplied) as a PNG with the browser's own encoder. */
+async function encodePng(pixels: Uint8ClampedArray, width: number, height: number): Promise<Blob> {
+  const image = new ImageData(pixels as Uint8ClampedArray<ArrayBuffer>, width, height);
+  if (typeof OffscreenCanvas !== "undefined") {
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext("2d")!.putImageData(image, 0, 0);
+    return canvas.convertToBlob({ type: "image/png" });
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")!.putImageData(image, 0, 0);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new FacetryError("render-failed", "PNG encoding failed"))),
+      "image/png",
+    ),
+  );
 }
