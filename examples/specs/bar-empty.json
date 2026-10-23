@@ -1,0 +1,19 @@
+{
+  "data": {
+    "sales": { "quarter": [], "revenue": [] }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "y", "orient": "left", "title": "Revenue" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "sales",
+      "encoding": {
+        "x": { "field": "quarter" },
+        "y": { "field": "revenue" }
+      }
+    }
+  ]
+}

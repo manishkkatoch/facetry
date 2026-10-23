@@ -1,0 +1,829 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"bar-many\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [
+    {
+      "key": "layer0/Mon 01",
+      "x": 77.0,
+      "y": 206.0,
+      "w": 28.0,
+      "h": 233.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Tue 02",
+      "x": 112.0,
+      "y": 361.0,
+      "w": 29.0,
+      "h": 78.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Wed 03",
+      "x": 148.0,
+      "y": 245.0,
+      "w": 29.0,
+      "h": 194.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Thu 04",
+      "x": 184.0,
+      "y": 128.0,
+      "w": 28.0,
+      "h": 311.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Fri 05",
+      "x": 220.0,
+      "y": 167.0,
+      "w": 28.0,
+      "h": 272.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Sat 06",
+      "x": 255.0,
+      "y": 284.0,
+      "w": 29.0,
+      "h": 155.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Sun 07",
+      "x": 291.0,
+      "y": 323.0,
+      "w": 29.0,
+      "h": 116.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Mon 08",
+      "x": 327.0,
+      "y": 206.0,
+      "w": 28.0,
+      "h": 233.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Tue 09",
+      "x": 363.0,
+      "y": 90.0,
+      "w": 28.0,
+      "h": 349.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Wed 10",
+      "x": 398.0,
+      "y": 51.0,
+      "w": 29.0,
+      "h": 388.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Thu 11",
+      "x": 434.0,
+      "y": 113.0,
+      "w": 29.0,
+      "h": 326.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Fri 12",
+      "x": 470.0,
+      "y": 144.0,
+      "w": 28.0,
+      "h": 295.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Sat 13",
+      "x": 506.0,
+      "y": 268.0,
+      "w": 28.0,
+      "h": 171.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Sun 14",
+      "x": 541.0,
+      "y": 299.0,
+      "w": 29.0,
+      "h": 140.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Mon 15",
+      "x": 577.0,
+      "y": 183.0,
+      "w": 29.0,
+      "h": 256.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Tue 16",
+      "x": 613.0,
+      "y": 74.0,
+      "w": 28.0,
+      "h": 365.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Wed 17",
+      "x": 649.0,
+      "y": 35.0,
+      "w": 28.0,
+      "h": 404.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Thu 18",
+      "x": 684.0,
+      "y": 97.0,
+      "w": 29.0,
+      "h": 342.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Fri 19",
+      "x": 720.0,
+      "y": 128.0,
+      "w": 29.0,
+      "h": 311.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Sat 20",
+      "x": 756.0,
+      "y": 237.0,
+      "w": 28.0,
+      "h": 202.0,
+      "color": "#4c78a8"
+    }
+  ],
+  "rules": [
+    {
+      "key": "axis:y/grid:0.00",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 439.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.05",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 400.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.10",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 361.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.15",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 323.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.20",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 284.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.25",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 245.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.30",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 206.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.35",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 167.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.40",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 128.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.45",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 90.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.50",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 51.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:0.55",
+      "kind": "grid",
+      "x": 73.0,
+      "y": 12.0,
+      "w": 715.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 72.0,
+      "y": 439.0,
+      "w": 716.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Mon 01",
+      "kind": "tick",
+      "x": 91.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Tue 02",
+      "kind": "tick",
+      "x": 127.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Wed 03",
+      "kind": "tick",
+      "x": 162.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Thu 04",
+      "kind": "tick",
+      "x": 198.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Fri 05",
+      "kind": "tick",
+      "x": 234.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Sat 06",
+      "kind": "tick",
+      "x": 270.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Sun 07",
+      "kind": "tick",
+      "x": 305.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Mon 08",
+      "kind": "tick",
+      "x": 341.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Tue 09",
+      "kind": "tick",
+      "x": 377.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Wed 10",
+      "kind": "tick",
+      "x": 413.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Thu 11",
+      "kind": "tick",
+      "x": 448.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Fri 12",
+      "kind": "tick",
+      "x": 484.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Sat 13",
+      "kind": "tick",
+      "x": 520.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Sun 14",
+      "kind": "tick",
+      "x": 556.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Mon 15",
+      "kind": "tick",
+      "x": 591.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Tue 16",
+      "kind": "tick",
+      "x": 627.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Wed 17",
+      "kind": "tick",
+      "x": 663.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Thu 18",
+      "kind": "tick",
+      "x": 699.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Fri 19",
+      "kind": "tick",
+      "x": 734.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Sat 20",
+      "kind": "tick",
+      "x": 770.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 72.0,
+      "y": 12.0,
+      "w": 1.0,
+      "h": 427.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.00",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.05",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 400.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.10",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 361.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.15",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 323.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.20",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 284.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.25",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 245.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.30",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 206.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.35",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 167.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.40",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 128.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.45",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 90.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.50",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 51.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0.55",
+      "kind": "tick",
+      "x": 66.0,
+      "y": 12.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Mon 01",
+      "text": "Mon 01",
+      "x": 91.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Wed 03",
+      "text": "Wed 03",
+      "x": 162.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Fri 05",
+      "text": "Fri 05",
+      "x": 234.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Sun 07",
+      "text": "Sun 07",
+      "x": 305.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Tue 09",
+      "text": "Tue 09",
+      "x": 377.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Thu 11",
+      "text": "Thu 11",
+      "x": 448.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Sat 13",
+      "text": "Sat 13",
+      "x": 520.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Mon 15",
+      "text": "Mon 15",
+      "x": 591.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Wed 17",
+      "text": "Wed 17",
+      "x": 663.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Fri 19",
+      "text": "Fri 19",
+      "x": 734.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Day",
+      "x": 431.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.00",
+      "text": "0.00",
+      "x": 62.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.05",
+      "text": "0.05",
+      "x": 62.0,
+      "y": 404.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.10",
+      "text": "0.10",
+      "x": 62.0,
+      "y": 365.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.15",
+      "text": "0.15",
+      "x": 62.0,
+      "y": 327.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.20",
+      "text": "0.20",
+      "x": 62.0,
+      "y": 288.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.25",
+      "text": "0.25",
+      "x": 62.0,
+      "y": 249.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.30",
+      "text": "0.30",
+      "x": 62.0,
+      "y": 210.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.35",
+      "text": "0.35",
+      "x": 62.0,
+      "y": 171.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.40",
+      "text": "0.40",
+      "x": 62.0,
+      "y": 132.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.45",
+      "text": "0.45",
+      "x": 62.0,
+      "y": 94.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.50",
+      "text": "0.50",
+      "x": 62.0,
+      "y": 55.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0.55",
+      "text": "0.55",
+      "x": 62.0,
+      "y": 16.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Conversion rate",
+      "x": 25.0,
+      "y": 226.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    }
+  ]
+}

@@ -1,10 +1,28 @@
 [package]
 name = "facetry-core"
-description = "Pure-Rust chart model: colours, themes. No GPU or browser dependencies."
+description = "Pure-Rust chart model: spec, scales, layout, scene. No GPU or browser dependencies."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[features]
+# Generates TypeScript declarations for the spec types (used by facetry-wasm only).
+ts = ["dep:tsify", "dep:wasm-bindgen"]
+
+[dependencies]
+facetry-font.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+# Test-only crates that do not build for wasm32 (`cargo clippy --target wasm32 --all-targets`
+# still compiles the tests), so they are native-only and the tests that use them are gated.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

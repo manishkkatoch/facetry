@@ -44,6 +44,14 @@ fn linear_to_srgb(c: f32) -> f32 {
     }
 }
 
+/// Serialises as the hex string, so scene snapshots read `"#4c78a8"` rather than
+/// four linear floats.
+impl serde::Serialize for Color {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
 impl Color {
     /// Builds a colour from linear channels.
     pub const fn linear(r: f32, g: f32, b: f32, a: f32) -> Self {
@@ -76,6 +84,23 @@ impl Color {
             linear_to_srgb(self.b),
             self.a,
         ]
+    }
+
+    /// `#rrggbb` (or `#rrggbbaa` when not opaque) in sRGB, rounded to 8 bits per channel.
+    pub fn to_hex(self) -> String {
+        let [r, g, b, a] = self.to_srgb();
+        let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        if a >= 1.0 {
+            format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
+        } else {
+            format!(
+                "#{:02x}{:02x}{:02x}{:02x}",
+                byte(r),
+                byte(g),
+                byte(b),
+                byte(a)
+            )
+        }
     }
 
     /// The channels as `[r, g, b, a]` (linear).
@@ -123,6 +148,13 @@ mod tests {
         let [r, g, b, a] = c.to_srgb();
         assert!(close(r, 51.0 / 255.0) && close(g, 102.0 / 255.0) && close(b, 153.0 / 255.0));
         assert_eq!(a, 1.0);
+    }
+
+    #[test]
+    fn hex_round_trips() {
+        for hex in ["#4c78a8", "#000000", "#ffffff", "#12345680"] {
+            assert_eq!(Color::from_hex(hex).unwrap().to_hex(), hex);
+        }
     }
 
     #[test]

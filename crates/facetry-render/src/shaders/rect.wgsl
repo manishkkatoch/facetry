@@ -1,0 +1,45 @@
+// Instanced rectangles. One unit quad (4 corners, drawn as a triangle strip) is stretched
+// to each instance's rect, so a whole chart's bars and lines are a single draw call.
+
+struct Globals {
+    // Render target size in pixels; converts pixel coordinates to clip space.
+    viewport: vec2<f32>,
+    // Atlas size in pixels and its distance range (used by the text shader only).
+    atlas: vec2<f32>,
+    px_range: f32,
+    // Pads the block to 32 bytes: WebGL2 needs uniform blocks to be a multiple of 16.
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+}
+
+@group(0) @binding(0) var<uniform> globals: Globals;
+
+struct Vertex {
+    // Per vertex: which corner of the unit quad, (0,0) top-left to (1,1) bottom-right.
+    @location(0) corner: vec2<f32>,
+    // Per instance:
+    @location(1) rect: vec4<f32>,  // x, y, width, height in device pixels, origin top-left
+    @location(2) color: vec4<f32>,
+}
+
+struct Varying {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+}
+
+@vertex
+fn vs_main(v: Vertex) -> Varying {
+    let px = v.rect.xy + v.corner * v.rect.zw;
+    // Orthographic projection: pixels (y down) to clip space (y up).
+    let clip = vec2<f32>(
+        px.x / globals.viewport.x * 2.0 - 1.0,
+        1.0 - px.y / globals.viewport.y * 2.0,
+    );
+    return Varying(vec4<f32>(clip, 0.0, 1.0), v.color);
+}
+
+@fragment
+fn fs_main(in: Varying) -> @location(0) vec4<f32> {
+    return in.color;
+}

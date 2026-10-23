@@ -1,0 +1,86 @@
+//! Small GPU-facing pieces shared by the pipelines: the uniform block, the unit quad, and
+//! instance buffers that grow on demand.
+
+use bytemuck::{Pod, Zeroable};
+
+/// Uniforms shared by both shaders (matches `Globals` in the WGSL). 32 bytes: uniform
+/// blocks must be a multiple of 16.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct Globals {
+    /// Render target size in pixels.
+    pub viewport: [f32; 2],
+    /// Atlas size in pixels.
+    pub atlas: [f32; 2],
+    pub px_range: f32,
+    pub _pad: [f32; 3],
+}
+
+/// Corners of the unit quad as a triangle strip: (0,0) top-left, (1,1) bottom-right.
+pub const QUAD: [[f32; 2]; 4] = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+
+/// The vertex buffer layout for the quad corner (shader location 0).
+pub const QUAD_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+    array_stride: 8,
+    step_mode: wgpu::VertexStepMode::Vertex,
+    attributes: &wgpu::vertex_attr_array![0 => Float32x2],
+};
+
+/// A GPU buffer of `T` instances that is rewritten whole each time the scene changes,
+/// reallocated only when it must grow.
+#[derive(Debug)]
+pub struct InstanceBuffer {
+    buffer: Option<wgpu::Buffer>,
+    capacity: usize,
+    count: u32,
+    label: &'static str,
+}
+
+impl InstanceBuffer {
+    pub fn new(label: &'static str) -> Self {
+        Self {
+            buffer: None,
+            capacity: 0,
+            count: 0,
+            label,
+        }
+    }
+
+    /// Replaces the contents with `items`.
+    pub fn set<T: Pod>(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, items: &[T]) {
+        self.count = items.len() as u32;
+        if items.is_empty() {
+            return;
+        }
+        if self.buffer.is_none() || items.len() > self.capacity {
+            self.capacity = items.len().next_power_of_two();
+            self.buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(self.label),
+                size: (self.capacity * std::mem::size_of::<T>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        if let Some(buffer) = &self.buffer {
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(items));
+        }
+    }
+
+    /// The buffer and instance count, or `None` when there is nothing to draw.
+    pub fn bound(&self) -> Option<(&wgpu::Buffer, u32)> {
+        match (&self.buffer, self.count) {
+            (_, 0) | (None, _) => None,
+            (Some(b), n) => Some((b, n)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn globals_match_the_wgsl_block_size() {
+        assert_eq!(std::mem::size_of::<Globals>(), 32);
+    }
+}
