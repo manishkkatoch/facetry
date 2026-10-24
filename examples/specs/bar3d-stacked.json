@@ -1,0 +1,31 @@
+{
+  "dimension": "3d",
+  "data": {
+    "sales": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4"],
+      "region": ["North", "North", "North", "North", "North", "North", "North", "North", "North", "North", "North", "North", "South", "South", "South", "South", "South", "South", "South", "South", "South", "South", "South", "South", "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", "West"],
+      "product": ["Hardware", "Hardware", "Hardware", "Hardware", "Software", "Software", "Software", "Software", "Services", "Services", "Services", "Services", "Hardware", "Hardware", "Hardware", "Hardware", "Software", "Software", "Software", "Software", "Services", "Services", "Services", "Services", "Hardware", "Hardware", "Hardware", "Hardware", "Software", "Software", "Software", "Software", "Services", "Services", "Services", "Services"],
+      "revenue": [120, 90, 140, 110, 80, 95, 110, 130, 40, 45, 30, 5, 96, 72, 112, 88, 64, 76, 88, 104, 32, 36, 24, 4, 72, 54, 84, 66, 48, 57, 66, 78, 24, 27, 18, 3]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "y", "orient": "left", "title": "Revenue" },
+    { "id": "z", "orient": "depth", "title": "Region" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "sales",
+      "position": "stack",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "revenue", "axis": "y" },
+        "z": { "field": "region", "axis": "z" },
+        "color": { "field": "product" }
+      }
+    }
+  ],
+  "camera": { "type": "perspective", "azimuth": 35, "elevation": 25, "distance": 2.7 },
+  "interaction": { "orbit": true }
+}

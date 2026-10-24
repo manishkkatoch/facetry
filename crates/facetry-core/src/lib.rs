@@ -11,6 +11,7 @@ pub mod scene3d;
 pub mod spec;
 mod text;
 mod theme;
+pub mod transform;
 mod validate;
 
 pub use build::{build_scene, build_scene_with_theme};

@@ -306,3 +306,40 @@ test("2D charts report hover and click even though they cannot orbit", async ({ 
   const log = await events(page);
   expect(log.map((e) => `${e.type}:${e.mark?.key}`)).toEqual(["hover:layer0/Q2", "click:layer0/Q2"]);
 });
+
+test("stacked bars: hover reports the segment's row, and merged rows report their sum", async ({ page }) => {
+  await open(page, "bar-stacked");
+  await listen(page);
+  const seg = await where(page, "layer0/Q2/Software");
+  await page.mouse.move(seg.x, seg.y);
+  expect(await events(page)).toEqual([
+    { type: "hover", mark: { key: "layer0/Q2/Software", layer: 0, datum: { quarter: "Q2", product: "Software", revenue: 95 } } },
+  ]);
+  // A second Q2 Software row: the stack merges them (95 + 5) and the datum is the first row
+  // with the summed revenue.
+  await page.evaluate(() => {
+    const spec = JSON.parse((document.querySelector("#json") as HTMLTextAreaElement).value);
+    const t = spec.data.sales;
+    t.quarter.push("Q2");
+    t.product.push("Software");
+    t.revenue.push(5);
+    (window as any).facetryChart.update(spec);
+  });
+  // The pointer stayed where it was: hover cleared by the relayout, then found again.
+  const log = await events(page);
+  expect(log.at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Q2/Software", layer: 0, datum: { quarter: "Q2", product: "Software", revenue: 100 } },
+  });
+});
+
+test("3D stacked bars: hovering a segment reports it", async ({ page }) => {
+  await open(page, "bar3d-stacked");
+  await listen(page);
+  const key = "layer0/Q3/Software/North";
+  const p = await where(page, key);
+  await page.mouse.move(p.x, p.y);
+  const log = await events(page);
+  expect(log.at(-1)?.mark?.key).toBe(key);
+  expect(log.at(-1)?.mark?.datum).toEqual({ quarter: "Q3", region: "North", product: "Software", revenue: 110 });
+});

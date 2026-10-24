@@ -352,11 +352,11 @@ impl Chart {
         let Ok(mark) = usize::try_from(mark) else {
             return JsValue::NULL;
         };
-        let (key, layer, row) = match &self.scene {
-            SceneKind::TwoD(s) => s.rects.get(mark).map(|r| (&r.key, r.layer, r.row)),
-            SceneKind::ThreeD(s) => s.boxes.get(mark).map(|b| (&b.key, b.layer, b.row)),
+        let (key, layer, row, sum) = match &self.scene {
+            SceneKind::TwoD(s) => s.rects.get(mark).map(|r| (&r.key, r.layer, r.row, r.sum)),
+            SceneKind::ThreeD(s) => s.boxes.get(mark).map(|b| (&b.key, b.layer, b.row, b.sum)),
         }
-        .map_or((None, 0, 0), |(k, l, r)| (Some(k), l, r));
+        .map_or((None, 0, 0, None), |(k, l, r, s)| (Some(k), l, r, s));
         let Some(key) = key else {
             return JsValue::NULL;
         };
@@ -367,7 +367,7 @@ impl Chart {
         };
         set("key", key.as_str().into());
         set("layer", (layer as f64).into());
-        set("datum", self.datum(layer, row));
+        set("datum", self.datum(layer, row, sum));
         object.into()
     }
 
@@ -540,15 +540,19 @@ impl Chart {
     }
 
     /// The row of a layer's table as a plain JS object (numbers, strings, `null` for a
-    /// missing number).
-    fn datum(&self, layer: usize, row: usize) -> JsValue {
+    /// missing number). When the mark stands for several merged rows (stacked, normalised
+    /// and grouped bars add up rows with the same x and series) `sum` is the total, and it
+    /// replaces the y value: the datum is "the first row, with the summed value".
+    fn datum(&self, layer: usize, row: usize, sum: Option<f64>) -> JsValue {
         let object = js_sys::Object::new();
-        let table = self
-            .spec
-            .layers
-            .get(layer)
-            .and_then(|l| self.spec.data.get(&l.data));
+        let spec_layer = self.spec.layers.get(layer);
+        let table = spec_layer.and_then(|l| self.spec.data.get(&l.data));
+        let y_field = spec_layer.map(|l| l.encoding.y.field.as_str());
         for (name, column) in table.into_iter().flatten() {
+            if let (Some(sum), true) = (sum, Some(name.as_str()) == y_field) {
+                let _ = js_sys::Reflect::set(&object, &name.as_str().into(), &sum.into());
+                continue;
+            }
             let value = match column {
                 Column::Numeric(v) => v
                     .get(row)

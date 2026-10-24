@@ -60,6 +60,11 @@ pub struct Rect {
     pub layer: usize,
     #[serde(skip)]
     pub row: usize,
+    /// The summed value when the bar stands for several rows that were merged (`stack`,
+    /// `normalize`, `group` add up rows with the same x and series). Hover and click report
+    /// the first row's data with its y value replaced by this.
+    #[serde(skip)]
+    pub sum: Option<f64>,
 }
 
 /// What a rule is, which decides when it is drawn: gridlines go *behind* bars, axis lines

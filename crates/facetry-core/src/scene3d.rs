@@ -82,6 +82,10 @@ pub struct BoxMark {
     pub layer: usize,
     #[serde(skip)]
     pub row: usize,
+    /// The summed value if the box stands for several merged rows (see
+    /// [`crate::scene::Rect::sum`]).
+    #[serde(skip)]
+    pub sum: Option<f64>,
 }
 
 /// A straight line segment in world space (gridline, axis edge or tick mark). It is drawn as

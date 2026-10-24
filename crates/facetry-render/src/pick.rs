@@ -112,6 +112,7 @@ mod tests {
             color: Color::linear(0.0, 0.0, 0.0, 1.0),
             layer: 0,
             row: 0,
+            sum: None,
         }
     }
 

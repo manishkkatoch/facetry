@@ -292,6 +292,24 @@ pub enum Mark {
     Bar,
 }
 
+/// How the bars of one layer share an `x` category when they have a `color.field` (the
+/// series). Rows with the same x and series are summed first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum Position {
+    /// Every row is its own bar and bars of the same x overlap (the default).
+    #[default]
+    Overlay,
+    /// Series stack on top of each other in dictionary order of the colour field; negative
+    /// values stack downward from zero.
+    Stack,
+    /// Stacked, with each x scaled to 100%. Values must not be negative.
+    Normalize,
+    /// Series sit side by side inside the x band.
+    Group,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
@@ -300,6 +318,11 @@ pub struct LayerSpec {
     /// Name of a table in `data`.
     pub data: String,
     pub encoding: Encoding,
+    /// How bars that share an x category are placed: `"overlay"` (default), `"stack"`,
+    /// `"normalize"` or `"group"`. The last three need `encoding.color.field`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub position: Position,
     /// Value labels on the bars. Default: none.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]

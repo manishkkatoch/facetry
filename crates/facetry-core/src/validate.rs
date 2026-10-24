@@ -14,8 +14,9 @@ use tsify::Tsify;
 use crate::Color;
 use crate::spec::{
     AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
-    MAX_LABEL_DECIMALS, Orient, PositionEncoding, Table,
+    MAX_LABEL_DECIMALS, Orient, Position, PositionEncoding, Table,
 };
+use crate::transform::{self, Cell, Row};
 
 /// One problem with a spec.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -98,9 +99,62 @@ pub(crate) struct ResolvedLayer<'a> {
     pub z_dict: &'a [String],
     pub color: ColorSource<'a>,
     pub key: Option<&'a Column>,
+    pub position: Position,
 }
 
 impl ResolvedLayer<'_> {
+    /// The rows merged into one cell per (x, series, z): what `stack`, `normalize` and
+    /// `group` lay out. The series is the colour field's code (always a field for those
+    /// positions; `validate` insists).
+    pub fn cells(&self) -> Vec<Cell> {
+        let ColorSource::Field { codes, .. } = self.color else {
+            return Vec::new();
+        };
+        transform::aggregate((0..self.rows()).map(|row| Row {
+            x: self.x_codes[row] as usize,
+            series: codes[row] as usize,
+            z: if self.z_axis.is_some() {
+                self.z_codes[row] as usize
+            } else {
+                0
+            },
+            value: self.y[row],
+            row,
+        }))
+    }
+
+    /// Number of series (distinct colour categories) of a layer coloured by field.
+    pub fn series_count(&self) -> usize {
+        match self.color {
+            ColorSource::Field { dict, .. } => dict.len(),
+            _ => 1,
+        }
+    }
+
+    /// The smallest and largest y value the layer's marks reach (`None` without finite
+    /// values), after its `position` transform: raw values for `overlay`, stack tops and
+    /// bottoms for `stack`, `(0, 1)` for `normalize` and summed values for `group`.
+    pub fn extent(&self) -> Option<(f64, f64)> {
+        match self.position {
+            Position::Overlay => self
+                .y
+                .iter()
+                .filter(|v| v.is_finite())
+                .map(|&v| (v, v))
+                .reduce(|(lo, hi), (a, b)| (lo.min(a), hi.max(b))),
+            Position::Stack => {
+                let cells = self.cells();
+                transform::extent(&transform::stack(&cells, false))
+            }
+            Position::Normalize => (!self.cells().is_empty()).then_some((0.0, 1.0)),
+            Position::Group => self
+                .cells()
+                .iter()
+                .map(|c| (c.value, c.value))
+                .reduce(|(lo, hi), (a, b)| (lo.min(a), hi.max(b))),
+        }
+    }
+
     /// Rows to draw. Tables are validated to have equal column lengths; `min` keeps this
     /// total (no out-of-bounds) even for a spec that was never validated.
     pub fn rows(&self) -> usize {
@@ -369,6 +423,8 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
         );
     }
 
+    check_position(layer, color.as_ref(), y_values, &at(&[]), &mut issues);
+
     match (x_axis, y_axis, color) {
         (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => Ok(ResolvedLayer {
             index: i,
@@ -382,8 +438,51 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
             z_dict,
             color,
             key,
+            position: layer.position,
         }),
         _ => Err(issues),
+    }
+}
+
+/// `stack`, `normalize` and `group` need series (a colour field); `normalize` also needs
+/// non-negative values, because a share of a total that mixes signs means nothing.
+fn check_position(
+    layer: &LayerSpec,
+    color: Option<&ColorSource>,
+    y: &[f64],
+    layer_path: &str,
+    issues: &mut Vec<Issue>,
+) {
+    let name = match layer.position {
+        Position::Overlay => return,
+        Position::Stack => "stack",
+        Position::Normalize => "normalize",
+        Position::Group => "group",
+    };
+    if matches!(color, Some(ColorSource::Default | ColorSource::Fixed(_))) {
+        issues.push(Issue::new(
+            format!("{layer_path}/position"),
+            format!(
+                "position {name:?} needs `encoding.color.field`: the series to {} come from it",
+                if layer.position == Position::Group {
+                    "place side by side"
+                } else {
+                    "stack"
+                }
+            ),
+        ));
+    }
+    if layer.position == Position::Normalize {
+        let negatives = y.iter().filter(|v| **v < 0.0).count();
+        if let Some(first) = y.iter().position(|v| *v < 0.0) {
+            issues.push(Issue::new(
+                format!("{layer_path}/encoding/y/field"),
+                format!(
+                    "position \"normalize\" needs non-negative values, but row {first} is {} ({negatives} negative in all); use \"stack\" to stack positive and negative values",
+                    y[first]
+                ),
+            ));
+        }
     }
 }
 
@@ -556,5 +655,32 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
             ));
         }
     }
+    check_percent_axes(spec, &mut issues);
     issues
+}
+
+/// A y axis that shows a normalised layer reads 0-100%, so a layer with raw values cannot
+/// share it. Reported on every layer whose kind differs from the first one on that axis.
+fn check_percent_axes(spec: &ChartSpec, issues: &mut Vec<Issue>) {
+    let resolved: Vec<ResolvedLayer> = (0..spec.layers.len())
+        .filter_map(|i| resolve_layer(spec, i).ok())
+        .collect();
+    for (n, layer) in resolved.iter().enumerate() {
+        let first = resolved[..n].iter().find(|l| l.y_axis == layer.y_axis);
+        let Some(first) = first else { continue };
+        if (first.position == Position::Normalize) != (layer.position == Position::Normalize) {
+            let (normalised, raw) = if first.position == Position::Normalize {
+                (first.index, layer.index)
+            } else {
+                (layer.index, first.index)
+            };
+            issues.push(Issue::new(
+                pointer(&["layers", &layer.index.to_string(), "encoding", "y", "axis"]),
+                format!(
+                    "axis {:?} shows percentages for the \"normalize\" layer {normalised}, so it cannot also show the raw values of layer {raw}; give one of them its own axis",
+                    spec.axes[layer.y_axis].id,
+                ),
+            ));
+        }
+    }
 }

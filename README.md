@@ -68,7 +68,7 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
 - `axes`: `{ id, orient: "bottom" | "left" | "right", title?, scale? }`. `scale` (numeric axes
   only) takes `{ domain: [min, max], nice, zero }`. At most one axis per side. A layer binds a
   channel to an axis by `id`, so a layer can use a `right` axis that has its own domain.
-- `layers[]`: `{ mark: "bar", data, encoding }`. `x` must be a categorical field (band scale),
+- `layers[]`: `{ mark: "bar", data, encoding, position?, label? }`. `x` must be a categorical field (band scale),
   `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
   `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
   key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
@@ -78,6 +78,50 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
   domain `[0, 1]`, no categories) and there are no bars.
 - Tick labels use thousands separators (`1,200`) and as many decimals as the tick step needs
   (`0.25`, never `0.30000000000000004`).
+
+### Bar positions: stack, normalize, group
+
+When bars share an `x` category, `layers[].position` says how. The series come from
+`encoding.color.field` (one series per distinct value, in the order they first appear in the
+column), so the three non-default positions need it.
+
+```jsonc
+{
+  "data": { "sales": { "quarter": ["Q1", "Q1", "Q2", "Q2"], "product": ["Hardware", "Software", "Hardware", "Software"],
+                       "revenue": [120, 80, 90, 95] } },
+  "axes": [ { "id": "x", "orient": "bottom" }, { "id": "y", "orient": "left", "title": "Revenue" } ],
+  "layers": [{
+    "mark": "bar", "data": "sales",
+    "position": "stack",                               // "overlay" (default) | "stack" | "normalize" | "group"
+    "encoding": { "x": { "field": "quarter" }, "y": { "field": "revenue" }, "color": { "field": "product" } },
+    "label": { "show": "always" }
+  }]
+}
+```
+
+- `overlay` (default): one bar per row, bars of the same x overlap. Nothing changes.
+- `stack`: the series pile up in series order, the first at the bottom. **Negative values stack
+  downward from zero**, separately from the positive ones, so a negative never cuts into the
+  positive stack. The axis covers the stack totals.
+- `normalize`: stacked, each x scaled to 100%. The axis is `0%` to `100%`. Negative values have no
+  share, so they are a validation error (`/layers/0/encoding/y/field`, naming the first
+  offending row); use `stack` for mixed signs. A percent axis cannot be shared with a layer that
+  shows raw values (give one of them its own axis).
+- `group`: one slot per series inside each x band (every series keeps its slot even where it has
+  no row), with the width and spacing from a band scale. Bars start at zero; the axis covers the
+  largest (summed) value.
+- Rows with the same x, series (and z in 3D) are **summed** first for the three non-default
+  positions. Hover and click then report the first of those rows with its y value replaced by the
+  sum.
+- Keys are `layer0/<x>/<series>` (`layer0/<x>/<series>/<z>` in 3D), so they stay stable across
+  updates; an `encoding.key` field replaces the x part.
+- Value labels: a stacked or normalised segment is labelled **centred inside it** with the
+  segment's value (normalised: its percentage, `33.3%`), and **no label is drawn when the text
+  does not fit** in the segment; grouped bars are labelled above their ends like plain bars,
+  except where the text is wider than the slot. There are no totals. In 3D the same rule is
+  decided at the starting camera.
+- 3D: `stack`/`normalize` pile boxes up inside each (x, z) cell, `group` splits the x cell into
+  sub-cells (z stays one cell).
 
 ### 3D charts
 
