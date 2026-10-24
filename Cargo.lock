@@ -330,6 +330,7 @@ dependencies = [
  "facetry-font",
  "glam 0.32.1",
  "naga",
+ "proptest",
  "web-sys",
  "wgpu",
 ]

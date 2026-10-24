@@ -42,6 +42,12 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub layers: Vec<LayerSpec>,
+    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "..." }`, `true`
+    /// for the defaults, or `false` for none. Absent: a legend on the right when any layer
+    /// colours by a field, none otherwise.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub legend: Option<LegendSpec>,
     /// Where the viewer starts in a 3D chart. Rejected in 2D.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
@@ -63,6 +69,41 @@ impl ChartSpec {
                 .and_then(|i| i.orbit)
                 .unwrap_or(true)
     }
+}
+
+/// `legend`: `false`, `true` or a configuration.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(untagged)]
+pub enum LegendSpec {
+    /// `false` hides the legend; `true` is the same as leaving the option out.
+    Shown(bool),
+    Config(LegendConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct LegendConfig {
+    /// Which side of the chart the legend is on. Default: `"right"`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub orient: Option<LegendOrient>,
+    /// A heading above (right/left) or before (top/bottom) the entries.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum LegendOrient {
+    #[default]
+    Right,
+    Bottom,
+    Top,
+    Left,
 }
 
 /// The starting camera of a 3D chart. Every field is optional; the renderer fills in
@@ -289,7 +330,30 @@ pub struct ScaleSpec {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(rename_all = "lowercase")]
 pub enum Mark {
+    /// Rectangles from a baseline (see [`Position`] for how they share an x category).
     Bar,
+    /// One polyline per series (2D only).
+    Line,
+    /// Pie and donut slices (`encoding.theta`), flat in 2D and extruded in 3D. No axes.
+    Arc,
+}
+
+/// How the bars of one layer share an `x` category when they have a `color.field` (the
+/// series). Rows with the same x and series are summed first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum Position {
+    /// Every row is its own bar and bars of the same x overlap (the default).
+    #[default]
+    Overlay,
+    /// Series stack on top of each other in dictionary order of the colour field; negative
+    /// values stack downward from zero.
+    Stack,
+    /// Stacked, with each x scaled to 100%. Values must not be negative.
+    Normalize,
+    /// Series sit side by side inside the x band.
+    Group,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -300,11 +364,94 @@ pub struct LayerSpec {
     /// Name of a table in `data`.
     pub data: String,
     pub encoding: Encoding,
+    /// How bars that share an x category are placed: `"overlay"` (default), `"stack"`,
+    /// `"normalize"` or `"group"`. The last three need `encoding.color.field`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub position: Position,
+    /// Line layers: markers on the data points, `true` or `{ "size": px }`. Default: none
+    /// (the points still react to hover).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub point: Option<PointSpec>,
+    /// Mark styling, e.g. `{ "strokeWidth": 3 }` for a line.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub style: Option<StyleSpec>,
     /// Value labels on the bars. Default: none.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub label: Option<LabelSpec>,
 }
+
+/// Markers on a line's data points: `true` for the default size, or `{ "size": px }`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(untagged)]
+pub enum PointSpec {
+    On(bool),
+    Config(PointConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct PointConfig {
+    /// Marker diameter in CSS px (default 8).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub size: Option<f64>,
+}
+
+/// Default marker diameter in CSS px.
+pub const DEFAULT_POINT_SIZE: f64 = 8.0;
+/// Default line width in CSS px.
+pub const DEFAULT_STROKE_WIDTH: f64 = 2.0;
+/// Largest line width and marker size accepted, CSS px.
+pub const MAX_STROKE_WIDTH: f64 = 50.0;
+
+impl PointSpec {
+    /// The marker diameter in CSS px, or `None` when markers are off.
+    pub fn size(&self) -> Option<f64> {
+        match self {
+            Self::On(false) => None,
+            Self::On(true) => Some(DEFAULT_POINT_SIZE),
+            Self::Config(c) => Some(c.size.unwrap_or(DEFAULT_POINT_SIZE)),
+        }
+    }
+}
+
+/// Per-layer styling. Every field is optional; fields that do not apply to the layer's mark
+/// are validation errors.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct StyleSpec {
+    /// Line width in CSS px (default 2). Lines only.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke_width: Option<f64>,
+    /// Arcs: the hole's radius as a fraction of the outer radius, `0` (a pie, the default) up
+    /// to but not including `1`. Above 0 it is a donut.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub inner_radius: Option<f64>,
+    /// Arcs: the angular gap between slices, in degrees (default 0).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub pad_angle: Option<f64>,
+    /// Arcs: where the first slice starts, in degrees clockwise from 12 o'clock (default 0).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub start_angle: Option<f64>,
+    /// Arcs in 3D: the thickness of the pie as a fraction of its radius (default 0.2).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub depth: Option<f64>,
+}
+
+/// Default thickness of an extruded pie, as a fraction of its radius.
+pub const DEFAULT_PIE_DEPTH: f64 = 0.2;
 
 /// Value labels: the `y` value written above each bar (below a negative one).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -330,8 +477,14 @@ pub enum LabelShow {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct LabelFormat {
+    /// Print the share of the total as a percentage (`33.3%`) instead of the value: of the
+    /// pie for arcs, of the stack for stacked bars. Arcs and `stack`/`normalize` layers only
+    /// (a `normalize` layer always prints percentages).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub percent: Option<bool>,
     /// Digits after the decimal point (0 to 10). Default: as many as the value needs, up to 4,
-    /// so `1200` reads `1,200` and `0.25` reads `0.25`.
+    /// so `1200` reads `1,200` and `0.25` reads `0.25`; percentages default to at most one.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub decimals: Option<u32>,
@@ -344,10 +497,19 @@ pub const MAX_LABEL_DECIMALS: u32 = 10;
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct Encoding {
-    /// Must be a categorical field (band scale).
-    pub x: PositionEncoding,
-    /// Must be a numeric field (linear scale).
-    pub y: PositionEncoding,
+    /// Bars: a categorical field (band scale). Lines: categorical or numeric. Arcs: none.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub x: Option<PositionEncoding>,
+    /// A numeric field (linear scale). Arcs: none.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub y: Option<PositionEncoding>,
+    /// Arcs: the numeric field (not negative) that sizes each slice: a slice's angle is its
+    /// share of the total.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub theta: Option<ThetaEncoding>,
     /// 3D only: a categorical field (band scale) that spreads bars along the depth axis.
     /// Optional: without it the bars form a single row at the front.
     #[serde(default)]
@@ -388,6 +550,13 @@ pub struct ColorEncoding {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub field: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct ThetaEncoding {
+    pub field: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

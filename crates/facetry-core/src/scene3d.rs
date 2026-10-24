@@ -82,6 +82,84 @@ pub struct BoxMark {
     pub layer: usize,
     #[serde(skip)]
     pub row: usize,
+    /// The summed value if the box stands for several merged rows (see
+    /// [`crate::scene::Rect::sum`]).
+    #[serde(skip)]
+    pub sum: Option<f64>,
+}
+
+/// One slice of an extruded pie. The pie stands on the floor with its axis along `y`: the
+/// slice covers radii `inner..=outer` around `center` (`[x, z]`) and heights `0..=height`.
+/// Angles are radians, clockwise seen from above, from the far side (the -z direction,
+/// 12 o'clock when looking down from the default camera).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SliceMark {
+    pub key: String,
+    pub color: Color,
+    #[serde(serialize_with = "w2")]
+    pub center: [f32; 2],
+    #[serde(serialize_with = "w4")]
+    pub inner: f32,
+    #[serde(serialize_with = "w4")]
+    pub outer: f32,
+    #[serde(serialize_with = "w4")]
+    pub height: f32,
+    #[serde(serialize_with = "w4")]
+    pub start: f32,
+    #[serde(serialize_with = "w4")]
+    pub end: f32,
+    #[serde(serialize_with = "w4")]
+    pub pad: f32,
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
+    #[serde(skip)]
+    pub sum: Option<f64>,
+}
+
+fn w4<S: Serializer>(v: &f32, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_f64((f64::from(*v) * 10_000.0).round() / 10_000.0)
+}
+
+fn w2<S: Serializer>(v: &[f32; 2], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
+    (r(v[0]), r(v[1])).serialize(s)
+}
+
+impl SliceMark {
+    /// The angles the slice really covers (padding cut off): see
+    /// [`crate::scene::ArcMark::span`].
+    pub fn span(&self) -> (f32, f32) {
+        let sweep = self.end - self.start;
+        if sweep >= std::f32::consts::TAU - 1e-4 {
+            return (self.start, self.end);
+        }
+        let cut = (self.pad / 2.0).min(sweep / 4.0);
+        (self.start + cut, self.end - cut)
+    }
+
+    /// Whether the floor point `(x, z)` is under the slice (the top face's footprint).
+    pub fn contains(&self, x: f32, z: f32) -> bool {
+        let (a0, a1) = self.span();
+        crate::scene::sector_contains(
+            x - self.center[0],
+            self.center[1] - z,
+            self.inner,
+            self.outer,
+            a0,
+            a1,
+        )
+    }
+
+    /// The world point at angle `angle`, radius `r` and height `y`.
+    pub fn point(&self, angle: f32, r: f32, y: f32) -> [f32; 3] {
+        [
+            self.center[0] + r * angle.sin(),
+            y,
+            self.center[1] - r * angle.cos(),
+        ]
+    }
 }
 
 /// A straight line segment in world space (gridline, axis edge or tick mark). It is drawn as
@@ -132,6 +210,9 @@ pub enum LabelRole {
     Tick { group: u8, index: u16, count: u16 },
     /// The title of axis `group`; shown in preference to tick labels.
     Title { group: u8 },
+    /// Printed on the middle of box `mark` (a stacked segment's value): drawn only while the
+    /// camera can see that point, that is, no other box is in front of it.
+    OnMark(u32),
 }
 
 /// Label groups: which axis a [`LabelRole`] belongs to.
@@ -161,6 +242,41 @@ pub struct Text3 {
     /// Not in the snapshot: the key says which axis and category it is.
     #[serde(skip)]
     pub role: LabelRole,
+    /// Draw an outline in the background colour round the letters (the default). Labels that
+    /// sit on a bar or slice, in a colour chosen to contrast with it, have none: an outline
+    /// of the page colour would swallow letters of the same colour.
+    #[serde(skip_serializing_if = "is_true")]
+    pub halo: bool,
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+/// A 2D layer on top of the 3D picture.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Overlay {
+    pub rules: Vec<crate::scene::Rule>,
+    pub texts: Vec<crate::scene::Text>,
+}
+
+impl Overlay {
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty() && self.texts.is_empty()
+    }
+}
+
+fn plot_rect<S: Serializer>(v: &Option<[f32; 4]>, s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 100.0).round() / 100.0;
+    v.map(|v| (r(v[0]), r(v[1]), r(v[2]), r(v[3]))).serialize(s)
+}
+
+impl Scene3d {
+    /// The part of the canvas the plot is drawn in: `[x, y, width, height]`.
+    pub fn plot_rect(&self) -> [f32; 4] {
+        self.plot
+            .unwrap_or([0.0, 0.0, self.width as f32, self.height as f32])
+    }
 }
 
 /// The value label of a bar (`boxes[mark]`); see [`crate::scene::MarkLabel`].
@@ -176,6 +292,15 @@ pub struct MarkLabel3 {
 pub struct Scene3d {
     pub width: u32,
     pub height: u32,
+    /// The part of the canvas the 3D plot is drawn in, `[x, y, width, height]` in device
+    /// pixels: `None` means all of it. A legend takes a band of one side, and the plot box is
+    /// framed in what is left so it never sits under the legend.
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "plot_rect")]
+    pub plot: Option<[f32; 4]>,
+    /// Screen-space items drawn over the finished 3D picture with the 2D pipelines: the
+    /// legend. Positions are canvas pixels, independent of the camera.
+    #[serde(skip_serializing_if = "Overlay::is_empty")]
+    pub overlay: Overlay,
     pub background: Color,
     /// The plot box's extent: `[x, 1, z]`; it starts at the origin.
     #[serde(serialize_with = "w4_3")]
@@ -185,6 +310,10 @@ pub struct Scene3d {
     #[serde(serialize_with = "px")]
     pub halo_px: f32,
     pub boxes: Vec<BoxMark>,
+    /// The slices of an extruded pie. Hover and click index the marks as boxes first, then
+    /// slices.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub slices: Vec<SliceMark>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     pub texts: Vec<Text3>,

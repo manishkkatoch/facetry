@@ -1,0 +1,202 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"donut\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [],
+  "rules": [
+    {
+      "key": "legend/swatch:Free",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 15.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Pro",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 36.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "legend/swatch:Team",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 57.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "legend/swatch:Enterprise",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 78.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#72b7b2"
+    }
+  ],
+  "texts": [
+    {
+      "key": "legend/label:Free",
+      "text": "Free",
+      "x": 730.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Pro",
+      "text": "Pro",
+      "x": 730.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Team",
+      "text": "Team",
+      "x": 730.0,
+      "y": 66.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Enterprise",
+      "text": "Enterprise",
+      "x": 730.0,
+      "y": 87.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    }
+  ],
+  "labels": [
+    {
+      "mark": 0,
+      "show": "always",
+      "text": {
+        "key": "layer0/Free/label",
+        "text": "520",
+        "x": 541.0,
+        "y": 269.0,
+        "size_px": 12.0,
+        "color": "#ffffff",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 1,
+      "show": "always",
+      "text": {
+        "key": "layer0/Pro/label",
+        "text": "310",
+        "x": 189.0,
+        "y": 331.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 2,
+      "show": "always",
+      "text": {
+        "key": "layer0/Team/label",
+        "text": "120",
+        "x": 248.0,
+        "y": 106.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 3,
+      "show": "always",
+      "text": {
+        "key": "layer0/Enterprise/label",
+        "text": "40",
+        "x": 334.0,
+        "y": 71.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ],
+  "arcs": [
+    {
+      "key": "layer0/Free",
+      "color": "#4c78a8",
+      "center": [
+        357.08,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 0.0,
+      "end": 3.3003,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Pro",
+      "color": "#f58518",
+      "center": [
+        357.08,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 3.3003,
+      "end": 5.2677,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Team",
+      "color": "#e45756",
+      "center": [
+        357.08,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 5.2677,
+      "end": 6.0293,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Enterprise",
+      "color": "#72b7b2",
+      "center": [
+        357.08,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 6.0293,
+      "end": 6.2832,
+      "pad": 0.0262
+    }
+  ]
+}

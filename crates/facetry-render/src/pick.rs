@@ -8,7 +8,7 @@
 //! a frame of latency and a `map_async` per pointer move). 2D picking is a point-in-rectangle
 //! test and lives in `facetry_core::Scene::pick`.
 
-use facetry_core::scene3d::BoxMark;
+use facetry_core::scene3d::{BoxMark, Scene3d};
 use glam::{Mat4, Vec3, Vec4};
 
 /// A half-line: `origin + t * dir` for `t >= 0`, `dir` of unit length.
@@ -84,6 +84,47 @@ pub fn pick_3d(
     nearest_hit(boxes, &ray).map(|(i, _)| i)
 }
 
+/// Where the ray meets the horizontal plane `y = height` (a distance `t >= 0` along it), or
+/// `None` for a ray that is level with it or heads away.
+pub fn ray_plane_y(ray: &Ray, height: f32) -> Option<f32> {
+    if ray.dir.y.abs() < 1e-9 {
+        return None;
+    }
+    let t = (height - ray.origin.y) / ray.dir.y;
+    (t >= 0.0).then_some(t)
+}
+
+/// The mark under pixel `px` of a 3D scene, in the scene's mark index space: the bars first,
+/// then the pie slices. Bars are hit anywhere on their box; a slice is hit **on its top
+/// face** only (the ray meets the plane of the top and the point lies on the slice's
+/// footprint), so the sides of an extruded pie are not pickable: from the elevations the
+/// camera allows, the top is nearly always what the pointer is over. The nearest hit wins.
+pub fn pick_scene(
+    scene: &Scene3d,
+    view_proj: Mat4,
+    viewport: (f32, f32),
+    px: (f32, f32),
+) -> Option<usize> {
+    let ray = ray_through_pixel(view_proj, viewport, px)?;
+    let bar = nearest_hit(&scene.boxes, &ray);
+    let slice = scene
+        .slices
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let t = ray_plane_y(&ray, s.height)?;
+            let p = ray.origin + ray.dir * t;
+            s.contains(p.x, p.z).then_some((scene.boxes.len() + i, t))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    match (bar, slice) {
+        (Some(b), Some(s)) => Some(if s.1 < b.1 { s.0 } else { b.0 }),
+        (Some(b), None) => Some(b.0),
+        (None, Some(s)) => Some(s.0),
+        (None, None) => None,
+    }
+}
+
 /// Where a world point lands on screen, in pixels (what the shaders compute), or `None`
 /// when it is behind the camera.
 pub fn project(view_proj: Mat4, viewport: (f32, f32), p: Vec3) -> Option<(f32, f32)> {
@@ -112,6 +153,7 @@ mod tests {
             color: Color::linear(0.0, 0.0, 0.0, 1.0),
             layer: 0,
             row: 0,
+            sum: None,
         }
     }
 
@@ -230,6 +272,51 @@ mod tests {
                 "{az}/{el}"
             );
         }
+    }
+
+    #[test]
+    fn pie_slices_are_picked_on_their_top_face_from_any_side() {
+        let json = include_str!("../../../examples/specs/pie3d.json");
+        let spec = parse_spec_json(json).unwrap();
+        let scene = build_scene_3d(&spec, (800, 500), 1.0, FontMetrics::inter());
+        assert!(scene.boxes.is_empty() && scene.slices.len() >= 5);
+        let viewport = (800.0, 500.0);
+        for elevation in [15.0, 40.0, 80.0] {
+            for step in 0..12 {
+                let mut c = Camera::default();
+                c.set(Some(step as f32 * 30.0), Some(elevation), None);
+                let vp = c.plot_view_proj(scene.size, viewport);
+                for (i, s) in scene.slices.iter().enumerate() {
+                    let (a0, a1) = s.span();
+                    let mid = s.point((a0 + a1) / 2.0, (s.inner + s.outer) / 2.0, s.height);
+                    let px = project(vp, viewport, Vec3::from(mid)).unwrap();
+                    assert_eq!(
+                        pick_scene(&scene, vp, viewport, px),
+                        Some(i),
+                        "slice {i} at azimuth {} elevation {elevation}",
+                        step * 30
+                    );
+                }
+            }
+        }
+        // Off the pie: nothing. (The corner of the canvas.)
+        let vp = Camera::default().plot_view_proj(scene.size, viewport);
+        assert_eq!(pick_scene(&scene, vp, viewport, (3.0, 3.0)), None);
+    }
+
+    #[test]
+    fn a_donut_hole_and_the_gap_between_slices_pick_nothing() {
+        let json = include_str!("../../../examples/specs/pie3d.json")
+            .replace(r#""depth": 0.25"#, r#""depth": 0.25, "innerRadius": 0.5"#);
+        let spec = parse_spec_json(&json).unwrap();
+        let scene = build_scene_3d(&spec, (800, 500), 1.0, FontMetrics::inter());
+        let viewport = (800.0, 500.0);
+        let c = Camera::from_spec(spec.camera.as_ref());
+        let vp = c.plot_view_proj(scene.size, viewport);
+        let s = &scene.slices[0];
+        // The middle of the hole, at the height of the top face.
+        let hole = project(vp, viewport, Vec3::new(s.center[0], s.height, s.center[1])).unwrap();
+        assert_eq!(pick_scene(&scene, vp, viewport, hole), None);
     }
 
     #[test]

@@ -6,15 +6,18 @@
 ))]
 compile_error!("on wasm32, enable the `webgpu` and/or `webgl` feature of facetry-render");
 
+mod arc;
 mod camera;
 mod error;
 mod gpu;
 mod image;
 pub mod labels;
+mod mesh;
 pub mod pick;
 mod rect;
 mod renderer;
 mod solid;
+pub mod stroke;
 mod text;
 
 pub use camera::{Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection};
@@ -86,6 +89,11 @@ mod shader_tests {
     }
 
     #[test]
+    fn mesh2d_shader_is_valid_and_webgl2_translatable() {
+        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 32);
+    }
+
+    #[test]
     fn text_shader_is_valid_and_webgl2_translatable() {
         check("text", include_str!("shaders/text.wgsl"), 32);
     }
@@ -94,6 +102,11 @@ mod shader_tests {
     #[test]
     fn box_shader_is_valid_and_webgl2_translatable() {
         check("box", include_str!("shaders/box.wgsl"), 144);
+    }
+
+    #[test]
+    fn mesh3d_shader_is_valid_and_webgl2_translatable() {
+        check("mesh3d", include_str!("shaders/mesh3d.wgsl"), 144);
     }
 
     #[test]

@@ -1,0 +1,26 @@
+{
+  "dimension": "2d",
+  "data": {
+    "anomaly": {
+      "year": [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024],
+      "station": ["North", "North", "North", "North", "North", "North", "North", "North", "North", "North", "South", "South", "South", "South", "South", "South", "South", "South", "South", "South"],
+      "delta": [0.2, 0.35, 0.4, 0.55, 0.5, 0.7, 0.85, 0.8, 1.0, 1.15, 0.1, 0.15, null, 0.3, 0.45, 0.4, 0.6, 0.7, 0.65, 0.9]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Year" },
+    { "id": "y", "orient": "left", "title": "Temperature anomaly" }
+  ],
+  "layers": [
+    {
+      "mark": "line",
+      "data": "anomaly",
+      "style": { "strokeWidth": 3 },
+      "encoding": {
+        "x": { "field": "year", "axis": "x" },
+        "y": { "field": "delta", "axis": "y" },
+        "color": { "field": "station" }
+      }
+    }
+  ]
+}

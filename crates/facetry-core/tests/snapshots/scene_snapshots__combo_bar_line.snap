@@ -1,0 +1,751 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"combo-bar-line\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [
+    {
+      "key": "layer0/Q1",
+      "x": 84.0,
+      "y": 79.0,
+      "w": 134.0,
+      "h": 360.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q2",
+      "x": 252.0,
+      "y": 169.0,
+      "w": 134.0,
+      "h": 270.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q3",
+      "x": 419.0,
+      "y": 19.0,
+      "w": 134.0,
+      "h": 420.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q4",
+      "x": 587.0,
+      "y": 109.0,
+      "w": 134.0,
+      "h": 330.0,
+      "color": "#4c78a8"
+    }
+  ],
+  "rules": [
+    {
+      "key": "axis:revenue/grid:0",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 439.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:20",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 379.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:40",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 319.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:60",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 259.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:80",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 199.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:100",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 139.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:120",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 79.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:revenue/grid:140",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 19.0,
+      "w": 671.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 66.0,
+      "y": 439.0,
+      "w": 673.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q1",
+      "kind": "tick",
+      "x": 151.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q2",
+      "kind": "tick",
+      "x": 319.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q3",
+      "kind": "tick",
+      "x": 486.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q4",
+      "kind": "tick",
+      "x": 654.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/line",
+      "kind": "axis",
+      "x": 66.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:0",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:20",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 379.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:40",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 319.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:60",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 259.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:80",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 199.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:100",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 139.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:120",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 79.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:revenue/tick:140",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/line",
+      "kind": "axis",
+      "x": 738.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:0",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:2",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 401.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:4",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 363.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:6",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 324.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:8",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 286.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:10",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 248.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:12",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 210.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:14",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 172.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:16",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 134.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:18",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 95.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:20",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 57.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:margin/tick:22",
+      "kind": "tick",
+      "x": 739.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Q1",
+      "text": "Q1",
+      "x": 151.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q2",
+      "text": "Q2",
+      "x": 319.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q3",
+      "text": "Q3",
+      "x": 486.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q4",
+      "text": "Q4",
+      "x": 654.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Quarter",
+      "x": 403.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:0",
+      "text": "0",
+      "x": 56.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:20",
+      "text": "20",
+      "x": 56.0,
+      "y": 383.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:40",
+      "text": "40",
+      "x": 56.0,
+      "y": 323.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:60",
+      "text": "60",
+      "x": 56.0,
+      "y": 263.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:80",
+      "text": "80",
+      "x": 56.0,
+      "y": 203.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:100",
+      "text": "100",
+      "x": 56.0,
+      "y": 143.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:120",
+      "text": "120",
+      "x": 56.0,
+      "y": 83.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/label:140",
+      "text": "140",
+      "x": 56.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:revenue/title",
+      "text": "Revenue",
+      "x": 25.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    },
+    {
+      "key": "axis:margin/label:0",
+      "text": "0",
+      "x": 749.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:2",
+      "text": "2",
+      "x": 749.0,
+      "y": 405.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:4",
+      "text": "4",
+      "x": 749.0,
+      "y": 367.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:6",
+      "text": "6",
+      "x": 749.0,
+      "y": 328.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:8",
+      "text": "8",
+      "x": 749.0,
+      "y": 290.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:10",
+      "text": "10",
+      "x": 749.0,
+      "y": 252.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:12",
+      "text": "12",
+      "x": 749.0,
+      "y": 214.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:14",
+      "text": "14",
+      "x": 749.0,
+      "y": 176.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:16",
+      "text": "16",
+      "x": 749.0,
+      "y": 138.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:18",
+      "text": "18",
+      "x": 749.0,
+      "y": 99.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:20",
+      "text": "20",
+      "x": 749.0,
+      "y": 61.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/label:22",
+      "text": "22",
+      "x": 749.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:margin/title",
+      "text": "Margin %",
+      "x": 785.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    }
+  ],
+  "labels": [
+    {
+      "mark": 4,
+      "show": "hover",
+      "text": {
+        "key": "layer1/Q1/label",
+        "text": "12",
+        "x": 151.0,
+        "y": 201.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 5,
+      "show": "hover",
+      "text": {
+        "key": "layer1/Q2/label",
+        "text": "8",
+        "x": 319.0,
+        "y": 278.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 6,
+      "show": "hover",
+      "text": {
+        "key": "layer1/Q3/label",
+        "text": "21",
+        "x": 486.0,
+        "y": 30.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 7,
+      "show": "hover",
+      "text": {
+        "key": "layer1/Q4/label",
+        "text": "16",
+        "x": 654.0,
+        "y": 125.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ],
+  "polylines": [
+    {
+      "key": "layer1",
+      "color": "#f58518",
+      "width": 2.5,
+      "runs": [
+        [
+          [
+            150.88,
+            209.91
+          ],
+          [
+            318.63,
+            286.27
+          ],
+          [
+            486.38,
+            38.09
+          ],
+          [
+            654.13,
+            133.55
+          ]
+        ]
+      ]
+    }
+  ],
+  "points": [
+    {
+      "key": "layer1/Q1",
+      "x": 150.88,
+      "y": 209.91,
+      "color": "#f58518",
+      "size": 9.0,
+      "visible": true
+    },
+    {
+      "key": "layer1/Q2",
+      "x": 318.63,
+      "y": 286.27,
+      "color": "#f58518",
+      "size": 9.0,
+      "visible": true
+    },
+    {
+      "key": "layer1/Q3",
+      "x": 486.38,
+      "y": 38.09,
+      "color": "#f58518",
+      "size": 9.0,
+      "visible": true
+    },
+    {
+      "key": "layer1/Q4",
+      "x": 654.13,
+      "y": 133.55,
+      "color": "#f58518",
+      "size": 9.0,
+      "visible": true
+    }
+  ]
+}

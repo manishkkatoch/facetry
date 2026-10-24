@@ -35,6 +35,14 @@ snapshot!(right_axis_layer, "bar-right-axis");
 snapshot!(empty_data, "bar-empty");
 snapshot!(many_categories_thin_labels, "bar-many");
 snapshot!(value_labels_always, "bar-labels");
+snapshot!(stacked_bars, "bar-stacked");
+snapshot!(normalized_bars, "bar-normalized");
+snapshot!(grouped_bars, "bar-grouped");
+snapshot!(basic_lines, "line-basic");
+snapshot!(numeric_x_lines, "line-numeric-x");
+snapshot!(combo_bar_line, "combo-bar-line");
+snapshot!(pie_with_percent_labels, "pie");
+snapshot!(donut_with_padding, "donut");
 
 #[test]
 fn basic_bars_at_dpr_2() {
@@ -120,6 +128,8 @@ snapshot3d!(grid_3d, "bar3d-grid");
 snapshot3d!(single_row_3d_without_z, "bar3d-row");
 snapshot3d!(negative_values_3d, "bar3d-negative");
 snapshot3d!(value_labels_hover_3d, "bar3d-labels");
+snapshot3d!(stacked_3d, "bar3d-stacked");
+snapshot3d!(pie_3d, "pie3d");
 
 #[test]
 fn grid_bars_are_square_boxes_in_the_right_cells() {

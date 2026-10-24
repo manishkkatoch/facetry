@@ -3,14 +3,16 @@
 GPU-accelerated charts for JS/TS apps, written in Rust and compiled to WebAssembly.
 Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, WebGL2 otherwise.
 
-**Status: M1 (2D bar chart) plus M4 (3D bars), built ahead of stacking, lines and pies to get
-feedback on the riskiest part first.** A `Chart` draws a bar chart from a declarative JSON spec:
-validation, band and linear scales with "nice" ticks, layout, axes (lines, ticks, gridlines,
-labels, titles), MSDF text and instanced rectangles; with `dimension: "3d"` the bars are
-lit, depth-tested boxes you can orbit (see [3D charts](#3d-charts)). Bars can carry value labels,
-report hover and click, and the current view can be saved as a PNG (see [Value labels, hover and
-click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Lines, arcs, stacking,
-legends and animation come in later milestones.
+**Status: M1 (2D bar chart), M4 (3D bars) and M2 (more chart types).** A `Chart` draws from a
+declarative JSON spec: validation, band and linear scales with "nice" ticks, layout, axes (lines,
+ticks, gridlines, labels, titles), MSDF text and GPU rendering. Marks: **bars** (overlaid,
+stacked, normalised or grouped), **lines** (categorical or numeric x, markers, gaps; composites
+with bars on two y axes) and **pies and donuts**; in 2D and, for bars and pies, in 3D as lit,
+depth-tested solids you can orbit (see [3D charts](#3d-charts)). Charts that colour by a field
+get a [legend](#legend). Marks can carry value labels and report hover and click, and the
+current view can be saved as a PNG (see [Value labels, hover and
+click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Animation and
+click-to-toggle legends come later.
 
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
@@ -66,18 +68,193 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
 - `data`: named, columnar tables. A column is an array of numbers (`null` = missing) or an array
   of strings (categorical). All columns of a table must be the same length.
 - `axes`: `{ id, orient: "bottom" | "left" | "right", title?, scale? }`. `scale` (numeric axes
-  only) takes `{ domain: [min, max], nice, zero }`. At most one axis per side. A layer binds a
+  only: left, right, and a bottom axis that shows numbers) takes `{ domain: [min, max], nice,
+  zero }`. At most one axis per side. Pies and donuts have no axes. A layer binds a
   channel to an axis by `id`, so a layer can use a `right` axis that has its own domain.
-- `layers[]`: `{ mark: "bar", data, encoding }`. `x` must be a categorical field (band scale),
-  `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
-  `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
-  key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
-- `label` (optional, per layer): value labels on the bars, see
+- `layers[]`: `{ mark: "bar" | "line" | "arc", data, encoding, position?, point?, style?, label? }`.
+  For bars `x` is a categorical field (band scale) and `y` a numeric field (linear scale, includes
+  zero by default); lines also take a numeric `x`; arcs take `theta` and `color` instead (see
+  below). `color` is `{ value: "#hex" }` or `{ field }` (a categorical field mapped onto the theme
+  palette; also the series of stacked/grouped bars and lines). `key` is optional; the default key
+  of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay. A missing `x` or `y`
+  on a bar or line layer is a validation issue at `/layers/<n>/encoding/x`.
+- `label` (optional, per layer): value labels on the marks, see
   [below](#value-labels-hover-and-click).
 - Unknown fields are errors, so typos are caught. Empty data is valid: the axes are drawn (numeric
   domain `[0, 1]`, no categories) and there are no bars.
 - Tick labels use thousands separators (`1,200`) and as many decimals as the tick step needs
   (`0.25`, never `0.30000000000000004`).
+
+### Bar positions: stack, normalize, group
+
+When bars share an `x` category, `layers[].position` says how. The series come from
+`encoding.color.field` (one series per distinct value, in the order they first appear in the
+column), so the three non-default positions need it.
+
+```jsonc
+{
+  "data": { "sales": { "quarter": ["Q1", "Q1", "Q2", "Q2"], "product": ["Hardware", "Software", "Hardware", "Software"],
+                       "revenue": [120, 80, 90, 95] } },
+  "axes": [ { "id": "x", "orient": "bottom" }, { "id": "y", "orient": "left", "title": "Revenue" } ],
+  "layers": [{
+    "mark": "bar", "data": "sales",
+    "position": "stack",                               // "overlay" (default) | "stack" | "normalize" | "group"
+    "encoding": { "x": { "field": "quarter" }, "y": { "field": "revenue" }, "color": { "field": "product" } },
+    "label": { "show": "always" }
+  }]
+}
+```
+
+- `overlay` (default): one bar per row, bars of the same x overlap. Nothing changes.
+- `stack`: the series pile up in series order, the first at the bottom. **Negative values stack
+  downward from zero**, separately from the positive ones, so a negative never cuts into the
+  positive stack. The axis covers the stack totals.
+- `normalize`: stacked, each x scaled to 100%. The axis is `0%` to `100%`. Negative values have no
+  share, so they are a validation error (`/layers/0/encoding/y/field`, naming the first
+  offending row); use `stack` for mixed signs. A percent axis cannot be shared with a layer that
+  shows raw values (give one of them its own axis).
+- `group`: one slot per series inside each x band (every series keeps its slot even where it has
+  no row), with the width and spacing from a band scale. Bars start at zero; the axis covers the
+  largest (summed) value.
+- Rows with the same x, series (and z in 3D) are **summed** first for the three non-default
+  positions. Hover and click then report the first of those rows with its y value replaced by the
+  sum.
+- Keys are `layer0/<x>/<series>` (`layer0/<x>/<series>/<z>` in 3D), so they stay stable across
+  updates; an `encoding.key` field replaces the x part.
+- Value labels: a stacked or normalised segment is labelled **centred inside it** with the
+  segment's value (normalised: its percentage, `33.3%`), and **no label is drawn when the text
+  does not fit** in the segment; grouped bars are labelled above their ends like plain bars,
+  except where the text is wider than the slot. There are no totals. In 3D the same rule is
+  decided at the starting camera, and a segment's label is also hidden **while another box is
+  in front of the segment's middle** (the renderer tests that per frame with the picking ray,
+  so stacks seen from above only show their top segment's number); `label.format.percent: true`
+  prints a segment's share of its stack.
+- 3D: `stack`/`normalize` pile boxes up inside each (x, z) cell, `group` splits the x cell into
+  sub-cells (z stays one cell).
+
+### Lines, and bars with lines
+
+`mark: "line"` draws one polyline per series (`encoding.color.field`; without it, one line):
+
+```jsonc
+{
+  "data": { "kpi": { "quarter": ["Q1", "Q2", "Q3", "Q4"], "revenue": [120, 90, 140, 110], "margin": [12, 8, 21, 16] } },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "revenue", "orient": "left", "title": "Revenue" },
+    { "id": "margin", "orient": "right", "title": "Margin %" }
+  ],
+  "layers": [
+    { "mark": "bar", "data": "kpi",
+      "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "revenue", "axis": "revenue" }, "color": { "value": "#4C78A8" } } },
+    { "mark": "line", "data": "kpi",
+      "point": { "size": 9 },                // markers: true | { size } (diameter in CSS px, default 8)
+      "style": { "strokeWidth": 2.5 },       // CSS px, default 2
+      "label": { "show": "hover" },
+      "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "margin", "axis": "margin" }, "color": { "value": "#F58518" } } }
+  ]
+}
+```
+
+- `x` is categorical (a band scale: points sit at the band centres, so a line lines up with bars
+  of the same categories) **or numeric** (a linear scale with nice ticks, and the bottom axis
+  takes `scale` overrides like a y axis; unlike y it does not include 0 unless `zero: true`).
+  Whole-number data gets whole-number ticks, and year-like ticks read `2015`, not `2,015`.
+  Layers sharing a bottom axis must agree on the kind of `x`.
+- Each series is one polyline in the order of `x` (categorical: the axis order; numeric:
+  ascending). **A missing y (`null`) breaks the line** (a series with no row at some category
+  is simply connected across it). A run of one point is drawn as a dot. Values outside a fixed
+  `scale.domain` are clamped to the plot edge.
+- Draw order: gridlines, bars, lines, markers, then axis lines and ticks, hover marker and
+  labels. A layer is bound to a left or right axis by id as for bars, so a bar and a line layer
+  can use different y scales.
+- `label`: the value above each point (below it where there is no room); `"hover"` shows only
+  the hovered point's. Hover and click: the point nearest the pointer **within 12 CSS px** wins
+  (even where a bar is behind it), otherwise the bar under the pointer. The hovered point gets
+  a larger marker. Keys are `layer1/<x>` (`layer1/<x>/<series>` with a colour field).
+- 3D has no lines yet: `mark: "line"` with `dimension: "3d"` is a validation error
+  (`line charts are 2D only for now`).
+- How the strokes are drawn: the CPU turns each polyline into triangles in device pixels
+  (`facetry-render/src/stroke.rs`), with miter joins that become bevels beyond a miter limit of 4
+  line widths (so a zigzag does not grow spikes), butt caps, and neighbouring segments sharing
+  their inner corners so a translucent colour does not double up at a bend. One draw call per
+  layer; 4x MSAA smooths the edges. Only WebGL2-compatible features are used.
+
+### Pie and donut charts
+
+`mark: "arc"` with `encoding.theta` (the numeric field that sizes each slice) and
+`encoding.color.field` (one slice per category). A pie has no axes:
+
+```jsonc
+{
+  "data": { "traffic": { "source": ["Search", "Social", "Direct", "Email"], "visits": [420, 280, 190, 60] } },
+  "layers": [{
+    "mark": "arc", "data": "traffic",
+    "style": { "innerRadius": 0.55, "padAngle": 1.5, "startAngle": 0 },   // all optional
+    "encoding": { "theta": { "field": "visits" }, "color": { "field": "source" }, "key": { "field": "source" } },
+    "label": { "show": "always", "format": { "percent": true } }
+  }]
+}
+```
+
+- Slices follow the colour field's order, clockwise from `startAngle` (degrees, `0` = 12
+  o'clock). `innerRadius` is the hole as a fraction of the outer radius (`0` pie, `> 0` donut,
+  below 1); `padAngle` is the gap between slices in degrees (half is cut off each side).
+  `cornerRadius` is not supported yet. Rows with the same colour value are summed into one slice
+  (hover reports the first row with the summed `visits`); zero and missing values are no slice.
+  Slice keys are `layer0/<colour value>` (an `encoding.key` field replaces the value).
+- `theta` must be numeric and not negative, `color` a categorical field; an arc layer cannot have
+  `x`/`y`/`z`, cannot be mixed with other layers (or a second arc layer), and a spec with an arc
+  layer **must not declare `axes`**: each is a validation issue with its path.
+- `label.format.percent: true` prints each slice's share (`42.8%`, at most one decimal; `decimals`
+  overrides) instead of its value. A label goes **inside** its slice, centred in the ring (at
+  0.62 of the radius for a pie), when the text fits there; otherwise it goes **outside** on a
+  short leader line (the pie shrinks to leave room for those labels). A label that would touch
+  an outside label already placed is left out; with `show: "hover"` there are no leader lines
+  and no overlap pruning, since only one label shows at a time.
+- 2D: CPU tessellation into triangles, segments of at most 2 degrees (at least 3 per slice);
+  neighbouring slices share their boundary vertices, so there are no seams. Picking is a
+  point-in-sector test (angle and radius); the hovered slice is drawn again a little lighter.
+- **3D** (`dimension: "3d"`): an extruded pie standing on the floor, thickness `style.depth` (a
+  fraction of the radius, default 0.2). It is a lit mesh with a top face, an outer wall, the hole's
+  wall for a donut, and the flat faces at each slice's edges (no bottom: the camera never goes
+  below the floor); curved walls use smooth radial normals, the rest flat ones. There are no
+  axes or back walls. The orbit camera works as for bars. Picking intersects the ray with the
+  plane of the top face and tests the slice's sector there, so **the sides of an extruded pie
+  are not pickable** (from the elevations the camera allows, the top is nearly always what the
+  pointer is over). 3D labels sit on the top face (outside ones centred beyond a leader line, so
+  they read from any side); what fits is judged at the starting camera.
+- Why a new lit-mesh pipeline for 3D: the bars' pipeline stretches one static unit cube to
+  every bar, which cannot express curved walls. `mesh3d.wgsl` has the same Lambert lighting as
+  `box.wgsl` and takes ready-made vertices (position, normal, colour, hover flag) from
+  `facetry-render/src/arc.rs`.
+
+### Legend
+
+```jsonc
+{ "legend": { "orient": "bottom", "title": "Product" } }   // "right" (default) | "bottom" | "top" | "left"
+{ "legend": false }                                       // no legend
+```
+
+- **Default:** a legend on the right whenever any layer has `encoding.color.field`; none
+  otherwise (fixed colours have nothing to explain). `legend: true` is the same as leaving it out.
+- One entry per colour category, **deduplicated across layers by value**: a category several
+  layers share is listed once, with the swatch of the first layer that has it (a short line for
+  a line layer, a square for bars and slices). Colours come from the same shared scale as the
+  marks. Entries are in the order the categories first appear.
+- Layout: the legend reserves a band of the canvas on its side *before* the plot or pie is laid
+  out (it reuses the margin system: the plot's area is simply smaller). Right and left legends
+  are a column that **wraps into more columns** when the chart is too short; top and bottom ones
+  are rows that **wrap into more rows** when it is too narrow. Labels longer than 150 CSS px (240
+  in a row) are **truncated with `...`** (the bundled font is ASCII only). The optional `title`
+  is a heading above the entries (before the first entry in a top or bottom legend).
+- In 3D the legend is a screen-space overlay drawn with the 2D rectangle and text pipelines
+  **after** the 3D pass (a second render pass), and the 3D viewport is shrunk to what the legend
+  leaves, so the plot box never sits under it. Picking and `markPosition` account for that
+  offset. Snapshots include the legend.
+- Not yet: clicking an entry to hide its series (a follow-up); the legend is not interactive.
+- Because the default depends on `color.field`, specs that colour by field (for example
+  `bar-colored` and `bar3d-grid`) now show a legend; set `legend: false` to keep the old look.
 
 ### 3D charts
 
@@ -239,12 +416,15 @@ real WebGPU device.
 ## Layout
 
 ```
-crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene and Scene3d
+crates/facetry-core     pure Rust: spec + validation, scales, layout (2D, pie, 3D, 3D pie, legend),
+                        data transforms (stack/normalize/aggregate), Scene and Scene3d
                         (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
-crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines (2D); box, line and world-text
-                        pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32);
-                        3D label placement (labels.rs), picking (pick.rs), PNG read-back
+crates/facetry-render   wgpu Renderer: rect, triangle-mesh and MSDF text pipelines (2D); box, lit
+                        mesh, line and world-text pipelines plus the glam orbit camera (3D); 4x
+                        MSAA (native + wasm32); CPU line tessellation (stroke.rs) and pie
+                        geometry (arc.rs); 3D label placement (labels.rs), picking (pick.rs),
+                        PNG read-back
 crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors; features `webgpu`
                         (default) and `webgl` choose the backend, built once per module
 tools/font-atlas        offline tool that generates the MSDF atlas (not part of the build)
@@ -258,12 +438,13 @@ scripts/                build-wasm.sh, wasm-size.sh
 ```
 
 How a frame is made: `spec` -> `validate` -> `build_scene(spec, viewport, dpr, font metrics)` ->
-`Scene` (flat lists of keyed rects, rules and texts in device pixels) -> `Renderer::set_scene`
-(instance buffers) -> one render pass: gridlines, bars, axis rules, then text. Resizing rebuilds
+`Scene` (flat lists of keyed rects, rules, texts, polylines, points and arcs in device pixels) ->
+`Renderer::set_scene` (instance and vertex buffers) -> one render pass: gridlines and bars, pie
+slices, lines, markers, axis rules and legend swatches, hover marker, then text. Resizing rebuilds
 the scene, because margins, tick counts and label thinning depend on the size. A 3D frame is
 `build_scene_3d` -> `Scene3d` -> `Renderer::set_scene_3d`; each render pass clears colour and
-depth, draws bars (depth-tested, culled back faces, Lambert lighting), then lines (tested against
-the bars), then text.
+depth, draws bars (depth-tested, culled back faces, Lambert lighting), then pie slices (a lit mesh), then lines
+(tested against the bars), then text; a legend adds a second pass with the 2D pipelines.
 
 ## Prerequisites
 
@@ -289,15 +470,18 @@ pnpm --filter playground exec playwright install chromium   # once
 pnpm test:e2e              # Playwright against `vite preview` (run `pnpm -r build` first)
 ```
 
-Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromium.
+Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromium (headless
+Chromium has no WebGPU, so the tests run on the WebGL2 module; WebGPU is covered by the shared Rust
+layout, geometry and shader-validation tests, not by pixels).
 
 ### Playground
 
 `pnpm dev` (or `pnpm -r build && pnpm --filter playground preview`) serves a page with the chart,
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
-`?backend=webgl2` (force the fallback), `?example=bar-colored` (or `bar-labels`, `bar3d-grid`,
-`bar3d-labels`, `bar3d-row`, `bar3d-negative`), `?ui=0` (only the chart). 3D examples show the
+`?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
+`examples/specs/`: `bar-stacked`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
+`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, ...), `?ui=0` (only the chart). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
 console.
@@ -308,9 +492,10 @@ console.
   example spec. After an intentional layout change: `INSTA_UPDATE=always cargo test -p facetry-core`
   (or `cargo insta review`), then look at the diff in git before committing. CI sets
   `INSTA_UPDATE=no`, so any difference fails.
-- **Golden images** (`examples/playground/tests/__golden__/bar-basic.png`, `bar-labels.png` (value
-  labels, `always`) and `bar3d-grid.png`): Playwright screenshots the basic bar example, the
-  labelled one and the 3D grid example (default camera) in
+- **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
+  `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`): Playwright screenshots these examples (3D ones at their
+  default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
   then **look at the PNG** before committing it.
@@ -338,8 +523,12 @@ profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` pr
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 563,245 B (550 KiB) | 254,991 B (249 KiB) | 212,008 B (207 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,187,106 B (2136 KiB) | 897,869 B (877 KiB) | 711,806 B (695 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 727,543 B (710 KiB) | 324,277 B (317 KiB) | 266,299 B (260 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,342,199 B (2287 KiB) | 967,304 B (945 KiB) | 762,029 B (744 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+
+M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
+(+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
+numbers per step and where they go.
 
 History of the single combined module (both backends), for comparison:
 

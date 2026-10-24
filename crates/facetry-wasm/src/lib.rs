@@ -31,13 +31,18 @@ export interface CameraState {
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
 
-/** A bar, as hover and click events report it. */
+/** A mark (a bar, a line's data point or a pie slice), as hover and click events report it. */
 export interface MarkInfo {
-    /** The mark's key (`layer0/Q3`, or whatever `encoding.key` made of it). */
+    /** The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it). */
     key: string;
     /** Index into the spec's `layers`. */
     layer: number;
-    /** The bar's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`). */
+    /**
+     * The mark's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`).
+     * A mark that stands for several rows that were summed (stacked, normalised and grouped
+     * bars, pie slices) reports the first of them with the summed value in place of its y (or
+     * theta) value.
+     */
     datum: Record<string, number | string | null>;
 }
 
@@ -333,7 +338,7 @@ impl Chart {
         );
         let hit = match &self.scene {
             SceneKind::TwoD(scene) => scene.pick(x, y),
-            SceneKind::ThreeD(scene) => self.renderer.pick_3d(&scene.boxes, x, y),
+            SceneKind::ThreeD(scene) => self.renderer.pick_3d(scene, x, y),
         };
         hit.map_or(-1, |i| i as i32)
     }
@@ -352,11 +357,20 @@ impl Chart {
         let Ok(mark) = usize::try_from(mark) else {
             return JsValue::NULL;
         };
-        let (key, layer, row) = match &self.scene {
-            SceneKind::TwoD(s) => s.rects.get(mark).map(|r| (&r.key, r.layer, r.row)),
-            SceneKind::ThreeD(s) => s.boxes.get(mark).map(|b| (&b.key, b.layer, b.row)),
+        let (key, layer, row, sum) = match &self.scene {
+            SceneKind::TwoD(s) => s.mark(mark).map(|m| (m.key, m.layer, m.row, m.sum)),
+            SceneKind::ThreeD(s) => s
+                .boxes
+                .get(mark)
+                .map(|b| (b.key.as_str(), b.layer, b.row, b.sum))
+                .or_else(|| {
+                    let i = mark.checked_sub(s.boxes.len())?;
+                    s.slices
+                        .get(i)
+                        .map(|p| (p.key.as_str(), p.layer, p.row, p.sum))
+                }),
         }
-        .map_or((None, 0, 0), |(k, l, r)| (Some(k), l, r));
+        .map_or((None, 0, 0, None), |(k, l, r, s)| (Some(k), l, r, s));
         let Some(key) = key else {
             return JsValue::NULL;
         };
@@ -365,28 +379,34 @@ impl Chart {
             // Setting a plain property on a fresh object cannot fail.
             let _ = js_sys::Reflect::set(&object, &name.into(), &value);
         };
-        set("key", key.as_str().into());
+        set("key", key.into());
         set("layer", (layer as f64).into());
-        set("datum", self.datum(layer, row));
+        set("datum", self.datum(layer, row, sum));
         object.into()
     }
 
-    /// Where the middle of the bar with this key is, `{ x, y }` in CSS pixels from the
+    /// Where the middle of the mark (a bar, or a line's data point) with this key is, `{ x, y }` in CSS pixels from the
     /// canvas's top-left (in 3D: where the box's centre projects, right now), or `undefined`
     /// for an unknown key. For tests and for anchoring your own annotations.
     #[wasm_bindgen(js_name = markPosition, unchecked_return_type = "{ x: number, y: number } | undefined")]
     pub fn mark_position(&self, key: &str) -> JsValue {
         let dpr = f64::from(self.dpr);
         let device = match &self.scene {
-            SceneKind::TwoD(s) => s
-                .rects
-                .iter()
-                .find(|r| r.key == key)
-                .map(|r| [r.bounds.x + r.bounds.w / 2.0, r.bounds.y + r.bounds.h / 2.0]),
-            SceneKind::ThreeD(s) => s.boxes.iter().find(|b| b.key == key).and_then(|b| {
-                let centre = [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0);
-                self.renderer.project_3d(centre)
-            }),
+            SceneKind::TwoD(s) => s.mark_center(key),
+            SceneKind::ThreeD(s) => {
+                let centre = s
+                    .boxes
+                    .iter()
+                    .find(|b| b.key == key)
+                    .map(|b| [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0))
+                    .or_else(|| {
+                        // A slice: the middle of its top face.
+                        let p = s.slices.iter().find(|p| p.key == key)?;
+                        let (a0, a1) = p.span();
+                        Some(p.point((a0 + a1) / 2.0, (p.inner + p.outer) / 2.0, p.height))
+                    });
+                centre.and_then(|c| self.renderer.project_3d(c))
+            }
         };
         let Some([x, y]) = device else {
             return JsValue::UNDEFINED;
@@ -540,15 +560,25 @@ impl Chart {
     }
 
     /// The row of a layer's table as a plain JS object (numbers, strings, `null` for a
-    /// missing number).
-    fn datum(&self, layer: usize, row: usize) -> JsValue {
+    /// missing number). When the mark stands for several merged rows (stacked, normalised
+    /// and grouped bars add up rows with the same x and series) `sum` is the total, and it
+    /// replaces the y value: the datum is "the first row, with the summed value".
+    fn datum(&self, layer: usize, row: usize, sum: Option<f64>) -> JsValue {
         let object = js_sys::Object::new();
-        let table = self
-            .spec
-            .layers
-            .get(layer)
-            .and_then(|l| self.spec.data.get(&l.data));
+        let spec_layer = self.spec.layers.get(layer);
+        let table = spec_layer.and_then(|l| self.spec.data.get(&l.data));
+        // The field a merged mark's sum stands in for: y for bars, theta for pie slices.
+        let y_field = spec_layer.and_then(|l| {
+            let e = &l.encoding;
+            e.y.as_ref()
+                .map(|y| y.field.as_str())
+                .or_else(|| e.theta.as_ref().map(|t| t.field.as_str()))
+        });
         for (name, column) in table.into_iter().flatten() {
+            if let (Some(sum), true) = (sum, Some(name.as_str()) == y_field) {
+                let _ = js_sys::Reflect::set(&object, &name.as_str().into(), &sum.into());
+                continue;
+            }
             let value = match column {
                 Column::Numeric(v) => v
                     .get(row)

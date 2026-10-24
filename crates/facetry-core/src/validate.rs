@@ -14,8 +14,9 @@ use tsify::Tsify;
 use crate::Color;
 use crate::spec::{
     AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
-    MAX_LABEL_DECIMALS, Orient, PositionEncoding, Table,
+    MAX_LABEL_DECIMALS, MAX_STROKE_WIDTH, Mark, Orient, Position, PositionEncoding, Table,
 };
+use crate::transform::{self, Cell, Row};
 
 /// One problem with a spec.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -86,6 +87,7 @@ pub(crate) enum ColorSource<'a> {
 #[derive(Debug)]
 pub(crate) struct ResolvedLayer<'a> {
     pub index: usize,
+    pub mark: Mark,
     /// Indices into `spec.axes`.
     pub x_axis: usize,
     pub y_axis: usize,
@@ -93,18 +95,80 @@ pub(crate) struct ResolvedLayer<'a> {
     pub z_axis: Option<usize>,
     pub x_codes: &'a [u32],
     pub x_dict: &'a [String],
+    /// A line layer's numeric x values (`x_numeric`); empty otherwise.
+    pub x_num: &'a [f64],
+    /// The x field is numeric (a line layer on a linear x scale), not categorical.
+    pub x_numeric: bool,
     pub y: &'a [f64],
     pub z_codes: &'a [u32],
     pub z_dict: &'a [String],
     pub color: ColorSource<'a>,
     pub key: Option<&'a Column>,
+    pub position: Position,
 }
 
 impl ResolvedLayer<'_> {
+    /// The rows merged into one cell per (x, series, z): what `stack`, `normalize` and
+    /// `group` lay out. The series is the colour field's code (always a field for those
+    /// positions; `validate` insists).
+    pub fn cells(&self) -> Vec<Cell> {
+        let ColorSource::Field { codes, .. } = self.color else {
+            return Vec::new();
+        };
+        transform::aggregate((0..self.rows()).map(|row| Row {
+            x: self.x_codes[row] as usize,
+            series: codes[row] as usize,
+            z: if self.z_axis.is_some() {
+                self.z_codes[row] as usize
+            } else {
+                0
+            },
+            value: self.y[row],
+            row,
+        }))
+    }
+
+    /// Number of series (distinct colour categories) of a layer coloured by field.
+    pub fn series_count(&self) -> usize {
+        match self.color {
+            ColorSource::Field { dict, .. } => dict.len(),
+            _ => 1,
+        }
+    }
+
+    /// The smallest and largest y value the layer's marks reach (`None` without finite
+    /// values), after its `position` transform: raw values for `overlay`, stack tops and
+    /// bottoms for `stack`, `(0, 1)` for `normalize` and summed values for `group`.
+    pub fn extent(&self) -> Option<(f64, f64)> {
+        match self.position {
+            Position::Overlay => self
+                .y
+                .iter()
+                .filter(|v| v.is_finite())
+                .map(|&v| (v, v))
+                .reduce(|(lo, hi), (a, b)| (lo.min(a), hi.max(b))),
+            Position::Stack => {
+                let cells = self.cells();
+                transform::extent(&transform::stack(&cells, false))
+            }
+            Position::Normalize => (!self.cells().is_empty()).then_some((0.0, 1.0)),
+            Position::Group => self
+                .cells()
+                .iter()
+                .map(|c| (c.value, c.value))
+                .reduce(|(lo, hi), (a, b)| (lo.min(a), hi.max(b))),
+        }
+    }
+
     /// Rows to draw. Tables are validated to have equal column lengths; `min` keeps this
     /// total (no out-of-bounds) even for a spec that was never validated.
     pub fn rows(&self) -> usize {
-        let mut n = self.x_codes.len().min(self.y.len());
+        let x_len = if self.x_numeric {
+            self.x_num.len()
+        } else {
+            self.x_codes.len()
+        };
+        let mut n = x_len.min(self.y.len());
         if self.z_axis.is_some() {
             n = n.min(self.z_codes.len());
         }
@@ -157,6 +221,14 @@ const Z: Channel = Channel {
     allowed: &[Orient::Depth],
     needs: "a depth axis",
 };
+
+fn mark_name(mark: Mark) -> &'static str {
+    match mark {
+        Mark::Bar => "bar",
+        Mark::Line => "line",
+        Mark::Arc => "arc",
+    }
+}
 
 fn orient_name(o: Orient) -> &'static str {
     match o {
@@ -254,10 +326,25 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     };
     let mut issues = Vec::new();
     let enc = &layer.encoding;
+    // Arc layers have their own resolver; anything else here needs x and y.
+    if layer.mark == Mark::Arc {
+        return Err(issues);
+    }
+    let (Some(x_enc), Some(y_enc)) = (enc.x.as_ref(), enc.y.as_ref()) else {
+        for (name, present) in [("x", enc.x.is_some()), ("y", enc.y.is_some())] {
+            if !present {
+                issues.push(Issue::new(
+                    at(&["encoding", name]),
+                    format!("{} layers need an `{name}` encoding", mark_name(layer.mark)),
+                ));
+            }
+        }
+        return Err(issues);
+    };
 
     let three_d = spec.dimension == Dimension::ThreeD;
-    let x_axis = resolve_axis(spec, i, X, &enc.x, &mut issues);
-    let y_axis = resolve_axis(spec, i, if three_d { Y_3D } else { Y }, &enc.y, &mut issues);
+    let x_axis = resolve_axis(spec, i, X, x_enc, &mut issues);
+    let y_axis = resolve_axis(spec, i, if three_d { Y_3D } else { Y }, y_enc, &mut issues);
     let mut z_axis = None;
     if let Some(z) = &enc.z {
         if three_d {
@@ -285,13 +372,13 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
 
     let x = column(
         table,
-        &enc.x.field,
+        &x_enc.field,
         at(&["encoding", "x", "field"]),
         &mut issues,
     );
     let y = column(
         table,
-        &enc.y.field,
+        &y_enc.field,
         at(&["encoding", "y", "field"]),
         &mut issues,
     );
@@ -299,16 +386,25 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     // An empty column has no values to disagree with, so it fits either kind: `"x": []`
     // is how "no data yet" is written.
     let (mut x_codes, mut x_dict): (&[u32], &[String]) = (&[], &[]);
+    let (mut x_num, mut x_numeric): (&[f64], bool) = (&[], false);
+    let is_line = layer.mark == Mark::Line;
     if let Some(x) = x {
         match x {
             Column::Categorical { codes, dict } => (x_codes, x_dict) = (codes, dict),
+            // A line may run along a numeric x (a linear scale); bars need categories.
+            Column::Numeric(v) if is_line && !v.is_empty() => (x_num, x_numeric) = (v, true),
             c if c.is_empty() => {}
             c => issues.push(Issue::new(
                 at(&["encoding", "x", "field"]),
                 format!(
-                    "field {:?} is {}, but the x channel needs a categorical (string) field",
-                    enc.x.field,
-                    c.kind()
+                    "field {:?} is {}, but the x channel needs {}",
+                    x_enc.field,
+                    c.kind(),
+                    if is_line {
+                        "a categorical (string) or numeric field"
+                    } else {
+                        "a categorical (string) field"
+                    }
                 ),
             )),
         }
@@ -321,7 +417,7 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
                 at(&["encoding", "y", "field"]),
                 format!(
                     "field {:?} is {}, but the y channel needs a numeric field",
-                    enc.y.field,
+                    y_enc.field,
                     c.kind()
                 ),
             )),
@@ -369,21 +465,414 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
         );
     }
 
+    check_position(layer, color.as_ref(), y_values, &at(&[]), &mut issues);
+    check_style(layer, &at(&[]), &mut issues);
+    if three_d && is_line {
+        issues.push(Issue::new(
+            at(&["mark"]),
+            "line charts are 2D only for now; use `dimension: \"2d\"`",
+        ));
+    }
+
     match (x_axis, y_axis, color) {
         (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => Ok(ResolvedLayer {
             index: i,
+            mark: layer.mark,
             x_axis,
             y_axis,
             z_axis,
             x_codes,
             x_dict,
+            x_num,
+            x_numeric,
             y: y_values,
             z_codes,
             z_dict,
             color,
             key,
+            position: layer.position,
         }),
         _ => Err(issues),
+    }
+}
+
+/// `style` and `point` only make sense on some marks, and their numbers must be usable.
+fn check_style(layer: &LayerSpec, layer_path: &str, issues: &mut Vec<Issue>) {
+    let line = layer.mark == Mark::Line;
+    let width_ok = |w: f64| w.is_finite() && w > 0.0 && w <= MAX_STROKE_WIDTH;
+    if let Some(style) = &layer.style {
+        if let Some(w) = style.stroke_width {
+            if !line {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/strokeWidth"),
+                    "strokeWidth applies to line layers",
+                ));
+            } else if !width_ok(w) {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/strokeWidth"),
+                    format!(
+                        "strokeWidth must be greater than 0 and at most {MAX_STROKE_WIDTH}, got {w}"
+                    ),
+                ));
+            }
+        }
+    }
+    if let Some(style) = &layer.style {
+        if layer.mark != Mark::Arc {
+            for (name, set) in [
+                ("innerRadius", style.inner_radius.is_some()),
+                ("padAngle", style.pad_angle.is_some()),
+                ("startAngle", style.start_angle.is_some()),
+                ("depth", style.depth.is_some()),
+            ] {
+                if set {
+                    issues.push(Issue::new(
+                        format!("{layer_path}/style/{name}"),
+                        format!("{name} applies to arc layers"),
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(point) = &layer.point {
+        if !line {
+            issues.push(Issue::new(
+                format!("{layer_path}/point"),
+                "point markers apply to line layers",
+            ));
+        } else if let Some(size) = point.size().filter(|&s| !width_ok(s)) {
+            issues.push(Issue::new(
+                format!("{layer_path}/point/size"),
+                format!("size must be greater than 0 and at most {MAX_STROKE_WIDTH}, got {size}"),
+            ));
+        }
+    }
+}
+
+/// `stack`, `normalize` and `group` need series (a colour field); `normalize` also needs
+/// non-negative values, because a share of a total that mixes signs means nothing.
+fn check_position(
+    layer: &LayerSpec,
+    color: Option<&ColorSource>,
+    y: &[f64],
+    layer_path: &str,
+    issues: &mut Vec<Issue>,
+) {
+    if layer.mark != Mark::Bar && layer.position != Position::Overlay {
+        issues.push(Issue::new(
+            format!("{layer_path}/position"),
+            "position applies to bar layers only",
+        ));
+        return;
+    }
+    let name = match layer.position {
+        Position::Overlay => return,
+        Position::Stack => "stack",
+        Position::Normalize => "normalize",
+        Position::Group => "group",
+    };
+    if matches!(color, Some(ColorSource::Default | ColorSource::Fixed(_))) {
+        issues.push(Issue::new(
+            format!("{layer_path}/position"),
+            format!(
+                "position {name:?} needs `encoding.color.field`: the series to {} come from it",
+                if layer.position == Position::Group {
+                    "place side by side"
+                } else {
+                    "stack"
+                }
+            ),
+        ));
+    }
+    if layer.position == Position::Normalize {
+        let negatives = y.iter().filter(|v| **v < 0.0).count();
+        if let Some(first) = y.iter().position(|v| *v < 0.0) {
+            issues.push(Issue::new(
+                format!("{layer_path}/encoding/y/field"),
+                format!(
+                    "position \"normalize\" needs non-negative values, but row {first} is {} ({negatives} negative in all); use \"stack\" to stack positive and negative values",
+                    y[first]
+                ),
+            ));
+        }
+    }
+}
+
+/// An arc layer (pie or donut) with its references resolved.
+#[derive(Debug)]
+pub(crate) struct ResolvedArc<'a> {
+    pub index: usize,
+    /// The slice sizes.
+    pub theta: &'a [f64],
+    /// Each row's slice (colour category) and the category names.
+    pub codes: &'a [u32],
+    pub dict: &'a [String],
+    pub key: Option<&'a Column>,
+}
+
+impl ResolvedArc<'_> {
+    pub fn rows(&self) -> usize {
+        let n = self.theta.len().min(self.codes.len());
+        self.key.map_or(n, |k| n.min(k.len()))
+    }
+
+    /// The text of the key column at `row`, if the layer has an explicit key.
+    pub fn key_text(&self, row: usize) -> Option<String> {
+        Some(match self.key? {
+            Column::Categorical { codes, dict } => dict[codes[row] as usize].clone(),
+            Column::Numeric(v) => v[row].to_string(),
+        })
+    }
+
+    /// One cell per slice: rows of the same colour category are summed. Slices come in
+    /// dictionary order of the colour field (the legend's order). Rows that are missing or
+    /// not positive are no slice.
+    pub fn cells(&self) -> Vec<Cell> {
+        let mut cells = transform::aggregate((0..self.rows()).map(|row| Row {
+            x: 0,
+            series: self.codes[row] as usize,
+            z: 0,
+            value: self.theta[row],
+            row,
+        }));
+        cells.retain(|c| c.value > 0.0);
+        cells.sort_by_key(|c| c.series);
+        cells
+    }
+}
+
+/// The numbers of an arc layer's `style`, in the units the layout uses, with silly values
+/// clamped (`validate` rejects them first; building stays total).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ArcStyle {
+    /// Hole radius as a fraction of the outer radius, `0..0.95`.
+    pub inner: f64,
+    /// Gap between slices, radians.
+    pub pad: f64,
+    /// Where the first slice starts, radians clockwise from 12 o'clock.
+    pub start: f64,
+    /// 3D thickness as a fraction of the radius.
+    pub depth: f64,
+}
+
+pub(crate) fn arc_style(layer: &LayerSpec) -> ArcStyle {
+    let style = layer.style.as_ref();
+    let get =
+        |f: fn(&crate::spec::StyleSpec) -> Option<f64>| style.and_then(f).filter(|v| v.is_finite());
+    ArcStyle {
+        inner: get(|s| s.inner_radius).unwrap_or(0.0).clamp(0.0, 0.95),
+        pad: get(|s| s.pad_angle)
+            .unwrap_or(0.0)
+            .clamp(0.0, 90.0)
+            .to_radians(),
+        start: get(|s| s.start_angle).unwrap_or(0.0).to_radians(),
+        depth: get(|s| s.depth)
+            .unwrap_or(crate::spec::DEFAULT_PIE_DEPTH)
+            .clamp(0.0, 2.0),
+    }
+}
+
+/// Resolves arc layer `i`, or returns every problem that stops it from drawing.
+pub(crate) fn resolve_arc(spec: &ChartSpec, i: usize) -> Result<ResolvedArc<'_>, Vec<Issue>> {
+    let layer: &LayerSpec = &spec.layers[i];
+    let li = i.to_string();
+    let at = |rest: &[&str]| {
+        let mut parts = vec!["layers", li.as_str()];
+        parts.extend_from_slice(rest);
+        pointer(&parts)
+    };
+    let mut issues = Vec::new();
+    let enc = &layer.encoding;
+
+    for (name, set) in [
+        ("x", enc.x.is_some()),
+        ("y", enc.y.is_some()),
+        ("z", enc.z.is_some()),
+    ] {
+        if set {
+            issues.push(Issue::new(
+                at(&["encoding", name]),
+                format!(
+                    "arc layers have no `{name}` channel: slices are sized by `theta` and coloured by `color`"
+                ),
+            ));
+        }
+    }
+    check_position(layer, None, &[], &at(&[]), &mut issues);
+    check_style(layer, &at(&[]), &mut issues);
+    check_arc_style(layer, spec.dimension, &at(&[]), &mut issues);
+
+    let Some(table) = spec.data.get(&layer.data) else {
+        let known: Vec<_> = spec.data.keys().map(String::as_str).collect();
+        issues.push(Issue::new(
+            at(&["data"]),
+            format!(
+                "table {:?} not found (tables: {})",
+                layer.data,
+                known.join(", ")
+            ),
+        ));
+        return Err(issues);
+    };
+
+    let mut theta: &[f64] = &[];
+    match &enc.theta {
+        None => issues.push(Issue::new(
+            at(&["encoding", "theta"]),
+            "arc layers need a `theta` encoding: the numeric field that sizes each slice",
+        )),
+        Some(t) => {
+            if let Some(col) = column(
+                table,
+                &t.field,
+                at(&["encoding", "theta", "field"]),
+                &mut issues,
+            ) {
+                match col {
+                    Column::Numeric(v) => {
+                        theta = v;
+                        if let Some(row) = v.iter().position(|x| *x < 0.0) {
+                            issues.push(Issue::new(
+                                at(&["encoding", "theta", "field"]),
+                                format!(
+                                    "theta values must not be negative, but row {row} is {}",
+                                    v[row]
+                                ),
+                            ));
+                        }
+                    }
+                    c => issues.push(Issue::new(
+                        at(&["encoding", "theta", "field"]),
+                        format!(
+                            "field {:?} is {}, but the theta channel needs a numeric field",
+                            t.field,
+                            c.kind()
+                        ),
+                    )),
+                }
+            }
+        }
+    }
+
+    let color = match &enc.color {
+        Some(ColorEncoding {
+            field: Some(_),
+            value: None,
+        }) => resolve_color(
+            table,
+            enc.color.as_ref(),
+            &at(&["encoding", "color"]),
+            &mut issues,
+        ),
+        _ => {
+            issues.push(Issue::new(
+                at(&["encoding", "color"]),
+                "arc layers colour each slice by a categorical field: `color: { \"field\": ... }`",
+            ));
+            None
+        }
+    };
+    let key = enc.key.as_ref().and_then(|k| {
+        column(
+            table,
+            &k.field,
+            at(&["encoding", "key", "field"]),
+            &mut issues,
+        )
+    });
+
+    match color {
+        Some(ColorSource::Field { codes, dict }) if issues.is_empty() => Ok(ResolvedArc {
+            index: i,
+            theta,
+            codes,
+            dict,
+            key,
+        }),
+        _ => Err(issues),
+    }
+}
+
+/// The numbers in an arc's `style` must make a drawable pie.
+fn check_arc_style(
+    layer: &LayerSpec,
+    dimension: Dimension,
+    layer_path: &str,
+    issues: &mut Vec<Issue>,
+) {
+    let Some(style) = &layer.style else { return };
+    let mut bad = |name: &str, message: String| {
+        issues.push(Issue::new(format!("{layer_path}/style/{name}"), message));
+    };
+    if let Some(v) = style.inner_radius {
+        if !(v.is_finite() && (0.0..1.0).contains(&v)) {
+            bad(
+                "innerRadius",
+                format!("innerRadius must be from 0 up to (not including) 1, got {v}"),
+            );
+        }
+    }
+    if let Some(v) = style.pad_angle {
+        if !(v.is_finite() && (0.0..=90.0).contains(&v)) {
+            bad(
+                "padAngle",
+                format!("padAngle is in degrees, from 0 to 90, got {v}"),
+            );
+        }
+    }
+    if let Some(v) = style.start_angle {
+        if !v.is_finite() {
+            bad(
+                "startAngle",
+                "startAngle must be a finite number of degrees".to_owned(),
+            );
+        }
+    }
+    if let Some(v) = style.depth {
+        if dimension != Dimension::ThreeD {
+            bad(
+                "depth",
+                "depth is the thickness of a 3D pie; it needs `dimension: \"3d\"`".to_owned(),
+            );
+        } else if !(v.is_finite() && (0.0..=2.0).contains(&v)) {
+            bad(
+                "depth",
+                format!("depth is a fraction of the radius, from 0 to 2, got {v}"),
+            );
+        }
+    }
+}
+
+/// Rules that involve more than one layer or the axes: arcs are a chart of their own.
+fn check_arcs(spec: &ChartSpec, issues: &mut Vec<Issue>) {
+    let arcs: Vec<usize> = (0..spec.layers.len())
+        .filter(|&i| spec.layers[i].mark == Mark::Arc)
+        .collect();
+    let Some(&first) = arcs.first() else { return };
+    for (i, axis) in spec.axes.iter().enumerate() {
+        issues.push(Issue::new(
+            pointer(&["axes", &i.to_string()]),
+            format!(
+                "pie and donut charts have no axes (layer {first} is an arc layer); remove axis {:?}",
+                axis.id
+            ),
+        ));
+    }
+    for (i, layer) in spec.layers.iter().enumerate() {
+        let path = pointer(&["layers", &i.to_string(), "mark"]);
+        if layer.mark != Mark::Arc {
+            issues.push(Issue::new(
+                path,
+                format!(
+                    "arc layers cannot be combined with other marks (layer {first} is an arc layer)"
+                ),
+            ));
+        } else if i != first {
+            issues.push(Issue::new(
+                path,
+                format!("only one arc layer per chart for now (layer {first} is the first)"),
+            ));
+        }
     }
 }
 
@@ -465,13 +954,11 @@ fn validate_axes(axes: &[AxisSpec], dimension: Dimension, issues: &mut Vec<Issue
             _ => {}
         }
         if let Some(scale) = &axis.scale {
-            if matches!(axis.orient, Orient::Bottom | Orient::Depth) {
+            // A bottom axis is numeric only when a line layer's x is; `check_x_axes` knows.
+            if axis.orient == Orient::Depth {
                 issues.push(Issue::new(
                     at(&["scale"]),
-                    format!(
-                        "scale overrides apply to numeric axes (left/right); a {} axis shows categories",
-                        orient_name(axis.orient)
-                    ),
+                    "scale overrides apply to numeric axes (left/right/bottom); a depth axis shows categories",
                 ));
             }
             if let Some([lo, hi]) = scale.domain {
@@ -541,8 +1028,28 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
     validate_axes(&spec.axes, spec.dimension, &mut issues);
 
     for (i, layer) in spec.layers.iter().enumerate() {
-        if let Err(mut layer_issues) = resolve_layer(spec, i) {
+        let resolved = if layer.mark == Mark::Arc {
+            resolve_arc(spec, i).map(drop)
+        } else {
+            resolve_layer(spec, i).map(drop)
+        };
+        if let Err(mut layer_issues) = resolved {
             issues.append(&mut layer_issues);
+        }
+        let percent = layer
+            .label
+            .as_ref()
+            .and_then(|l| l.format.as_ref())
+            .and_then(|f| f.percent)
+            .unwrap_or(false);
+        if percent
+            && !matches!(layer.mark, Mark::Arc)
+            && !matches!(layer.position, Position::Stack | Position::Normalize)
+        {
+            issues.push(Issue::new(
+                pointer(&["layers", &i.to_string(), "label", "format", "percent"]),
+                "percent labels need an arc layer or a `stack`/`normalize` bar layer (the share of what?)",
+            ));
         }
         let decimals = layer
             .label
@@ -556,5 +1063,66 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
             ));
         }
     }
+    let resolved: Vec<ResolvedLayer> = (0..spec.layers.len())
+        .filter_map(|i| resolve_layer(spec, i).ok())
+        .collect();
+    check_arcs(spec, &mut issues);
+    check_percent_axes(spec, &resolved, &mut issues);
+    check_x_axes(spec, &resolved, &mut issues);
     issues
+}
+
+/// A bottom axis is a band scale (categories) or a linear one (numbers, from line layers). All
+/// layers on it must agree, and `scale` overrides only make sense on the linear kind.
+fn check_x_axes(spec: &ChartSpec, resolved: &[ResolvedLayer], issues: &mut Vec<Issue>) {
+    for (i, axis) in spec.axes.iter().enumerate() {
+        if axis.orient != Orient::Bottom {
+            continue;
+        }
+        let bound: Vec<&ResolvedLayer> = resolved.iter().filter(|l| l.x_axis == i).collect();
+        let numeric = bound.iter().any(|l| l.x_numeric);
+        if axis.scale.is_some() && !numeric {
+            issues.push(Issue::new(
+                pointer(&["axes", &i.to_string(), "scale"]),
+                "scale overrides apply to numeric axes; a bottom axis is numeric only when a line layer's x field is numeric",
+            ));
+        }
+        if numeric {
+            for l in bound
+                .iter()
+                .filter(|l| !l.x_numeric && !l.x_dict.is_empty())
+            {
+                issues.push(Issue::new(
+                    pointer(&["layers", &l.index.to_string(), "encoding", "x", "field"]),
+                    format!(
+                        "axis {:?} is numeric (another layer's x is a number), but this x field is categorical; layers sharing a bottom axis need the same kind of x",
+                        axis.id
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+/// A y axis that shows a normalised layer reads 0-100%, so a layer with raw values cannot
+/// share it. Reported on every layer whose kind differs from the first one on that axis.
+fn check_percent_axes(spec: &ChartSpec, resolved: &[ResolvedLayer], issues: &mut Vec<Issue>) {
+    for (n, layer) in resolved.iter().enumerate() {
+        let first = resolved[..n].iter().find(|l| l.y_axis == layer.y_axis);
+        let Some(first) = first else { continue };
+        if (first.position == Position::Normalize) != (layer.position == Position::Normalize) {
+            let (normalised, raw) = if first.position == Position::Normalize {
+                (first.index, layer.index)
+            } else {
+                (layer.index, first.index)
+            };
+            issues.push(Issue::new(
+                pointer(&["layers", &layer.index.to_string(), "encoding", "y", "axis"]),
+                format!(
+                    "axis {:?} shows percentages for the \"normalize\" layer {normalised}, so it cannot also show the raw values of layer {raw}; give one of them its own axis",
+                    spec.axes[layer.y_axis].id,
+                ),
+            ));
+        }
+    }
 }

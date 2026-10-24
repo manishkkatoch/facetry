@@ -1,0 +1,594 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [],
+  "rules": [
+    {
+      "key": "axis:y/grid:0",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 439.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:5",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 379.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:10",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 319.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:15",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 259.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:20",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 199.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:25",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 139.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:30",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 79.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:35",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 19.0,
+      "w": 664.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 61.0,
+      "y": 439.0,
+      "w": 665.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Jan",
+      "kind": "tick",
+      "x": 117.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Feb",
+      "kind": "tick",
+      "x": 228.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Mar",
+      "kind": "tick",
+      "x": 339.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Apr",
+      "kind": "tick",
+      "x": 449.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:May",
+      "kind": "tick",
+      "x": 560.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Jun",
+      "kind": "tick",
+      "x": 671.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 61.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:5",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 379.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:10",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 319.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:15",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 259.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:20",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 199.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:25",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 139.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:30",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 79.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:35",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "legend/swatch:Free",
+      "kind": "swatch",
+      "x": 738.0,
+      "y": 19.0,
+      "w": 18.0,
+      "h": 2.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Pro",
+      "kind": "swatch",
+      "x": 738.0,
+      "y": 40.0,
+      "w": 18.0,
+      "h": 2.0,
+      "color": "#f58518"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Jan",
+      "text": "Jan",
+      "x": 117.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Feb",
+      "text": "Feb",
+      "x": 228.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Mar",
+      "text": "Mar",
+      "x": 339.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Apr",
+      "text": "Apr",
+      "x": 449.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:May",
+      "text": "May",
+      "x": 560.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Jun",
+      "text": "Jun",
+      "x": 671.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Month",
+      "x": 394.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0",
+      "text": "0",
+      "x": 51.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:5",
+      "text": "5",
+      "x": 51.0,
+      "y": 383.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:10",
+      "text": "10",
+      "x": 51.0,
+      "y": 323.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:15",
+      "text": "15",
+      "x": 51.0,
+      "y": 263.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:20",
+      "text": "20",
+      "x": 51.0,
+      "y": 203.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:25",
+      "text": "25",
+      "x": 51.0,
+      "y": 143.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:30",
+      "text": "30",
+      "x": 51.0,
+      "y": 83.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:35",
+      "text": "35",
+      "x": 51.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Visits (k)",
+      "x": 25.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    },
+    {
+      "key": "legend/label:Free",
+      "text": "Free",
+      "x": 762.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Pro",
+      "text": "Pro",
+      "x": 762.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    }
+  ],
+  "polylines": [
+    {
+      "key": "layer0/Free",
+      "color": "#4c78a8",
+      "width": 2.0,
+      "runs": [
+        [
+          [
+            117.33,
+            295.0
+          ],
+          [
+            228.0,
+            223.0
+          ],
+          [
+            338.67,
+            259.0
+          ],
+          [
+            449.33,
+            151.0
+          ],
+          [
+            560.0,
+            103.0
+          ],
+          [
+            670.67,
+            19.0
+          ]
+        ]
+      ]
+    },
+    {
+      "key": "layer0/Pro",
+      "color": "#f58518",
+      "width": 2.0,
+      "runs": [
+        [
+          [
+            117.33,
+            199.0
+          ],
+          [
+            228.0,
+            247.0
+          ],
+          [
+            338.67,
+            175.0
+          ],
+          [
+            449.33,
+            211.0
+          ],
+          [
+            560.0,
+            127.0
+          ],
+          [
+            670.67,
+            151.0
+          ]
+        ]
+      ]
+    }
+  ],
+  "points": [
+    {
+      "key": "layer0/Jan/Free",
+      "x": 117.33,
+      "y": 295.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/Free",
+      "x": 228.0,
+      "y": 223.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/Free",
+      "x": 338.67,
+      "y": 259.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/Free",
+      "x": 449.33,
+      "y": 151.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/Free",
+      "x": 560.0,
+      "y": 103.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/Free",
+      "x": 670.67,
+      "y": 19.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jan/Pro",
+      "x": 117.33,
+      "y": 199.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/Pro",
+      "x": 228.0,
+      "y": 247.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/Pro",
+      "x": 338.67,
+      "y": 175.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/Pro",
+      "x": 449.33,
+      "y": 211.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/Pro",
+      "x": 560.0,
+      "y": 127.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/Pro",
+      "x": 670.67,
+      "y": 151.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    }
+  ]
+}

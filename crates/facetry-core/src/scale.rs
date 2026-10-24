@@ -57,6 +57,33 @@ impl Ticks {
     }
 }
 
+impl Ticks {
+    /// Labels for a numeric x axis. Like [`labels`](Self::labels), except that when every
+    /// tick is a whole number from 1000 to 9999 (most likely years) there are no thousands
+    /// separators: `2015`, not `2,015`.
+    pub fn labels_x(&self) -> Vec<String> {
+        let year_like = !self.values.is_empty()
+            && self
+                .values
+                .iter()
+                .all(|v| v.fract() == 0.0 && (1000.0..10_000.0).contains(&v.abs()));
+        self.values
+            .iter()
+            .map(|&v| format_number(v, self.decimals, !year_like))
+            .collect()
+    }
+
+    /// The labels as percentages of a `0..=1` axis: `0.25` reads `25%`. The decimals follow
+    /// the step (two fewer than the fraction needs), so `0.005` steps read `0.5%`.
+    pub fn labels_percent(&self) -> Vec<String> {
+        let decimals = self.decimals.saturating_sub(2);
+        self.values
+            .iter()
+            .map(|&v| format!("{}%", format_number(v * 100.0, decimals, true)))
+            .collect()
+    }
+}
+
 /// Decimals needed to print multiples of the step encoded by `increment`.
 fn decimals_for(increment: f64) -> usize {
     if increment >= 0.0 {
@@ -123,6 +150,17 @@ pub fn format_value(v: f64, decimals: Option<u32>) -> String {
         |d| d as usize,
     );
     format_number(v, decimals, true)
+}
+
+/// A share (`0.25`) as a percentage label (`25%`). By default one decimal only when the
+/// value needs it (`33.3%`, `50%`); `decimals` fixes the count.
+pub fn format_percent(share: f64, decimals: Option<u32>) -> String {
+    let pct = share * 100.0;
+    let decimals = decimals.map_or_else(
+        || usize::from(((pct * 10.0).round() / 10.0 - pct.round()).abs() > 1e-9),
+        |d| d as usize,
+    );
+    format!("{}%", format_number(pct, decimals, true))
 }
 
 /// A continuous numeric scale: `domain` (data) to `range` (pixels), linearly.

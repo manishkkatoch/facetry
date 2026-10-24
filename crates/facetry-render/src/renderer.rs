@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use facetry_core::scene::{Scene, Text};
-use facetry_core::scene3d::{BoxMark, Scene3d, Text3};
+use facetry_core::scene::{ArcMark, PointMark, Scene, Text};
+use facetry_core::scene3d::{Scene3d, Text3};
 use facetry_core::spec::LabelShow;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
@@ -14,12 +14,25 @@ use crate::camera::Camera;
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
+use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
 use crate::pick;
 use crate::rect::{self, RectPipeline};
-use crate::solid::{self, BoxPipeline, LinePipeline};
+use crate::solid::{self, BoxPipeline, LinePipeline, SlicePipeline};
 use crate::text::{
     self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
 };
+
+/// What one `record_pass` is for: the clear colour, whether hover overlays are drawn (not in
+/// snapshots), and the size of the target in pixels.
+#[derive(Debug, Clone, Copy)]
+struct PassSpec {
+    clear: [f32; 4],
+    overlay: bool,
+    size: (u32, u32),
+}
+
+/// How much larger than its normal marker a hovered line point is drawn.
+const HOVER_MARKER_SCALE: f32 = 1.5;
 
 /// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
 const MSAA_SAMPLES: u32 = 4;
@@ -88,6 +101,7 @@ struct Solid {
     /// Per-label "show it, nudge it" table the text shader reads (see `labels.rs`).
     label_states: wgpu::Buffer,
     boxes: BoxPipeline,
+    slices: SlicePipeline,
     lines: LinePipeline,
     text: Text3dPipeline,
 }
@@ -143,6 +157,24 @@ pub struct Renderer {
     /// 2D: bars follow the gridlines in the rect buffer, so bar `i` is instance
     /// `bar_offset + i`.
     bar_offset: usize,
+    /// 2D: how many of the marks are bars; then come the line points, then the pie slices.
+    bar_count: usize,
+    /// 2D: the line points and pie slices, kept for what is drawn over them while hovered.
+    point_marks: Vec<PointMark>,
+    arc_marks: Vec<ArcMark>,
+    /// 3D: how many of the marks are boxes; the rest are pie slices.
+    box_count: usize,
+    /// 3D: the part of the canvas the plot is drawn in (`[x, y, w, h]`, device pixels; `None`
+    /// is all of it: a legend takes a band), and whether a 2D overlay (the legend) is drawn
+    /// over the finished picture in a second pass.
+    plot_rect: Option<[f32; 4]>,
+    has_overlay: bool,
+    /// 2D triangles: pie slices, tessellated line strokes, point markers, and the hover mark.
+    mesh: MeshPipeline,
+    arcs: Mesh,
+    lines: Mesh,
+    markers: Mesh,
+    hover_marker: Mesh,
     hover_labels: Vec<HoverLabel>,
     hover_labels_3d: Vec<HoverLabel3>,
     /// Colour and radius of the outline round 3D labels.
@@ -262,6 +294,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
         let rects = RectPipeline::new(&device, config.format, samples, &globals);
+        let mesh = MeshPipeline::new(&device, config.format, samples, &globals);
         let atlas = Atlas::new(&device, &queue)?;
         let text = TextPipeline::new(&device, &atlas, config.format, samples, &globals);
 
@@ -285,6 +318,17 @@ impl Renderer {
             hover: None,
             mark_count: 0,
             bar_offset: 0,
+            bar_count: 0,
+            point_marks: Vec::new(),
+            arc_marks: Vec::new(),
+            box_count: 0,
+            plot_rect: None,
+            has_overlay: false,
+            mesh,
+            arcs: Mesh::new("pie slices"),
+            lines: Mesh::new("line strokes"),
+            markers: Mesh::new("point markers"),
+            hover_marker: Mesh::new("hover marker"),
             hover_labels: Vec::new(),
             hover_labels_3d: Vec::new(),
             halo: ([1.0; 4], 1.0),
@@ -389,6 +433,22 @@ impl Renderer {
         self.background = scene.background;
         let rects = rect::instances(scene, |c| self.encode_color(c));
         self.rects.set_instances(&self.device, &self.queue, &rects);
+        let arcs = mesh::arc_mesh(scene, |c| self.encode_color(c));
+        self.arcs.set(&self.device, &self.queue, &arcs);
+        let lines = mesh::line_mesh(scene, |c| self.encode_color(c));
+        self.lines.set(&self.device, &self.queue, &lines);
+        let markers = mesh::point_mesh(
+            scene,
+            |c| self.encode_color(c),
+            self.encode_color(scene.background),
+        );
+        self.markers.set(&self.device, &self.queue, &markers);
+        self.hover_marker
+            .set(&self.device, &self.queue, &MeshData::default());
+        self.point_marks.clone_from(&scene.points);
+        self.arc_marks.clone_from(&scene.arcs);
+        self.plot_rect = None;
+        self.has_overlay = false;
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
@@ -412,7 +472,8 @@ impl Renderer {
         self.text.set_overlay(&self.device, &self.queue, &[]);
         self.hover_labels_3d.clear();
         self.hover = None;
-        self.mark_count = scene.rects.len();
+        self.mark_count = scene.mark_count();
+        self.bar_count = scene.rects.len();
         self.bar_offset = scene
             .rules
             .iter()
@@ -441,6 +502,7 @@ impl Renderer {
             });
             Solid {
                 boxes: BoxPipeline::new(device, format, samples, &globals),
+                slices: SlicePipeline::new(device, format, samples, &globals),
                 lines: LinePipeline::new(device, format, samples, &globals),
                 text: Text3dPipeline::new(device, atlas, format, samples, &globals, &label_states),
                 globals,
@@ -453,6 +515,7 @@ impl Renderer {
             &self.queue,
             &solid::box_instances(scene, encode),
         );
+        solid.slices.set(&self.device, &self.queue, scene, encode);
         solid.lines.set_instances(
             &self.device,
             &self.queue,
@@ -461,16 +524,27 @@ impl Renderer {
         let font = FontMetrics::inter();
         let (plan, slots) = LabelPlan::new(scene, font);
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
+        // The glyphs that get an outline (labels printed on a bar or slice do not).
+        let mut outlined: Vec<Glyph3Instance> = Vec::new();
         for (t, &slot) in scene.texts.iter().zip(&slots) {
+            let from = glyphs.len();
             text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
+            if t.halo {
+                outlined.extend_from_slice(&glyphs[from..]);
+            }
         }
         self.hover_labels.clear();
         self.hover_labels_3d.clear();
-        for label in &scene.labels {
+        for (index, label) in scene.labels.iter().enumerate() {
             let color = encode(label.text.color);
             match label.show {
                 LabelShow::Always => {
-                    text::layout_glyphs_3d(&label.text, color, NO_SLOT, font, &mut glyphs)
+                    let from = glyphs.len();
+                    let slot = plan.label_slots().get(index).copied().unwrap_or(NO_SLOT);
+                    text::layout_glyphs_3d(&label.text, color, slot, font, &mut glyphs);
+                    if label.text.halo {
+                        outlined.extend_from_slice(&glyphs[from..]);
+                    }
                 }
                 LabelShow::Hover => self.hover_labels_3d.push(HoverLabel3 {
                     mark: label.mark,
@@ -482,16 +556,36 @@ impl Renderer {
         // Outlines first (every label's, so no outline covers another label's letters), then
         // the letters themselves.
         self.halo = (encode(scene.background), scene.halo_px);
-        let mut instances = text::halo_instances(&glyphs, self.halo.0, self.halo.1);
+        let mut instances = text::halo_instances(&outlined, self.halo.0, self.halo.1);
         instances.extend(glyphs);
         solid
             .text
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
+        // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
+        // buffers a 3D chart does not otherwise use).
+        let swatches = rect::from_boxes(
+            scene.overlay.rules.iter().map(|r| (r.bounds, r.color)),
+            encode,
+        );
+        self.rects
+            .set_instances(&self.device, &self.queue, &swatches);
+        let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
+        for t in &scene.overlay.texts {
+            text::layout_glyphs(t, encode(t.color), font, &mut legend_glyphs);
+        }
+        self.text
+            .set_instances(&self.device, &self.queue, &legend_glyphs);
+        self.text.set_overlay(&self.device, &self.queue, &[]);
+        self.has_overlay = !scene.overlay.is_empty();
+        self.plot_rect = scene.plot;
+        self.bar_offset = 0;
+        self.bar_count = 0;
         self.label_plan = Some(plan);
         self.label_key = None;
         self.hover = None;
-        self.mark_count = scene.boxes.len();
+        self.mark_count = scene.boxes.len() + scene.slices.len();
+        self.box_count = scene.boxes.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -515,56 +609,98 @@ impl Renderer {
         let previous = std::mem::replace(&mut self.hover, mark);
         let font = FontMetrics::inter();
         if let (Some(solid), Some(_)) = (&mut self.solid, self.box_size) {
+            // Marks 0..box_count are boxes; the rest are pie slices.
             if let Some(p) = previous {
-                solid.boxes.set_hover(&self.queue, p, false);
+                if p < self.box_count {
+                    solid.boxes.set_hover(&self.queue, p, false);
+                } else {
+                    solid
+                        .slices
+                        .set_hover(&self.queue, p - self.box_count, false);
+                }
             }
             let mut instances = Vec::new();
             if let Some(m) = mark {
-                solid.boxes.set_hover(&self.queue, m, true);
+                if m < self.box_count {
+                    solid.boxes.set_hover(&self.queue, m, true);
+                } else {
+                    solid
+                        .slices
+                        .set_hover(&self.queue, m - self.box_count, true);
+                }
                 if let Some(l) = self.hover_labels_3d.iter().find(|l| l.mark == m) {
                     text::layout_glyphs_3d(&l.text, l.color, NO_SLOT, font, &mut instances);
-                    let halo = text::halo_instances(&instances, self.halo.0, self.halo.1);
-                    instances.splice(0..0, halo);
+                    if l.text.halo {
+                        let halo = text::halo_instances(&instances, self.halo.0, self.halo.1);
+                        instances.splice(0..0, halo);
+                    }
                 }
             }
             solid
                 .text
                 .set_overlay(&self.device, &self.queue, &instances);
         } else {
-            if let Some(p) = previous {
+            // Marks 0..bar_count are bars (a flag in the rect buffer); then come the line
+            // points and the pie slices, which get something drawn over them instead.
+            if let Some(p) = previous.filter(|&p| p < self.bar_count) {
                 self.rects
                     .set_hover(&self.queue, self.bar_offset + p, false);
             }
             let mut glyphs = Vec::new();
+            let mut marker = MeshData::default();
             if let Some(m) = mark {
-                self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                let points = self.bar_count + self.point_marks.len();
+                if m < self.bar_count {
+                    self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                } else if m < points {
+                    let p = &self.point_marks[m - self.bar_count];
+                    let background = self.encode_color(self.background);
+                    // Bigger than the plain marker, with the same rim.
+                    mesh::push_marker(
+                        &mut marker,
+                        p,
+                        HOVER_MARKER_SCALE,
+                        background,
+                        self.encode_color(p.color),
+                    );
+                    marker.ranges.push(0..marker.vertices.len() as u32);
+                } else if let Some(a) = self.arc_marks.get(m - points) {
+                    // The slice again, a little lighter, exactly on top of itself.
+                    let [r, g, b, alpha] = self.encode_color(a.color);
+                    let lighter = |c: f32| c + (1.0 - c) * 0.12;
+                    mesh::push_arc(&mut marker, a, [lighter(r), lighter(g), lighter(b), alpha]);
+                    marker.ranges.push(0..marker.vertices.len() as u32);
+                }
                 if let Some(l) = self.hover_labels.iter().find(|l| l.mark == m) {
                     text::layout_glyphs(&l.text, l.color, font, &mut glyphs);
                 }
             }
+            self.hover_marker.set(&self.device, &self.queue, &marker);
             self.text.set_overlay(&self.device, &self.queue, &glyphs);
         }
     }
 
-    /// The bar of `boxes` under pixel `(x, y)` of the surface, in the current camera: a ray
-    /// through the pixel against every box, nearest wins. `None` in a 2D chart.
-    pub fn pick_3d(&self, boxes: &[BoxMark], x: f32, y: f32) -> Option<usize> {
+    /// The mark of `scene` (a bar, or a pie slice after the bars) under pixel `(x, y)` of the
+    /// surface, in the current camera: a ray through the pixel against every box and every
+    /// slice's top face, nearest wins. `None` in a 2D chart.
+    pub fn pick_3d(&self, scene: &Scene3d, x: f32, y: f32) -> Option<usize> {
         let size = self.box_size?;
-        let viewport = (self.config.width as f32, self.config.height as f32);
-        pick::pick_3d(
-            boxes,
-            self.camera.plot_view_proj(size, viewport),
-            viewport,
-            (x, y),
+        // The plot has its own part of the canvas (a legend takes a band).
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
+        pick::pick_scene(
+            scene,
+            self.camera.plot_view_proj(size, (w, h)),
+            (w, h),
+            (x - ox, y - oy),
         )
     }
 
     /// Where a world point is on the surface right now, in pixels. `None` in a 2D chart.
     pub fn project_3d(&self, point: [f32; 3]) -> Option<[f32; 2]> {
         let size = self.box_size?;
-        let viewport = (self.config.width as f32, self.config.height as f32);
-        let vp = self.camera.plot_view_proj(size, viewport);
-        pick::project(vp, viewport, Vec3::from(point)).map(|(x, y)| [x, y])
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
+        let vp = self.camera.plot_view_proj(size, (w, h));
+        pick::project(vp, (w, h), Vec3::from(point)).map(|(x, y)| [x + ox, y + oy])
     }
 
     /// The largest width or height a surface or snapshot may have.
@@ -575,7 +711,8 @@ impl Renderer {
     /// The globals for a frame drawn into a target of `target` pixels, from the camera.
     fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
         let (centre, radius) = Camera::plot_frame(size);
-        let (w, h) = (target.0 as f32, target.1 as f32);
+        // The plot is drawn in its own part of the canvas (see `plot_viewport`).
+        let [_, _, w, h] = self.plot_viewport(target);
         let eye = self.camera.eye(centre, radius);
         let font = FontMetrics::inter();
         Globals3 {
@@ -609,7 +746,8 @@ impl Renderer {
             let key = Some((self.camera, target));
             if self.label_key != key {
                 if let Some(plan) = &self.label_plan {
-                    let viewport = (target.0 as f32, target.1 as f32);
+                    let [_, _, w, h] = self.plot_viewport(target);
+                    let viewport = (w, h);
                     let table = plan.states(
                         self.camera.plot_view_proj(size, viewport),
                         [viewport.0, viewport.1],
@@ -644,22 +782,29 @@ impl Renderer {
         color: &wgpu::TextureView,
         resolve: Option<&wgpu::TextureView>,
         depth: Option<&wgpu::TextureView>,
-        clear: [f32; 4],
-        overlay: bool,
+        frame: PassSpec,
     ) {
+        let PassSpec {
+            clear,
+            overlay,
+            size: target,
+        } = frame;
         let [r, g, b, a] = clear;
-        // The multisampled contents are thrown away once resolved.
-        let store = if resolve.is_some() {
-            wgpu::StoreOp::Discard
-        } else {
-            wgpu::StoreOp::Store
+        // A 3D chart with a legend is drawn in two passes (the 3D scene with its depth
+        // buffer, then the legend without one), so the first must keep its colour for the
+        // second to load, and only the last resolves.
+        let two_passes = self.box_size.is_some() && self.has_overlay;
+        let (resolve_now, store) = match resolve {
+            // The multisampled contents are thrown away once resolved.
+            Some(_) if !two_passes => (resolve, wgpu::StoreOp::Discard),
+            _ => (None, wgpu::StoreOp::Store),
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("chart pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color,
                 depth_slice: None,
-                resolve_target: resolve,
+                resolve_target: resolve_now,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
                         r: f64::from(r),
@@ -684,7 +829,11 @@ impl Renderer {
         });
         match (&self.solid, self.box_size) {
             (Some(solid), Some(_)) => {
+                // The plot is framed in the part of the canvas the legend leaves.
+                let [x, y, w, h] = self.plot_viewport(target);
+                pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 solid.boxes.draw(&mut pass);
+                solid.slices.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,
                 // and a label hidden behind a bar is worse than one drawn over it.
@@ -692,10 +841,55 @@ impl Renderer {
             }
             // No depth test in 2D: draw order alone decides what is on top.
             _ => {
-                self.rects.draw(&mut pass, &self.quad);
+                // Back to front: gridlines and bars, then pie slices, the line layers and their markers,
+                // then axis lines and ticks, the hover marker, and text on top.
+                let split = (self.bar_offset + self.bar_count) as u32;
+                self.rects.draw_range(&mut pass, &self.quad, 0..split);
+                self.arcs.draw(&mut pass, &self.mesh);
+                self.lines.draw(&mut pass, &self.mesh);
+                self.markers.draw(&mut pass, &self.mesh);
+                self.rects
+                    .draw_range(&mut pass, &self.quad, split..u32::MAX);
+                if overlay {
+                    self.hover_marker.draw(&mut pass, &self.mesh);
+                }
                 self.text.draw(&mut pass, &self.quad, overlay);
             }
         }
+        drop(pass);
+        if two_passes {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("legend pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color,
+                    depth_slice: None,
+                    resolve_target: resolve,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: if resolve.is_some() {
+                            wgpu::StoreOp::Discard
+                        } else {
+                            wgpu::StoreOp::Store
+                        },
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.rects.draw_range(&mut pass, &self.quad, 0..u32::MAX);
+            self.text.draw(&mut pass, &self.quad, false);
+        }
+    }
+
+    /// The part of a `target`-sized canvas the 3D plot is drawn in, `[x, y, w, h]`, clamped
+    /// to the canvas. The whole canvas unless a legend takes a band of it.
+    fn plot_viewport(&self, target: (u32, u32)) -> [f32; 4] {
+        let (tw, th) = (target.0.max(1) as f32, target.1.max(1) as f32);
+        let [x, y, w, h] = self.plot_rect.unwrap_or([0.0, 0.0, tw, th]);
+        let (x, y) = (x.clamp(0.0, tw - 1.0), y.clamp(0.0, th - 1.0));
+        [x, y, w.clamp(1.0, tw - x), h.clamp(1.0, th - y)]
     }
 
     /// Draws one frame to the surface.
@@ -743,8 +937,11 @@ impl Renderer {
             view,
             resolve,
             self.depth_view.as_ref(),
-            clear,
-            true,
+            PassSpec {
+                clear,
+                overlay: true,
+                size: (self.config.width, self.config.height),
+            },
         );
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
@@ -853,8 +1050,11 @@ impl Renderer {
             view,
             resolve,
             depth_view.as_ref(),
-            clear,
-            false,
+            PassSpec {
+                clear,
+                overlay: false,
+                size: (width, height),
+            },
         );
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {

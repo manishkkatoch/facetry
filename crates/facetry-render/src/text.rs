@@ -609,6 +609,7 @@ mod tests {
             valign,
             azimuths: None,
             role: Default::default(),
+            halo: true,
         }
     }
 

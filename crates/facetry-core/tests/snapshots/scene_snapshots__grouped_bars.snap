@@ -1,0 +1,676 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"bar-grouped\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [
+    {
+      "key": "layer0/Q1/Hardware",
+      "x": 83.0,
+      "y": 79.0,
+      "w": 39.0,
+      "h": 360.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q2/Hardware",
+      "x": 242.0,
+      "y": 169.0,
+      "w": 40.0,
+      "h": 270.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q3/Hardware",
+      "x": 401.0,
+      "y": 19.0,
+      "w": 40.0,
+      "h": 420.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q4/Hardware",
+      "x": 561.0,
+      "y": 109.0,
+      "w": 39.0,
+      "h": 330.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "layer0/Q1/Software",
+      "x": 127.0,
+      "y": 199.0,
+      "w": 39.0,
+      "h": 240.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "layer0/Q2/Software",
+      "x": 286.0,
+      "y": 154.0,
+      "w": 40.0,
+      "h": 285.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "layer0/Q3/Software",
+      "x": 445.0,
+      "y": 109.0,
+      "w": 40.0,
+      "h": 330.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "layer0/Q4/Software",
+      "x": 605.0,
+      "y": 49.0,
+      "w": 39.0,
+      "h": 390.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "layer0/Q1/Services",
+      "x": 171.0,
+      "y": 319.0,
+      "w": 39.0,
+      "h": 120.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "layer0/Q2/Services",
+      "x": 330.0,
+      "y": 304.0,
+      "w": 40.0,
+      "h": 135.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "layer0/Q3/Services",
+      "x": 489.0,
+      "y": 349.0,
+      "w": 40.0,
+      "h": 90.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "layer0/Q4/Services",
+      "x": 649.0,
+      "y": 424.0,
+      "w": 39.0,
+      "h": 15.0,
+      "color": "#e45756"
+    }
+  ],
+  "rules": [
+    {
+      "key": "axis:y/grid:0",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 439.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:20",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 379.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:40",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 319.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:60",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 259.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:80",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 199.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:100",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 139.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:120",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 79.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:140",
+      "kind": "grid",
+      "x": 67.0,
+      "y": 19.0,
+      "w": 637.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 66.0,
+      "y": 439.0,
+      "w": 638.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q1",
+      "kind": "tick",
+      "x": 147.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q2",
+      "kind": "tick",
+      "x": 306.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q3",
+      "kind": "tick",
+      "x": 465.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Q4",
+      "kind": "tick",
+      "x": 624.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 66.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:20",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 379.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:40",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 319.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:60",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 259.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:80",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 199.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:100",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 139.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:120",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 79.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:140",
+      "kind": "tick",
+      "x": 60.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "legend/swatch:Hardware",
+      "kind": "swatch",
+      "x": 716.0,
+      "y": 15.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Software",
+      "kind": "swatch",
+      "x": 716.0,
+      "y": 36.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "legend/swatch:Services",
+      "kind": "swatch",
+      "x": 716.0,
+      "y": 57.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#e45756"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Q1",
+      "text": "Q1",
+      "x": 147.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q2",
+      "text": "Q2",
+      "x": 306.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q3",
+      "text": "Q3",
+      "x": 465.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Q4",
+      "text": "Q4",
+      "x": 624.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Quarter",
+      "x": 386.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0",
+      "text": "0",
+      "x": 56.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:20",
+      "text": "20",
+      "x": 56.0,
+      "y": 383.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:40",
+      "text": "40",
+      "x": 56.0,
+      "y": 323.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:60",
+      "text": "60",
+      "x": 56.0,
+      "y": 263.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:80",
+      "text": "80",
+      "x": 56.0,
+      "y": 203.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:100",
+      "text": "100",
+      "x": 56.0,
+      "y": 143.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:120",
+      "text": "120",
+      "x": 56.0,
+      "y": 83.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:140",
+      "text": "140",
+      "x": 56.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Revenue",
+      "x": 25.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    },
+    {
+      "key": "legend/label:Hardware",
+      "text": "Hardware",
+      "x": 732.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Software",
+      "text": "Software",
+      "x": 732.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Services",
+      "text": "Services",
+      "x": 732.0,
+      "y": 66.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    }
+  ],
+  "labels": [
+    {
+      "mark": 0,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q1/Hardware/label",
+        "text": "120",
+        "x": 103.0,
+        "y": 75.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 1,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q2/Hardware/label",
+        "text": "90",
+        "x": 262.0,
+        "y": 165.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 2,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q3/Hardware/label",
+        "text": "140",
+        "x": 421.0,
+        "y": 32.0,
+        "size_px": 12.0,
+        "color": "#ffffff",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 3,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q4/Hardware/label",
+        "text": "110",
+        "x": 581.0,
+        "y": 105.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 4,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q1/Software/label",
+        "text": "80",
+        "x": 147.0,
+        "y": 195.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 5,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q2/Software/label",
+        "text": "95",
+        "x": 306.0,
+        "y": 150.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 6,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q3/Software/label",
+        "text": "110",
+        "x": 465.0,
+        "y": 105.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 7,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q4/Software/label",
+        "text": "130",
+        "x": 625.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 8,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q1/Services/label",
+        "text": "40",
+        "x": 191.0,
+        "y": 315.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 9,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q2/Services/label",
+        "text": "45",
+        "x": 350.0,
+        "y": 300.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 10,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q3/Services/label",
+        "text": "30",
+        "x": 509.0,
+        "y": 345.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 11,
+      "show": "always",
+      "text": {
+        "key": "layer0/Q4/Services/label",
+        "text": "5",
+        "x": 669.0,
+        "y": 420.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ]
+}

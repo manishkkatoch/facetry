@@ -306,3 +306,176 @@ test("2D charts report hover and click even though they cannot orbit", async ({ 
   const log = await events(page);
   expect(log.map((e) => `${e.type}:${e.mark?.key}`)).toEqual(["hover:layer0/Q2", "click:layer0/Q2"]);
 });
+
+test("stacked bars: hover reports the segment's row, and merged rows report their sum", async ({ page }) => {
+  await open(page, "bar-stacked");
+  await listen(page);
+  const seg = await where(page, "layer0/Q2/Software");
+  await page.mouse.move(seg.x, seg.y);
+  expect(await events(page)).toEqual([
+    { type: "hover", mark: { key: "layer0/Q2/Software", layer: 0, datum: { quarter: "Q2", product: "Software", revenue: 95 } } },
+  ]);
+  // A second Q2 Software row: the stack merges them (95 + 5) and the datum is the first row
+  // with the summed revenue.
+  await page.evaluate(() => {
+    const spec = JSON.parse((document.querySelector("#json") as HTMLTextAreaElement).value);
+    const t = spec.data.sales;
+    t.quarter.push("Q2");
+    t.product.push("Software");
+    t.revenue.push(5);
+    (window as any).facetryChart.update(spec);
+  });
+  // The pointer stayed where it was: hover cleared by the relayout, then found again.
+  const log = await events(page);
+  expect(log.at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Q2/Software", layer: 0, datum: { quarter: "Q2", product: "Software", revenue: 100 } },
+  });
+});
+
+test("3D stacked bars: hovering a segment reports it", async ({ page }) => {
+  await open(page, "bar3d-stacked");
+  await listen(page);
+  const key = "layer0/Q3/Software/North";
+  const p = await where(page, key);
+  await page.mouse.move(p.x, p.y);
+  const log = await events(page);
+  expect(log.at(-1)?.mark?.key).toBe(key);
+  expect(log.at(-1)?.mark?.datum).toEqual({ quarter: "Q3", region: "North", product: "Software", revenue: 110 });
+});
+
+test("line points: the nearest point within reach is hovered, with a marker and its hover label; far from it a bar is", async ({ page }) => {
+  await open(page, "combo-bar-line");
+  await listen(page);
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const point = await where(page, "layer1/Q3");
+  const bar = await where(page, "layer0/Q3");
+  expect(Math.hypot(point.inCanvas.x - bar.inCanvas.x, point.inCanvas.y - bar.inCanvas.y)).toBeGreaterThan(30);
+
+  // Ten pixels off the point still counts (the reach is 12), though the pointer is inside a bar.
+  await page.mouse.move(point.x + 10, point.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer1/Q3", layer: 1, datum: { quarter: "Q3", revenue: 140, margin: 21 } },
+  });
+  const hovered = await shot(page);
+  const d = diff(idle, hovered);
+  // The marker and the hover label (the layer asks for `show: "hover"`) appeared around the point...
+  expect(d.n, JSON.stringify(d)).toBeGreaterThan(150);
+  expect(d.x0).toBeLessThan(point.inCanvas.x);
+  expect(d.x1).toBeGreaterThan(point.inCanvas.x);
+  expect(d.y0).toBeLessThan(point.inCanvas.y);
+  // ...and nowhere far from it (the bar did not light up).
+  expect(d.x1 - d.x0).toBeLessThan(80);
+  expect(d.y1 - d.y0).toBeLessThan(80);
+
+  // Out of reach: the bar under the pointer.
+  await page.mouse.move(bar.x, bar.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Q3", layer: 0, datum: { quarter: "Q3", revenue: 140, margin: 21 } },
+  });
+  // Leaving restores the idle picture exactly.
+  await page.mouse.move(2, 2);
+  expect(diff(idle, await shot(page)).n).toBe(0);
+});
+
+test("line points: click reports the point, and a point is reachable by its key", async ({ page }) => {
+  await open(page, "line-basic");
+  await listen(page);
+  const p = await where(page, "layer0/Mar/Pro");
+  await page.mouse.click(p.x, p.y);
+  expect((await events(page)).filter((e) => e.type === "click")).toEqual([
+    { type: "click", mark: { key: "layer0/Mar/Pro", layer: 0, datum: { month: "Mar", plan: "Pro", visits: 22 } } },
+  ]);
+});
+
+test("pie: a slice is hovered by angle and radius, reports its datum and sum, and the hole reports nothing", async ({ page }) => {
+  await open(page, "donut");
+  await listen(page);
+  const pro = await where(page, "layer0/Pro");
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  await page.mouse.move(pro.x, pro.y);
+  expect(await events(page)).toEqual([
+    { type: "hover", mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 310 } } },
+  ]);
+  const lit = diff(idle, await shot(page), 8);
+  expect(lit.n).toBeGreaterThan(5_000); // the slice is lightened, nothing else
+  // The donut's hole: nothing. (Its middle is where the slices' common corner is.)
+  
+  // The chord midpoint of two ring-middle points lies inside the ring's hole for slices on opposite sides.
+  const centre = await page.evaluate(() => {
+    const c = (window as any).facetryChart;
+    const a = c.markPosition("layer0/Free");
+    const b = c.markPosition("layer0/Team");
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  });
+  const box = (await page.locator("#chart").boundingBox())!;
+
+  await page.mouse.move(box.x + centre.x, box.y + centre.y);
+  expect((await events(page)).at(-1)).toEqual({ type: "hover", mark: null });
+  // Clicking a slice reports it too.
+  await page.mouse.click(pro.x, pro.y);
+  expect((await events(page)).filter((e) => e.type === "click")).toEqual([
+    { type: "click", mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 310 } } },
+  ]);
+  // Rows of the same plan are merged into one slice; its datum carries the sum.
+  await page.evaluate(() => {
+    const spec = JSON.parse((document.querySelector("#json") as HTMLTextAreaElement).value);
+    spec.data.plans.plan.push("Pro");
+    spec.data.plans.users.push(90);
+    (window as any).facetryChart.update(spec);
+  });
+  const merged = await where(page, "layer0/Pro");
+  await page.mouse.move(merged.x, merged.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 400 } },
+  });
+});
+
+test("pie: a hover-mode label shows only on the hovered slice", async ({ page }) => {
+  await open(page, "donut");
+  await edit(page, (s) => (s.layers[0].label.show = "hover"));
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const team = await where(page, "layer0/Team");
+  await page.mouse.move(team.x, team.y);
+  const withLabel = await shot(page);
+  await edit(page, (s) => delete s.layers[0].label);
+  await page.mouse.move(2, 2);
+  await page.mouse.move(team.x, team.y);
+  const without = await shot(page);
+  expect(diff(idle, without, 8).n).toBeGreaterThan(1_000); // the lit slice
+  const label = diff(withLabel, without);
+  expect(label.n).toBeGreaterThan(20); // "120"
+  expect(Math.abs((label.x0 + label.x1) / 2 - team.inCanvas.x)).toBeLessThan(40);
+});
+
+test("3D pie: hovering a slice's top face reports it and lights it; the camera can orbit and it still works", async ({ page }) => {
+  await open(page, "pie3d");
+  await listen(page);
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const key = "layer0/Social";
+  const p = await where(page, key);
+  await page.mouse.move(p.x, p.y);
+  const log = await events(page);
+  expect(log.at(-1)).toEqual({
+    type: "hover",
+    mark: { key, layer: 0, datum: { source: "Social", visits: 280 } },
+  });
+  expect(diff(idle, await shot(page), 8).n).toBeGreaterThan(3_000);
+  // Turned around, the same slice is still found where it now is.
+  await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 200, elevation: 50 }));
+  await page.mouse.move(2, 2);
+  await events(page);
+  const q = await where(page, key);
+  await page.mouse.move(q.x, q.y);
+  expect((await events(page)).at(-1)?.mark?.key).toBe(key);
+  // Off the pie.
+  await page.mouse.move(2, 2);
+  expect((await events(page)).at(-1)).toEqual({ type: "hover", mark: null });
+});

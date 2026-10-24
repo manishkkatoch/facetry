@@ -1,0 +1,26 @@
+{
+  "dimension": "2d",
+  "data": {
+    "traffic": {
+      "month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      "plan": ["Free", "Free", "Free", "Free", "Free", "Free", "Pro", "Pro", "Pro", "Pro", "Pro", "Pro"],
+      "visits": [12, 18, 15, 24, 28, 35, 20, 16, 22, 19, 26, 24]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Month" },
+    { "id": "y", "orient": "left", "title": "Visits (k)" }
+  ],
+  "layers": [
+    {
+      "mark": "line",
+      "data": "traffic",
+      "point": true,
+      "encoding": {
+        "x": { "field": "month", "axis": "x" },
+        "y": { "field": "visits", "axis": "y" },
+        "color": { "field": "plan" }
+      }
+    }
+  ]
+}

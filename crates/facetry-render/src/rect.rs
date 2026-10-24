@@ -24,8 +24,15 @@ pub fn instances(
     scene: &Scene,
     encode: impl Fn(facetry_core::Color) -> [f32; 4],
 ) -> Vec<RectInstance> {
-    scene
-        .boxes_in_draw_order()
+    from_boxes(scene.boxes_in_draw_order(), encode)
+}
+
+/// Rectangle instances for any list of `(bounds, colour)` (a 3D chart's legend swatches).
+pub fn from_boxes(
+    boxes: impl Iterator<Item = (facetry_core::scene::Bounds, facetry_core::Color)>,
+    encode: impl Fn(facetry_core::Color) -> [f32; 4],
+) -> Vec<RectInstance> {
+    boxes
         .map(|(b, color)| RectInstance {
             rect: [b.x, b.y, b.w, b.h],
             color: encode(color),
@@ -136,15 +143,26 @@ impl RectPipeline {
         );
     }
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
+    /// Draws instances `range` (clamped to what exists): the 2D pass draws the rectangles in
+    /// two parts, with the line layers between them.
+    pub fn draw_range<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        quad: &'a wgpu::Buffer,
+        range: std::ops::Range<u32>,
+    ) {
         let Some((buffer, count)) = self.instances.bound() else {
             return;
         };
+        let range = range.start.min(count)..range.end.min(count);
+        if range.is_empty() {
+            return;
+        }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, quad.slice(..));
         pass.set_vertex_buffer(1, buffer.slice(..));
-        pass.draw(0..4, 0..count);
+        pass.draw(0..4, range);
     }
 }
 

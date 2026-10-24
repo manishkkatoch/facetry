@@ -19,7 +19,7 @@ export interface ChartOptions {
   clearColor?: string;
 }
 
-/** What hover and click events report: the bar, and the row of data it was drawn from. */
+/** What hover and click events report: the mark (bar, line point or pie slice), and the row of data it was drawn from. */
 export type MarkEvent = MarkInfo;
 
 /** The events {@link Chart.on} takes. `null` means "no bar" (the pointer left every bar). */

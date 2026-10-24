@@ -116,7 +116,7 @@ test("every 3D example in the dropdown draws without errors", async ({ page }) =
   await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
   const names = await page.locator("#example option").allTextContents();
   const threeD = names.filter((n) => n.startsWith("bar3d-"));
-  expect(threeD).toEqual(["bar3d-grid", "bar3d-labels", "bar3d-negative", "bar3d-row"]);
+  expect(threeD).toEqual(["bar3d-grid", "bar3d-labels", "bar3d-negative", "bar3d-row", "bar3d-stacked"]);
   let updates = 0;
   for (const name of threeD) {
     await page.locator("#example").selectOption(name);

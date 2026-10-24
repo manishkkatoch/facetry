@@ -456,3 +456,38 @@ remove more than all of this at once.
 
 PNG encoding is deliberately not in the wasm (that was the point of removing `png`); the
 browser's encoder is used from TypeScript.
+
+
+## M2: stacking, lines, pies and the legend
+
+Same pipeline (`scripts/build-wasm.sh`), one measurement per phase of the `m2-chart-types`
+branch (each phase built after its tests passed):
+
+| Phase | WebGPU raw | WebGPU gzip | Δ gzip | WebGL2 gzip | Δ gzip |
+|---|---:|---:|---:|---:|---:|
+| before (main) | 601,511 | 272,819 | | 917,046 | |
+| 1 bar positions: stack, normalize, group (2D + 3D) | 621,833 | 281,421 | +8,602 | 924,730 | +7,684 |
+| 2 line mark, numeric x axis, tessellator, mesh pipeline | 668,163 | 299,964 | +18,543 | 944,403 | +19,673 |
+| 3 arc mark, 3D lit-mesh pipeline, label occlusion | 709,636 | 316,928 | +16,964 | 960,811 | +16,408 |
+| 4 legend (2D and 3D overlay, second pass) | 727,543 | 324,277 | +7,349 | 967,304 | +6,493 |
+
+Total: +51,458 B gzip for the WebGPU module (+18.9%), +50,258 for the WebGL2 one (+5.5%).
+Brotli: 227,037 to 266,299 (WebGPU), 725,367 to 762,029 (WebGL2). No new dependencies: `glam` and
+`bytemuck` were already there, `proptest` is a native-only dev-dependency of the render crate, and
+the tessellator is about 150 lines (see `crates/facetry-render/src/stroke.rs`) instead of lyon,
+which would have added a generic path-flattening and tessellation stack for a job that is
+"extrude a polyline with miter joins".
+
+Where it goes (`PROFILE_MODULE=webgpu scripts/wasm-profile.sh` at the end): the layout code is the
+single biggest piece. `build_scene_with_theme` is 26 KB raw (it now holds the bar, line and linear
+x paths, with `layer_bars` and the legend inlined around it), `build_scene_3d_with_theme` 16 KB,
+`Renderer::set_scene_3d` 12 KB (slices, overlay, label planning), and the new legend layout 5 KB.
+The serde-derived deserialisers for the spec types are the second block: `ChartSpec` 16 KB,
+`LayerSpec` 12 KB (it gained `position`, `point`, `style`), `Encoding` 6 KB, ~61 KB raw for all
+spec types together, as before the single largest thing that would shrink if the spec were read
+by hand instead of derived (idea e3 above, not done). The rest of the growth is spread thin:
+the mesh and slice pipelines, ray tests for picking and label occlusion, and the extra
+`format!`/`f64` formatting calls for keys and labels.
+
+Not done, in order of expected gain: a hand-written spec reader; sharing the key/label code of
+the bar and line builders; and dropping `serde_path_to_error` for a cheaper error path.

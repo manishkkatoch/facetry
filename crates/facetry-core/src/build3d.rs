@@ -24,12 +24,12 @@
 use std::collections::HashMap;
 
 use crate::Theme;
-use crate::scale::format_value;
-use crate::scale::{Band, Linear, format_number};
+use crate::scale::{Band, Linear, format_number, format_percent, format_value};
 use crate::scene::{Anchor, RuleKind};
 use crate::scene3d::*;
-use crate::spec::{ChartSpec, Orient};
+use crate::spec::{ChartSpec, Orient, Position};
 use crate::text::TextMeasure;
+use crate::transform;
 use crate::validate::{ColorSource, ResolvedLayer, resolve_layer};
 
 /// Width and depth of one category cell in world units (the box is 1 high).
@@ -41,6 +41,8 @@ const MAX_LONG: f64 = 2.4;
 const TICK_LEN: f64 = 0.03;
 const BAND_PADDING_INNER: f64 = 0.2;
 const BAND_PADDING_OUTER: f64 = 0.1;
+/// Space between the boxes of a `group` layer, as a fraction of one box's slot.
+const GROUP_PADDING_INNER: f64 = 0.1;
 
 // Pixel sizes, CSS px (multiplied by dpr).
 const LABEL_SIZE: f64 = 12.0;
@@ -89,7 +91,28 @@ pub fn build_scene_3d_with_theme(
     measure: &dyn TextMeasure,
     theme: &Theme,
 ) -> Scene3d {
+    // An extruded pie is a chart of its own: no axes, no walls.
+    if let Some(i) = spec
+        .layers
+        .iter()
+        .position(|l| l.mark == crate::spec::Mark::Arc)
+    {
+        if let Ok(arc) = crate::validate::resolve_arc(spec, i) {
+            return crate::build_arc3d::build_pie_3d(spec, &arc, viewport_px, dpr, measure, theme);
+        }
+    }
     let s = f64::from(dpr).clamp(0.25, 16.0);
+    // The legend takes a band of the canvas; the 3D plot is framed in the rest.
+    let legend = crate::legend::layout(
+        spec,
+        theme,
+        (f64::from(viewport_px.0), f64::from(viewport_px.1)),
+        s,
+        crate::build::PADDING * s,
+        measure,
+    );
+    let plot = legend.as_ref().map(|l| plot_area(viewport_px, l));
+    let plot_h = plot.map_or(viewport_px.1 as f32, |p| p[3]);
     let layers: Vec<ResolvedLayer> = (0..spec.layers.len())
         .filter_map(|i| resolve_layer(spec, i).ok())
         .collect();
@@ -158,7 +181,7 @@ pub fn build_scene_3d_with_theme(
         .clamp(0.5, 20.0);
     let radius = f64::from(framing_radius([width as f32, 1.0, depth as f32]));
     let half_fov = (FOV_Y_DEGREES / 2.0).to_radians().tan();
-    let px_per_unit = f64::from(viewport_px.1.max(1)) / (2.0 * distance * radius * half_fov);
+    let px_per_unit = f64::from(plot_h.max(1.0)) / (2.0 * distance * radius * half_fov);
 
     // --- y scale ----------------------------------------------------------------------------
     let y_plan = y_axis.map(|i| (i, &spec.axes[i]));
@@ -181,85 +204,88 @@ pub fn build_scene_3d_with_theme(
         }
     }
     let y_ticks = y_scale.ticks(tick_count);
-    let y_labels = y_ticks.labels();
+    let percent =
+        y_axis.is_some_and(|i| crate::build::is_percent(layers.iter().filter(|l| l.y_axis == i)));
+    let y_labels = if percent {
+        y_ticks.labels_percent()
+    } else {
+        y_ticks.labels()
+    };
     let (d0, d1) = y_scale.domain();
 
     let mut scene = Scene3d {
         width: viewport_px.0,
         height: viewport_px.1,
+        plot,
+        overlay: legend.map(overlay).unwrap_or_default(),
         background: theme.background,
         size: [width as f32, 1.0, depth as f32],
         halo_px: s.round().max(1.0) as f32,
         boxes: Vec::new(),
+        slices: Vec::new(),
         lines: Vec::new(),
         texts: Vec::new(),
         labels: Vec::new(),
     };
-    // Value labels wait until the pixel sizes below are known: (box index, when shown, text,
-    // negative).
-    let mut value_labels: Vec<(usize, crate::spec::LabelShow, String, bool)> = Vec::new();
+    // Value labels wait until the pixel sizes below are known.
+    let mut value_labels: Vec<PendingLabel> = Vec::new();
 
     // --- bars -------------------------------------------------------------------------------
     let ordinal = crate::build::color_scale(&layers, theme);
-    let y_zero = y_scale.map(0.0_f64.clamp(d0, d1));
     for layer in &layers {
         let mut used_keys: HashMap<String, usize> = HashMap::new();
-        for row in 0..layer.rows() {
-            let category = &layer.x_dict[layer.x_codes[row] as usize];
-            let value = layer.y[row];
-            let z_category = layer
-                .z_axis
-                .map(|_| &layer.z_dict[layer.z_codes[row] as usize]);
-            let bz = match z_category {
-                Some(c) => band_z.index_of(c),
-                None => Some(0),
-            };
-            let (Some(bx), Some(bz), true) = (band_x.index_of(category), bz, value.is_finite())
-            else {
-                continue;
-            };
-            let end = y_scale.map(value.clamp(d0, d1));
-            let (x0, z1) = (band_x.position(bx), z_hi(bz));
-            let color = match layer.color {
-                ColorSource::Default => theme.palette[0],
-                ColorSource::Fixed(c) => c,
-                ColorSource::Field { codes, dict } => ordinal.color(&dict[codes[row] as usize]),
-            };
-            let mut base_key = format!(
-                "layer{}/{}",
-                layer.index,
-                layer.key_text(row).unwrap_or_else(|| category.clone())
+        let label_spec = spec.layers[layer.index].label.as_ref();
+        let decimals = label_spec
+            .and_then(|l| l.format.as_ref())
+            .and_then(|f| f.decimals);
+        for bar in layer_bars(layer, &band_x, &band_z, &ordinal, theme) {
+            // A bar spans two values (0 and the value, or the two ends of a stack segment).
+            let (y_a, y_b) = (
+                y_scale.map(bar.y0.clamp(d0, d1)),
+                y_scale.map(bar.y1.clamp(d0, d1)),
             );
-            if let (None, Some(z)) = (layer.key, z_category) {
-                base_key = format!("{base_key}/{z}");
-            }
+            let (x0, z1) = (band_x.position(bar.x), z_hi(bar.z));
+            let (left, width_x) = match bar.slot {
+                Some((k, n)) => {
+                    let slots = group_slots(n, band_x.bandwidth());
+                    (x0 + slots.position(k), slots.bandwidth())
+                }
+                None => (x0, band_x.bandwidth()),
+            };
             // Duplicate keys get `#2`, `#3`, ... so every mark stays addressable.
-            let n = used_keys.entry(base_key.clone()).or_insert(0);
+            let n = used_keys.entry(bar.key.clone()).or_insert(0);
             *n += 1;
             let key = if *n == 1 {
-                base_key
+                bar.key.clone()
             } else {
-                format!("{base_key}#{n}")
+                format!("{}#{n}", bar.key)
             };
-            if let Some(label) = &spec.layers[layer.index].label {
-                let text = format_value(value, label.format.as_ref().and_then(|f| f.decimals));
-                value_labels.push((scene.boxes.len(), label.show, text, value < 0.0));
+            if let Some(label) = label_spec {
+                let text = match bar.share {
+                    Some(share) => format_percent(share, decimals),
+                    None => format_value(bar.value, decimals),
+                };
+                value_labels.push(PendingLabel {
+                    mark: scene.boxes.len(),
+                    show: label.show,
+                    text,
+                    negative: bar.y1 < bar.y0,
+                    inside: bar.stacked,
+                    slot_width: bar.slot.map(|_| width_x as f32),
+                });
             }
             scene.boxes.push(BoxMark {
                 key,
                 layer: layer.index,
-                row,
+                row: bar.row,
+                sum: bar.sum,
                 min: [
-                    x0 as f32,
-                    end.min(y_zero) as f32,
+                    left as f32,
+                    y_a.min(y_b) as f32,
                     (z1 - band_z.bandwidth()) as f32,
                 ],
-                max: [
-                    (x0 + band_x.bandwidth()) as f32,
-                    end.max(y_zero) as f32,
-                    z1 as f32,
-                ],
-                color,
+                max: [(left + width_x) as f32, y_a.max(y_b) as f32, z1 as f32],
+                color: bar.color,
             });
         }
     }
@@ -278,36 +304,72 @@ pub fn build_scene_3d_with_theme(
 
     // --- value labels -----------------------------------------------------------------------
     // Above the middle of the bar's top face (below the middle of the bottom face of a
-    // negative bar), hanging off a world anchor like every 3D label.
-    for (mark, show, label_text, negative) in value_labels {
-        let b = &scene.boxes[mark];
+    // negative bar), hanging off a world anchor like every 3D label. A stacked segment's
+    // label is centred in the segment instead, and left out when the segment is too short
+    // for it at the starting camera (the label is screen-sized, the segment is not).
+    for pending in value_labels {
+        let b = &scene.boxes[pending.mark];
         let centre = [(b.min[0] + b.max[0]) / 2.0, (b.min[2] + b.max[2]) / 2.0];
         let gap = (VALUE_LABEL_GAP * s) as f32;
-        let (y, offset, valign) = if negative {
+        let (y, offset, valign) = if pending.inside {
+            let tall = f64::from(b.max[1] - b.min[1]) * px_per_unit;
+            if tall < f64::from(label_h) * 1.4 {
+                continue;
+            }
+            ((b.min[1] + b.max[1]) / 2.0, [0.0, 0.0], VAlign::Middle)
+        } else if pending.negative {
             (b.min[1], [0.0, gap], VAlign::Top)
         } else {
             (b.max[1], [0.0, -gap], VAlign::Baseline)
         };
+        // Side-by-side boxes are narrow; text much wider than its slot would run into the
+        // neighbours' labels.
+        if let Some(slot) = pending.slot_width {
+            if f64::from(measure.width(&pending.text, label_size))
+                > f64::from(slot) * px_per_unit * 1.6
+            {
+                continue;
+            }
+        }
         let text = Text3 {
             key: format!("{}/label", b.key),
-            text: label_text,
+            text: pending.text,
             anchor: [centre[0], y, centre[1]],
             offset_px: offset,
             size_px: label_size,
-            color: theme.text,
+            color: if pending.inside {
+                // On the box: whichever of text and background contrasts more with it.
+                if theme.text.contrast(b.color) >= theme.background.contrast(b.color) {
+                    theme.text
+                } else {
+                    theme.background
+                }
+            } else {
+                theme.text
+            },
             align: Anchor::Middle,
             valign,
             azimuths: None,
-            role: LabelRole::Fixed,
+            // A label on a segment is hidden while the segment is behind another box.
+            role: if pending.inside {
+                LabelRole::OnMark(pending.mark as u32)
+            } else {
+                LabelRole::Fixed
+            },
+            halo: !pending.inside,
         };
-        scene.labels.push(MarkLabel3 { mark, show, text });
+        scene.labels.push(MarkLabel3 {
+            mark: pending.mark,
+            show: pending.show,
+            text,
+        });
     }
 
     let mut line =
         |key: String, kind: RuleKind, a: [f32; 3], b: [f32; 3], azimuths: Option<AzimuthRange>| {
             let (width_px, color) = match kind {
                 RuleKind::Grid => (hair, theme.grid),
-                RuleKind::Axis | RuleKind::Tick => (heavy, theme.axis),
+                RuleKind::Axis | RuleKind::Tick | RuleKind::Swatch => (heavy, theme.axis),
             };
             scene.lines.push(Line3 {
                 key,
@@ -457,6 +519,7 @@ pub fn build_scene_3d_with_theme(
             valign,
             azimuths,
             role,
+            halo: true,
         });
     };
 
@@ -682,6 +745,180 @@ pub fn build_scene_3d_with_theme(
         }
     }
     scene
+}
+
+/// The part of the canvas left for the 3D plot once the legend has its band.
+pub(crate) fn plot_area(viewport_px: (u32, u32), legend: &crate::legend::Legend) -> [f32; 4] {
+    let (w, h) = (f64::from(viewport_px.0), f64::from(viewport_px.1));
+    let width = (w - legend.left - legend.right).max(1.0);
+    let height = (h - legend.top - legend.bottom).max(1.0);
+    [
+        legend.left as f32,
+        legend.top as f32,
+        width as f32,
+        height as f32,
+    ]
+}
+
+/// The legend as the scene's screen-space overlay.
+pub(crate) fn overlay(legend: crate::legend::Legend) -> Overlay {
+    Overlay {
+        rules: legend.rules,
+        texts: legend.texts,
+    }
+}
+
+/// A value label waiting for the pixel sizes (known only after the bars are placed).
+struct PendingLabel {
+    /// Index into `scene.boxes`.
+    mark: usize,
+    show: crate::spec::LabelShow,
+    text: String,
+    negative: bool,
+    /// Centred in the box (a stack segment) instead of above it.
+    inside: bool,
+    /// For side-by-side boxes: the box's width, in world units.
+    slot_width: Option<f32>,
+}
+
+/// A box before it is placed: its cell, the value range it spans and what hover needs.
+struct Bar3 {
+    /// Index into the x and z band scales.
+    x: usize,
+    z: usize,
+    /// For `group`: (the series' slot, number of slots) inside the x band.
+    slot: Option<(usize, usize)>,
+    /// The two ends in data units (unordered: a negative bar starts at 0 and ends below).
+    y0: f64,
+    y1: f64,
+    /// The value shown by the label, or for `normalize` the share (`0..=1`) to print.
+    value: f64,
+    share: Option<f64>,
+    stacked: bool,
+    row: usize,
+    sum: Option<f64>,
+    color: crate::Color,
+    key: String,
+}
+
+/// The slots of a `group` layer inside one x band of width `width` (a band scale over the
+/// series, so spacing and widths follow the same rules as everywhere else).
+fn group_slots(count: usize, width: f64) -> Band {
+    Band::new(
+        (0..count).map(|i| i.to_string()).collect(),
+        (0.0, width),
+        GROUP_PADDING_INNER,
+        0.0,
+    )
+}
+
+/// One layer's boxes according to its `position`; the 3D twin of the 2D `layer_bars`.
+/// Keys are `layer/x[/series][/z]`.
+fn layer_bars(
+    layer: &ResolvedLayer,
+    band_x: &Band,
+    band_z: &Band,
+    ordinal: &crate::scale::Ordinal,
+    theme: &Theme,
+) -> Vec<Bar3> {
+    let z_of = |z_code: usize| match layer.z_axis {
+        Some(_) => band_z.index_of(&layer.z_dict[z_code]),
+        None => Some(0),
+    };
+    let z_name = |z_code: usize| layer.z_axis.map(|_| layer.z_dict[z_code].as_str());
+    if layer.position == Position::Overlay {
+        return (0..layer.rows())
+            .filter_map(|row| {
+                let category = &layer.x_dict[layer.x_codes[row] as usize];
+                let value = layer.y[row];
+                let z_code = if layer.z_axis.is_some() {
+                    layer.z_codes[row] as usize
+                } else {
+                    0
+                };
+                let (x, z) = (band_x.index_of(category)?, z_of(z_code)?);
+                if !value.is_finite() {
+                    return None;
+                }
+                let color = match layer.color {
+                    ColorSource::Default => theme.palette[0],
+                    ColorSource::Fixed(c) => c,
+                    ColorSource::Field { codes, dict } => ordinal.color(&dict[codes[row] as usize]),
+                };
+                let mut key = format!(
+                    "layer{}/{}",
+                    layer.index,
+                    layer.key_text(row).unwrap_or_else(|| category.clone())
+                );
+                if let (None, Some(z)) = (layer.key, z_name(z_code)) {
+                    key = format!("{key}/{z}");
+                }
+                Some(Bar3 {
+                    x,
+                    z,
+                    slot: None,
+                    y0: 0.0,
+                    y1: value,
+                    value,
+                    share: None,
+                    stacked: false,
+                    row,
+                    sum: None,
+                    color,
+                    key,
+                })
+            })
+            .collect();
+    }
+
+    let ColorSource::Field { dict, .. } = layer.color else {
+        return Vec::new(); // `validate` rejects these positions without a colour field
+    };
+    let cells = layer.cells();
+    let stacked = layer.position != Position::Group;
+    let normalize = layer.position == Position::Normalize;
+    let spans = if stacked {
+        transform::stack(&cells, normalize)
+    } else {
+        cells
+            .iter()
+            .map(|c| transform::Span {
+                y0: 0.0,
+                y1: c.value,
+            })
+            .collect()
+    };
+    cells
+        .iter()
+        .zip(&spans)
+        .filter_map(|(cell, span)| {
+            let category = &layer.x_dict[cell.x];
+            let (x, z) = (band_x.index_of(category)?, z_of(cell.z)?);
+            let mut key = format!(
+                "layer{}/{}/{}",
+                layer.index,
+                layer.key_text(cell.row).unwrap_or_else(|| category.clone()),
+                dict[cell.series]
+            );
+            if let Some(z) = z_name(cell.z) {
+                key = format!("{key}/{z}");
+            }
+            Some(Bar3 {
+                x,
+                z,
+                slot: (!stacked).then_some((cell.series, dict.len())),
+                y0: span.y0,
+                y1: span.y1,
+                value: cell.value,
+                share: normalize.then_some(span.y1 - span.y0),
+                stacked,
+                row: cell.row,
+                sum: cell.sum(),
+                color: ordinal.color(&dict[cell.series]),
+                key,
+            })
+        })
+        .collect()
 }
 
 /// A depth axis with no `z` data has nothing to label, so it is not drawn.
