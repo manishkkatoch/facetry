@@ -14,7 +14,7 @@ use tsify::Tsify;
 use crate::Color;
 use crate::spec::{
     AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
-    MAX_LABEL_DECIMALS, Orient, Position, PositionEncoding, Table,
+    MAX_LABEL_DECIMALS, MAX_STROKE_WIDTH, Mark, Orient, Position, PositionEncoding, Table,
 };
 use crate::transform::{self, Cell, Row};
 
@@ -87,6 +87,7 @@ pub(crate) enum ColorSource<'a> {
 #[derive(Debug)]
 pub(crate) struct ResolvedLayer<'a> {
     pub index: usize,
+    pub mark: Mark,
     /// Indices into `spec.axes`.
     pub x_axis: usize,
     pub y_axis: usize,
@@ -94,6 +95,10 @@ pub(crate) struct ResolvedLayer<'a> {
     pub z_axis: Option<usize>,
     pub x_codes: &'a [u32],
     pub x_dict: &'a [String],
+    /// A line layer's numeric x values (`x_numeric`); empty otherwise.
+    pub x_num: &'a [f64],
+    /// The x field is numeric (a line layer on a linear x scale), not categorical.
+    pub x_numeric: bool,
     pub y: &'a [f64],
     pub z_codes: &'a [u32],
     pub z_dict: &'a [String],
@@ -158,7 +163,12 @@ impl ResolvedLayer<'_> {
     /// Rows to draw. Tables are validated to have equal column lengths; `min` keeps this
     /// total (no out-of-bounds) even for a spec that was never validated.
     pub fn rows(&self) -> usize {
-        let mut n = self.x_codes.len().min(self.y.len());
+        let x_len = if self.x_numeric {
+            self.x_num.len()
+        } else {
+            self.x_codes.len()
+        };
+        let mut n = x_len.min(self.y.len());
         if self.z_axis.is_some() {
             n = n.min(self.z_codes.len());
         }
@@ -353,16 +363,25 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     // An empty column has no values to disagree with, so it fits either kind: `"x": []`
     // is how "no data yet" is written.
     let (mut x_codes, mut x_dict): (&[u32], &[String]) = (&[], &[]);
+    let (mut x_num, mut x_numeric): (&[f64], bool) = (&[], false);
+    let is_line = layer.mark == Mark::Line;
     if let Some(x) = x {
         match x {
             Column::Categorical { codes, dict } => (x_codes, x_dict) = (codes, dict),
+            // A line may run along a numeric x (a linear scale); bars need categories.
+            Column::Numeric(v) if is_line && !v.is_empty() => (x_num, x_numeric) = (v, true),
             c if c.is_empty() => {}
             c => issues.push(Issue::new(
                 at(&["encoding", "x", "field"]),
                 format!(
-                    "field {:?} is {}, but the x channel needs a categorical (string) field",
+                    "field {:?} is {}, but the x channel needs {}",
                     enc.x.field,
-                    c.kind()
+                    c.kind(),
+                    if is_line {
+                        "a categorical (string) or numeric field"
+                    } else {
+                        "a categorical (string) field"
+                    }
                 ),
             )),
         }
@@ -424,15 +443,25 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     }
 
     check_position(layer, color.as_ref(), y_values, &at(&[]), &mut issues);
+    check_style(layer, &at(&[]), &mut issues);
+    if three_d && is_line {
+        issues.push(Issue::new(
+            at(&["mark"]),
+            "line charts are 2D only for now; use `dimension: \"2d\"`",
+        ));
+    }
 
     match (x_axis, y_axis, color) {
         (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => Ok(ResolvedLayer {
             index: i,
+            mark: layer.mark,
             x_axis,
             y_axis,
             z_axis,
             x_codes,
             x_dict,
+            x_num,
+            x_numeric,
             y: y_values,
             z_codes,
             z_dict,
@@ -441,6 +470,42 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
             position: layer.position,
         }),
         _ => Err(issues),
+    }
+}
+
+/// `style` and `point` only make sense on some marks, and their numbers must be usable.
+fn check_style(layer: &LayerSpec, layer_path: &str, issues: &mut Vec<Issue>) {
+    let line = layer.mark == Mark::Line;
+    let width_ok = |w: f64| w.is_finite() && w > 0.0 && w <= MAX_STROKE_WIDTH;
+    if let Some(style) = &layer.style {
+        if let Some(w) = style.stroke_width {
+            if !line {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/strokeWidth"),
+                    "strokeWidth applies to line layers",
+                ));
+            } else if !width_ok(w) {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/strokeWidth"),
+                    format!(
+                        "strokeWidth must be greater than 0 and at most {MAX_STROKE_WIDTH}, got {w}"
+                    ),
+                ));
+            }
+        }
+    }
+    if let Some(point) = &layer.point {
+        if !line {
+            issues.push(Issue::new(
+                format!("{layer_path}/point"),
+                "point markers apply to line layers",
+            ));
+        } else if let Some(size) = point.size().filter(|&s| !width_ok(s)) {
+            issues.push(Issue::new(
+                format!("{layer_path}/point/size"),
+                format!("size must be greater than 0 and at most {MAX_STROKE_WIDTH}, got {size}"),
+            ));
+        }
     }
 }
 
@@ -453,6 +518,13 @@ fn check_position(
     layer_path: &str,
     issues: &mut Vec<Issue>,
 ) {
+    if layer.mark != Mark::Bar && layer.position != Position::Overlay {
+        issues.push(Issue::new(
+            format!("{layer_path}/position"),
+            "position applies to bar layers; a line is drawn as it is",
+        ));
+        return;
+    }
     let name = match layer.position {
         Position::Overlay => return,
         Position::Stack => "stack",
@@ -564,13 +636,11 @@ fn validate_axes(axes: &[AxisSpec], dimension: Dimension, issues: &mut Vec<Issue
             _ => {}
         }
         if let Some(scale) = &axis.scale {
-            if matches!(axis.orient, Orient::Bottom | Orient::Depth) {
+            // A bottom axis is numeric only when a line layer's x is; `check_x_axes` knows.
+            if axis.orient == Orient::Depth {
                 issues.push(Issue::new(
                     at(&["scale"]),
-                    format!(
-                        "scale overrides apply to numeric axes (left/right); a {} axis shows categories",
-                        orient_name(axis.orient)
-                    ),
+                    "scale overrides apply to numeric axes (left/right/bottom); a depth axis shows categories",
                 ));
             }
             if let Some([lo, hi]) = scale.domain {
@@ -655,16 +725,49 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
             ));
         }
     }
-    check_percent_axes(spec, &mut issues);
+    let resolved: Vec<ResolvedLayer> = (0..spec.layers.len())
+        .filter_map(|i| resolve_layer(spec, i).ok())
+        .collect();
+    check_percent_axes(spec, &resolved, &mut issues);
+    check_x_axes(spec, &resolved, &mut issues);
     issues
+}
+
+/// A bottom axis is a band scale (categories) or a linear one (numbers, from line layers). All
+/// layers on it must agree, and `scale` overrides only make sense on the linear kind.
+fn check_x_axes(spec: &ChartSpec, resolved: &[ResolvedLayer], issues: &mut Vec<Issue>) {
+    for (i, axis) in spec.axes.iter().enumerate() {
+        if axis.orient != Orient::Bottom {
+            continue;
+        }
+        let bound: Vec<&ResolvedLayer> = resolved.iter().filter(|l| l.x_axis == i).collect();
+        let numeric = bound.iter().any(|l| l.x_numeric);
+        if axis.scale.is_some() && !numeric {
+            issues.push(Issue::new(
+                pointer(&["axes", &i.to_string(), "scale"]),
+                "scale overrides apply to numeric axes; a bottom axis is numeric only when a line layer's x field is numeric",
+            ));
+        }
+        if numeric {
+            for l in bound
+                .iter()
+                .filter(|l| !l.x_numeric && !l.x_dict.is_empty())
+            {
+                issues.push(Issue::new(
+                    pointer(&["layers", &l.index.to_string(), "encoding", "x", "field"]),
+                    format!(
+                        "axis {:?} is numeric (another layer's x is a number), but this x field is categorical; layers sharing a bottom axis need the same kind of x",
+                        axis.id
+                    ),
+                ));
+            }
+        }
+    }
 }
 
 /// A y axis that shows a normalised layer reads 0-100%, so a layer with raw values cannot
 /// share it. Reported on every layer whose kind differs from the first one on that axis.
-fn check_percent_axes(spec: &ChartSpec, issues: &mut Vec<Issue>) {
-    let resolved: Vec<ResolvedLayer> = (0..spec.layers.len())
-        .filter_map(|i| resolve_layer(spec, i).ok())
-        .collect();
+fn check_percent_axes(spec: &ChartSpec, resolved: &[ResolvedLayer], issues: &mut Vec<Issue>) {
     for (n, layer) in resolved.iter().enumerate() {
         let first = resolved[..n].iter().find(|l| l.y_axis == layer.y_axis);
         let Some(first) = first else { continue };

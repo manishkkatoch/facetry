@@ -67,6 +67,52 @@ pub struct Rect {
     pub sum: Option<f64>,
 }
 
+/// A line layer's series: one or more runs of connected points (a missing value ends a run
+/// and starts a new one), in device pixels.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Polyline {
+    pub key: String,
+    pub color: Color,
+    /// Stroke width in device pixels.
+    #[serde(serialize_with = "px")]
+    pub width: f32,
+    #[serde(serialize_with = "runs")]
+    pub runs: Vec<Vec<[f32; 2]>>,
+    /// The layer it belongs to; the renderer draws one batch per layer.
+    #[serde(skip)]
+    pub layer: usize,
+}
+
+fn runs<S: Serializer>(v: &[Vec<[f32; 2]>], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 100.0).round() / 100.0;
+    let rounded: Vec<Vec<(f64, f64)>> = v
+        .iter()
+        .map(|run| run.iter().map(|p| (r(p[0]), r(p[1]))).collect())
+        .collect();
+    rounded.serialize(s)
+}
+
+/// A data point of a line layer. Every finite point exists (so it can be hovered and clicked)
+/// but only those of a layer with `point` markers are drawn.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PointMark {
+    pub key: String,
+    #[serde(serialize_with = "px")]
+    pub x: f32,
+    #[serde(serialize_with = "px")]
+    pub y: f32,
+    pub color: Color,
+    /// Marker diameter in device pixels (also the size of the hover marker).
+    #[serde(serialize_with = "px")]
+    pub size: f32,
+    /// Whether the layer asked for markers.
+    pub visible: bool,
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
+}
+
 /// What a rule is, which decides when it is drawn: gridlines go *behind* bars, axis lines
 /// and ticks in front.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -142,9 +188,29 @@ pub struct Scene {
     /// Gridlines, axis lines and ticks, gridlines first.
     pub rules: Vec<Rule>,
     pub texts: Vec<Text>,
-    /// Value labels of the bars that have one.
+    /// Value labels of the bars and points that have one.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<MarkLabel>,
+    /// Line layers' series.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub polylines: Vec<Polyline>,
+    /// Line layers' data points.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<PointMark>,
+    /// How close (device pixels) the pointer must be to a point to pick it.
+    #[serde(skip)]
+    pub pick_radius: f32,
+}
+
+/// What hover and click need to know about a mark; see [`Scene::mark`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MarkRef<'a> {
+    pub key: &'a str,
+    pub layer: usize,
+    /// The table row that stands for the mark.
+    pub row: usize,
+    /// The summed y value when the mark stands for several merged rows.
+    pub sum: Option<f64>,
 }
 
 impl Scene {
@@ -159,12 +225,66 @@ impl Scene {
             rules: Vec::new(),
             texts: Vec::new(),
             labels: Vec::new(),
+            polylines: Vec::new(),
+            points: Vec::new(),
+            pick_radius: 0.0,
         }
     }
 
-    /// The bar under the pixel `(x, y)`, as an index into `rects`. Bars drawn later are on
+    /// Marks that hover and click can report, in one index space: the bars (`rects`), then
+    /// the line points.
+    pub fn mark_count(&self) -> usize {
+        self.rects.len() + self.points.len()
+    }
+
+    /// Mark number `index` of [`mark_count`](Self::mark_count).
+    pub fn mark(&self, index: usize) -> Option<MarkRef<'_>> {
+        if let Some(r) = self.rects.get(index) {
+            return Some(MarkRef {
+                key: &r.key,
+                layer: r.layer,
+                row: r.row,
+                sum: r.sum,
+            });
+        }
+        let p = self.points.get(index.checked_sub(self.rects.len())?)?;
+        Some(MarkRef {
+            key: &p.key,
+            layer: p.layer,
+            row: p.row,
+            sum: None,
+        })
+    }
+
+    /// The middle of the mark with this key, in device pixels.
+    pub fn mark_center(&self, key: &str) -> Option<[f32; 2]> {
+        if let Some(r) = self.rects.iter().find(|r| r.key == key) {
+            let b = r.bounds;
+            return Some([b.x + b.w / 2.0, b.y + b.h / 2.0]);
+        }
+        let p = self.points.iter().find(|p| p.key == key)?;
+        Some([p.x, p.y])
+    }
+
+    /// The mark under the pixel `(x, y)`, as an index into the marks (see
+    /// [`mark_count`](Self::mark_count)).
+    ///
+    /// A line point wins when the pointer is within `pick_radius` of it (the nearest one, if
+    /// several are): points are small, and a pointer near one almost certainly means it even
+    /// when a bar is behind. Otherwise the bar under the pointer; bars drawn later are on
     /// top, so the last one that contains the point wins.
     pub fn pick(&self, x: f32, y: f32) -> Option<usize> {
+        let radius2 = self.pick_radius * self.pick_radius;
+        let near = self
+            .points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (i, (p.x - x).powi(2) + (p.y - y).powi(2)))
+            .filter(|&(_, d)| d <= radius2)
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((i, _)) = near {
+            return Some(self.rects.len() + i);
+        }
         self.rects.iter().rposition(|r| r.bounds.contains(x, y))
     }
 

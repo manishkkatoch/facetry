@@ -58,6 +58,21 @@ impl Ticks {
 }
 
 impl Ticks {
+    /// Labels for a numeric x axis. Like [`labels`](Self::labels), except that when every
+    /// tick is a whole number from 1000 to 9999 (most likely years) there are no thousands
+    /// separators: `2015`, not `2,015`.
+    pub fn labels_x(&self) -> Vec<String> {
+        let year_like = !self.values.is_empty()
+            && self
+                .values
+                .iter()
+                .all(|v| v.fract() == 0.0 && (1000.0..10_000.0).contains(&v.abs()));
+        self.values
+            .iter()
+            .map(|&v| format_number(v, self.decimals, !year_like))
+            .collect()
+    }
+
     /// The labels as percentages of a `0..=1` axis: `0.25` reads `25%`. The decimals follow
     /// the step (two fewer than the fraction needs), so `0.005` steps read `0.5%`.
     pub fn labels_percent(&self) -> Vec<String> {

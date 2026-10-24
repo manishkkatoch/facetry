@@ -353,8 +353,11 @@ impl Chart {
             return JsValue::NULL;
         };
         let (key, layer, row, sum) = match &self.scene {
-            SceneKind::TwoD(s) => s.rects.get(mark).map(|r| (&r.key, r.layer, r.row, r.sum)),
-            SceneKind::ThreeD(s) => s.boxes.get(mark).map(|b| (&b.key, b.layer, b.row, b.sum)),
+            SceneKind::TwoD(s) => s.mark(mark).map(|m| (m.key, m.layer, m.row, m.sum)),
+            SceneKind::ThreeD(s) => s
+                .boxes
+                .get(mark)
+                .map(|b| (b.key.as_str(), b.layer, b.row, b.sum)),
         }
         .map_or((None, 0, 0, None), |(k, l, r, s)| (Some(k), l, r, s));
         let Some(key) = key else {
@@ -365,24 +368,20 @@ impl Chart {
             // Setting a plain property on a fresh object cannot fail.
             let _ = js_sys::Reflect::set(&object, &name.into(), &value);
         };
-        set("key", key.as_str().into());
+        set("key", key.into());
         set("layer", (layer as f64).into());
         set("datum", self.datum(layer, row, sum));
         object.into()
     }
 
-    /// Where the middle of the bar with this key is, `{ x, y }` in CSS pixels from the
+    /// Where the middle of the mark (a bar, or a line's data point) with this key is, `{ x, y }` in CSS pixels from the
     /// canvas's top-left (in 3D: where the box's centre projects, right now), or `undefined`
     /// for an unknown key. For tests and for anchoring your own annotations.
     #[wasm_bindgen(js_name = markPosition, unchecked_return_type = "{ x: number, y: number } | undefined")]
     pub fn mark_position(&self, key: &str) -> JsValue {
         let dpr = f64::from(self.dpr);
         let device = match &self.scene {
-            SceneKind::TwoD(s) => s
-                .rects
-                .iter()
-                .find(|r| r.key == key)
-                .map(|r| [r.bounds.x + r.bounds.w / 2.0, r.bounds.y + r.bounds.h / 2.0]),
+            SceneKind::TwoD(s) => s.mark_center(key),
             SceneKind::ThreeD(s) => s.boxes.iter().find(|b| b.key == key).and_then(|b| {
                 let centre = [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0);
                 self.renderer.project_3d(centre)

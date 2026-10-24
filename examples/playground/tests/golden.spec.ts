@@ -28,8 +28,9 @@ test("3D bar chart matches its golden image (webgl2)", async ({ page }) => {
 });
 
 // Bar positions. Stacked: segments labelled inside (the thin Q4 Services one has no room for
-// its label); grouped: one slot per product in each quarter's band.
-for (const name of ["bar-stacked", "bar-grouped"]) {
+// its label); grouped: one slot per product in each quarter's band. Lines: categorical x with
+// markers, numeric x (a gap in one series), and bars with a line on a second y axis.
+for (const name of ["bar-stacked", "bar-grouped", "line-basic", "line-numeric-x", "combo-bar-line"]) {
   test(`${name} matches its golden image (webgl2)`, async ({ page }) => {
     await page.goto(`/?backend=webgl2&ui=0&example=${name}`);
     await expect(page.locator("html")).toHaveAttribute("data-ready", "true");

@@ -1,0 +1,556 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [],
+  "rules": [
+    {
+      "key": "axis:y/grid:0",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 439.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:5",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 379.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:10",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 319.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:15",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 259.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:20",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 199.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:25",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 139.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:30",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 79.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:y/grid:35",
+      "kind": "grid",
+      "x": 62.0,
+      "y": 19.0,
+      "w": 726.0,
+      "h": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line",
+      "kind": "axis",
+      "x": 61.0,
+      "y": 439.0,
+      "w": 727.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Jan",
+      "kind": "tick",
+      "x": 123.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Feb",
+      "kind": "tick",
+      "x": 244.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Mar",
+      "kind": "tick",
+      "x": 365.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Apr",
+      "kind": "tick",
+      "x": 486.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:May",
+      "kind": "tick",
+      "x": 607.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:x/tick:Jun",
+      "kind": "tick",
+      "x": 728.0,
+      "y": 440.0,
+      "w": 1.0,
+      "h": 6.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/line",
+      "kind": "axis",
+      "x": 61.0,
+      "y": 19.0,
+      "w": 1.0,
+      "h": 420.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:0",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 439.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:5",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 379.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:10",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 319.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:15",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 259.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:20",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 199.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:25",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 139.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:30",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 79.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    },
+    {
+      "key": "axis:y/tick:35",
+      "kind": "tick",
+      "x": 55.0,
+      "y": 19.0,
+      "w": 6.0,
+      "h": 1.0,
+      "color": "#6e7781"
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Jan",
+      "text": "Jan",
+      "x": 123.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Feb",
+      "text": "Feb",
+      "x": 244.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Mar",
+      "text": "Mar",
+      "x": 365.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Apr",
+      "text": "Apr",
+      "x": 486.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:May",
+      "text": "May",
+      "x": 607.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/label:Jun",
+      "text": "Jun",
+      "x": 728.0,
+      "y": 462.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:x/title",
+      "text": "Month",
+      "x": 425.0,
+      "y": 485.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:0",
+      "text": "0",
+      "x": 51.0,
+      "y": 443.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:5",
+      "text": "5",
+      "x": 51.0,
+      "y": 383.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:10",
+      "text": "10",
+      "x": 51.0,
+      "y": 323.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:15",
+      "text": "15",
+      "x": 51.0,
+      "y": 263.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:20",
+      "text": "20",
+      "x": 51.0,
+      "y": 203.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:25",
+      "text": "25",
+      "x": 51.0,
+      "y": 143.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:30",
+      "text": "30",
+      "x": 51.0,
+      "y": 83.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/label:35",
+      "text": "35",
+      "x": 51.0,
+      "y": 23.0,
+      "size_px": 12.0,
+      "color": "#57606a",
+      "anchor": "end",
+      "rotation": "none"
+    },
+    {
+      "key": "axis:y/title",
+      "text": "Visits (k)",
+      "x": 25.0,
+      "y": 229.0,
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "anchor": "middle",
+      "rotation": "minus90"
+    }
+  ],
+  "polylines": [
+    {
+      "key": "layer0/Free",
+      "color": "#4c78a8",
+      "width": 2.0,
+      "runs": [
+        [
+          [
+            122.5,
+            295.0
+          ],
+          [
+            243.5,
+            223.0
+          ],
+          [
+            364.5,
+            259.0
+          ],
+          [
+            485.5,
+            151.0
+          ],
+          [
+            606.5,
+            103.0
+          ],
+          [
+            727.5,
+            19.0
+          ]
+        ]
+      ]
+    },
+    {
+      "key": "layer0/Pro",
+      "color": "#f58518",
+      "width": 2.0,
+      "runs": [
+        [
+          [
+            122.5,
+            199.0
+          ],
+          [
+            243.5,
+            247.0
+          ],
+          [
+            364.5,
+            175.0
+          ],
+          [
+            485.5,
+            211.0
+          ],
+          [
+            606.5,
+            127.0
+          ],
+          [
+            727.5,
+            151.0
+          ]
+        ]
+      ]
+    }
+  ],
+  "points": [
+    {
+      "key": "layer0/Jan/Free",
+      "x": 122.5,
+      "y": 295.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/Free",
+      "x": 243.5,
+      "y": 223.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/Free",
+      "x": 364.5,
+      "y": 259.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/Free",
+      "x": 485.5,
+      "y": 151.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/Free",
+      "x": 606.5,
+      "y": 103.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/Free",
+      "x": 727.5,
+      "y": 19.0,
+      "color": "#4c78a8",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jan/Pro",
+      "x": 122.5,
+      "y": 199.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/Pro",
+      "x": 243.5,
+      "y": 247.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/Pro",
+      "x": 364.5,
+      "y": 175.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/Pro",
+      "x": 485.5,
+      "y": 211.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/Pro",
+      "x": 606.5,
+      "y": 127.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/Pro",
+      "x": 727.5,
+      "y": 151.0,
+      "color": "#f58518",
+      "size": 8.0,
+      "visible": true
+    }
+  ]
+}

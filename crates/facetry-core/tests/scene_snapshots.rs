@@ -38,6 +38,9 @@ snapshot!(value_labels_always, "bar-labels");
 snapshot!(stacked_bars, "bar-stacked");
 snapshot!(normalized_bars, "bar-normalized");
 snapshot!(grouped_bars, "bar-grouped");
+snapshot!(basic_lines, "line-basic");
+snapshot!(numeric_x_lines, "line-numeric-x");
+snapshot!(combo_bar_line, "combo-bar-line");
 
 #[test]
 fn basic_bars_at_dpr_2() {

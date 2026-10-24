@@ -289,7 +289,10 @@ pub struct ScaleSpec {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(rename_all = "lowercase")]
 pub enum Mark {
+    /// Rectangles from a baseline (see [`Position`] for how they share an x category).
     Bar,
+    /// One polyline per series (2D only).
+    Line,
 }
 
 /// How the bars of one layer share an `x` category when they have a `color.field` (the
@@ -323,10 +326,68 @@ pub struct LayerSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub position: Position,
+    /// Line layers: markers on the data points, `true` or `{ "size": px }`. Default: none
+    /// (the points still react to hover).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub point: Option<PointSpec>,
+    /// Mark styling, e.g. `{ "strokeWidth": 3 }` for a line.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub style: Option<StyleSpec>,
     /// Value labels on the bars. Default: none.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub label: Option<LabelSpec>,
+}
+
+/// Markers on a line's data points: `true` for the default size, or `{ "size": px }`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(untagged)]
+pub enum PointSpec {
+    On(bool),
+    Config(PointConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct PointConfig {
+    /// Marker diameter in CSS px (default 8).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub size: Option<f64>,
+}
+
+/// Default marker diameter in CSS px.
+pub const DEFAULT_POINT_SIZE: f64 = 8.0;
+/// Default line width in CSS px.
+pub const DEFAULT_STROKE_WIDTH: f64 = 2.0;
+/// Largest line width and marker size accepted, CSS px.
+pub const MAX_STROKE_WIDTH: f64 = 50.0;
+
+impl PointSpec {
+    /// The marker diameter in CSS px, or `None` when markers are off.
+    pub fn size(&self) -> Option<f64> {
+        match self {
+            Self::On(false) => None,
+            Self::On(true) => Some(DEFAULT_POINT_SIZE),
+            Self::Config(c) => Some(c.size.unwrap_or(DEFAULT_POINT_SIZE)),
+        }
+    }
+}
+
+/// Per-layer styling. Every field is optional; fields that do not apply to the layer's mark
+/// are validation errors.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct StyleSpec {
+    /// Line width in CSS px (default 2). Lines only.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke_width: Option<f64>,
 }
 
 /// Value labels: the `y` value written above each bar (below a negative one).

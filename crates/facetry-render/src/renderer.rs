@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use facetry_core::scene::{Scene, Text};
+use facetry_core::scene::{PointMark, Scene, Text};
 use facetry_core::scene3d::{BoxMark, Scene3d, Text3};
 use facetry_core::spec::LabelShow;
 use facetry_core::{Color, Theme};
@@ -14,12 +14,16 @@ use crate::camera::Camera;
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
+use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
 use crate::pick;
 use crate::rect::{self, RectPipeline};
 use crate::solid::{self, BoxPipeline, LinePipeline};
 use crate::text::{
     self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
 };
+
+/// How much larger than its normal marker a hovered line point is drawn.
+const HOVER_MARKER_SCALE: f32 = 1.5;
 
 /// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
 const MSAA_SAMPLES: u32 = 4;
@@ -143,6 +147,15 @@ pub struct Renderer {
     /// 2D: bars follow the gridlines in the rect buffer, so bar `i` is instance
     /// `bar_offset + i`.
     bar_offset: usize,
+    /// 2D: how many of the marks are bars; the marks after them are the line points.
+    bar_count: usize,
+    /// 2D: the line points, kept for the marker drawn while one is hovered.
+    point_marks: Vec<PointMark>,
+    /// 2D triangles: tessellated line strokes, point markers, and the hover marker.
+    mesh: MeshPipeline,
+    lines: Mesh,
+    markers: Mesh,
+    hover_marker: Mesh,
     hover_labels: Vec<HoverLabel>,
     hover_labels_3d: Vec<HoverLabel3>,
     /// Colour and radius of the outline round 3D labels.
@@ -262,6 +275,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
         let rects = RectPipeline::new(&device, config.format, samples, &globals);
+        let mesh = MeshPipeline::new(&device, config.format, samples, &globals);
         let atlas = Atlas::new(&device, &queue)?;
         let text = TextPipeline::new(&device, &atlas, config.format, samples, &globals);
 
@@ -285,6 +299,12 @@ impl Renderer {
             hover: None,
             mark_count: 0,
             bar_offset: 0,
+            bar_count: 0,
+            point_marks: Vec::new(),
+            mesh,
+            lines: Mesh::new("line strokes"),
+            markers: Mesh::new("point markers"),
+            hover_marker: Mesh::new("hover marker"),
             hover_labels: Vec::new(),
             hover_labels_3d: Vec::new(),
             halo: ([1.0; 4], 1.0),
@@ -389,6 +409,17 @@ impl Renderer {
         self.background = scene.background;
         let rects = rect::instances(scene, |c| self.encode_color(c));
         self.rects.set_instances(&self.device, &self.queue, &rects);
+        let lines = mesh::line_mesh(scene, |c| self.encode_color(c));
+        self.lines.set(&self.device, &self.queue, &lines);
+        let markers = mesh::point_mesh(
+            scene,
+            |c| self.encode_color(c),
+            self.encode_color(scene.background),
+        );
+        self.markers.set(&self.device, &self.queue, &markers);
+        self.hover_marker
+            .set(&self.device, &self.queue, &MeshData::default());
+        self.point_marks.clone_from(&scene.points);
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
@@ -412,7 +443,8 @@ impl Renderer {
         self.text.set_overlay(&self.device, &self.queue, &[]);
         self.hover_labels_3d.clear();
         self.hover = None;
-        self.mark_count = scene.rects.len();
+        self.mark_count = scene.mark_count();
+        self.bar_count = scene.rects.len();
         self.bar_offset = scene
             .rules
             .iter()
@@ -531,17 +563,34 @@ impl Renderer {
                 .text
                 .set_overlay(&self.device, &self.queue, &instances);
         } else {
-            if let Some(p) = previous {
+            // Marks 0..bar_count are bars (a flag in the rect buffer); the rest are line
+            // points, which get a marker drawn over them instead.
+            if let Some(p) = previous.filter(|&p| p < self.bar_count) {
                 self.rects
                     .set_hover(&self.queue, self.bar_offset + p, false);
             }
             let mut glyphs = Vec::new();
+            let mut marker = MeshData::default();
             if let Some(m) = mark {
-                self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                if m < self.bar_count {
+                    self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                } else if let Some(p) = self.point_marks.get(m - self.bar_count) {
+                    let background = self.encode_color(self.background);
+                    // Bigger than the plain marker, with the same rim.
+                    mesh::push_marker(
+                        &mut marker,
+                        p,
+                        HOVER_MARKER_SCALE,
+                        background,
+                        self.encode_color(p.color),
+                    );
+                    marker.ranges.push(0..marker.vertices.len() as u32);
+                }
                 if let Some(l) = self.hover_labels.iter().find(|l| l.mark == m) {
                     text::layout_glyphs(&l.text, l.color, font, &mut glyphs);
                 }
             }
+            self.hover_marker.set(&self.device, &self.queue, &marker);
             self.text.set_overlay(&self.device, &self.queue, &glyphs);
         }
     }
@@ -692,7 +741,17 @@ impl Renderer {
             }
             // No depth test in 2D: draw order alone decides what is on top.
             _ => {
-                self.rects.draw(&mut pass, &self.quad);
+                // Back to front: gridlines and bars, then the line layers and their markers,
+                // then axis lines and ticks, the hover marker, and text on top.
+                let split = (self.bar_offset + self.bar_count) as u32;
+                self.rects.draw_range(&mut pass, &self.quad, 0..split);
+                self.lines.draw(&mut pass, &self.mesh);
+                self.markers.draw(&mut pass, &self.mesh);
+                self.rects
+                    .draw_range(&mut pass, &self.quad, split..u32::MAX);
+                if overlay {
+                    self.hover_marker.draw(&mut pass, &self.mesh);
+                }
                 self.text.draw(&mut pass, &self.quad, overlay);
             }
         }

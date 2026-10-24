@@ -29,6 +29,11 @@ wgpu = { workspace = true, features = ["std", "parking_lot", "wgsl", "vulkan", "
 wgpu = { workspace = true, features = ["std", "wgsl"] }
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 
+# Native-only (proptest does not build for wasm32, and `clippy --target wasm32 --all-targets`
+# still compiles the tests).
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest.workspace = true
+
 [dev-dependencies]
 # Lets the unit tests validate the WGSL and translate it to GLSL ES 3.00 (what WebGL2
 # consumes) without a GPU.

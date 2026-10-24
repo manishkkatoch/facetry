@@ -11,10 +11,12 @@ mod error;
 mod gpu;
 mod image;
 pub mod labels;
+mod mesh;
 pub mod pick;
 mod rect;
 mod renderer;
 mod solid;
+pub mod stroke;
 mod text;
 
 pub use camera::{Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection};
@@ -83,6 +85,11 @@ mod shader_tests {
     #[test]
     fn rect_shader_is_valid_and_webgl2_translatable() {
         check("rect", include_str!("shaders/rect.wgsl"), 32);
+    }
+
+    #[test]
+    fn mesh2d_shader_is_valid_and_webgl2_translatable() {
+        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 32);
     }
 
     #[test]

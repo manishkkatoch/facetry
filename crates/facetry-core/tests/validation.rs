@@ -358,7 +358,7 @@ fn shape_errors_carry_the_path_of_the_bad_value() {
     assert_eq!(got[0].path, "/data/t/v");
     let got = issues(&broken(r#""orient": "bottom""#, r#""orient": "top""#));
     assert_eq!(got[0].path, "/axes/0/orient");
-    let got = issues(&broken(r#""mark": "bar""#, r#""mark": "line""#));
+    let got = issues(&broken(r#""mark": "bar""#, r#""mark": "pie""#));
     assert_eq!(got[0].path, "/layers/0/mark");
 }
 

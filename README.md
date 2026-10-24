@@ -68,7 +68,7 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
 - `axes`: `{ id, orient: "bottom" | "left" | "right", title?, scale? }`. `scale` (numeric axes
   only) takes `{ domain: [min, max], nice, zero }`. At most one axis per side. A layer binds a
   channel to an axis by `id`, so a layer can use a `right` axis that has its own domain.
-- `layers[]`: `{ mark: "bar", data, encoding, position?, label? }`. `x` must be a categorical field (band scale),
+- `layers[]`: `{ mark: "bar" | "line", data, encoding, position?, point?, style?, label? }`. `x` must be a categorical field (band scale),
   `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
   `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
   key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
@@ -122,6 +122,54 @@ column), so the three non-default positions need it.
   decided at the starting camera.
 - 3D: `stack`/`normalize` pile boxes up inside each (x, z) cell, `group` splits the x cell into
   sub-cells (z stays one cell).
+
+### Lines, and bars with lines
+
+`mark: "line"` draws one polyline per series (`encoding.color.field`; without it, one line):
+
+```jsonc
+{
+  "data": { "kpi": { "quarter": ["Q1", "Q2", "Q3", "Q4"], "revenue": [120, 90, 140, 110], "margin": [12, 8, 21, 16] } },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "revenue", "orient": "left", "title": "Revenue" },
+    { "id": "margin", "orient": "right", "title": "Margin %" }
+  ],
+  "layers": [
+    { "mark": "bar", "data": "kpi",
+      "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "revenue", "axis": "revenue" }, "color": { "value": "#4C78A8" } } },
+    { "mark": "line", "data": "kpi",
+      "point": { "size": 9 },                // markers: true | { size } (diameter in CSS px, default 8)
+      "style": { "strokeWidth": 2.5 },       // CSS px, default 2
+      "label": { "show": "hover" },
+      "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "margin", "axis": "margin" }, "color": { "value": "#F58518" } } }
+  ]
+}
+```
+
+- `x` is categorical (a band scale: points sit at the band centres, so a line lines up with bars
+  of the same categories) **or numeric** (a linear scale with nice ticks, and the bottom axis
+  takes `scale` overrides like a y axis; unlike y it does not include 0 unless `zero: true`).
+  Whole-number data gets whole-number ticks, and year-like ticks read `2015`, not `2,015`.
+  Layers sharing a bottom axis must agree on the kind of `x`.
+- Each series is one polyline in the order of `x` (categorical: the axis order; numeric:
+  ascending). **A missing y (`null`) breaks the line** (a series with no row at some category
+  is simply connected across it). A run of one point is drawn as a dot. Values outside a fixed
+  `scale.domain` are clamped to the plot edge.
+- Draw order: gridlines, bars, lines, markers, then axis lines and ticks, hover marker and
+  labels. A layer is bound to a left or right axis by id as for bars, so a bar and a line layer
+  can use different y scales.
+- `label`: the value above each point (below it where there is no room); `"hover"` shows only
+  the hovered point's. Hover and click: the point nearest the pointer **within 12 CSS px** wins
+  (even where a bar is behind it), otherwise the bar under the pointer. The hovered point gets
+  a larger marker. Keys are `layer1/<x>` (`layer1/<x>/<series>` with a colour field).
+- 3D has no lines yet: `mark: "line"` with `dimension: "3d"` is a validation error
+  (`line charts are 2D only for now`).
+- How the strokes are drawn: the CPU turns each polyline into triangles in device pixels
+  (`facetry-render/src/stroke.rs`), with miter joins that become bevels beyond a miter limit of 4
+  line widths (so a zigzag does not grow spikes), butt caps, and neighbouring segments sharing
+  their inner corners so a translucent colour does not double up at a bend. One draw call per
+  layer; 4x MSAA smooths the edges. Only WebGL2-compatible features are used.
 
 ### 3D charts
 

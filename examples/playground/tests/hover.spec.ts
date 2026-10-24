@@ -343,3 +343,50 @@ test("3D stacked bars: hovering a segment reports it", async ({ page }) => {
   expect(log.at(-1)?.mark?.key).toBe(key);
   expect(log.at(-1)?.mark?.datum).toEqual({ quarter: "Q3", region: "North", product: "Software", revenue: 110 });
 });
+
+test("line points: the nearest point within reach is hovered, with a marker and its hover label; far from it a bar is", async ({ page }) => {
+  await open(page, "combo-bar-line");
+  await listen(page);
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const point = await where(page, "layer1/Q3");
+  const bar = await where(page, "layer0/Q3");
+  expect(Math.hypot(point.inCanvas.x - bar.inCanvas.x, point.inCanvas.y - bar.inCanvas.y)).toBeGreaterThan(30);
+
+  // Ten pixels off the point still counts (the reach is 12), though the pointer is inside a bar.
+  await page.mouse.move(point.x + 10, point.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer1/Q3", layer: 1, datum: { quarter: "Q3", revenue: 140, margin: 21 } },
+  });
+  const hovered = await shot(page);
+  const d = diff(idle, hovered);
+  // The marker and the hover label (the layer asks for `show: "hover"`) appeared around the point...
+  expect(d.n, JSON.stringify(d)).toBeGreaterThan(150);
+  expect(d.x0).toBeLessThan(point.inCanvas.x);
+  expect(d.x1).toBeGreaterThan(point.inCanvas.x);
+  expect(d.y0).toBeLessThan(point.inCanvas.y);
+  // ...and nowhere far from it (the bar did not light up).
+  expect(d.x1 - d.x0).toBeLessThan(80);
+  expect(d.y1 - d.y0).toBeLessThan(80);
+
+  // Out of reach: the bar under the pointer.
+  await page.mouse.move(bar.x, bar.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Q3", layer: 0, datum: { quarter: "Q3", revenue: 140, margin: 21 } },
+  });
+  // Leaving restores the idle picture exactly.
+  await page.mouse.move(2, 2);
+  expect(diff(idle, await shot(page)).n).toBe(0);
+});
+
+test("line points: click reports the point, and a point is reachable by its key", async ({ page }) => {
+  await open(page, "line-basic");
+  await listen(page);
+  const p = await where(page, "layer0/Mar/Pro");
+  await page.mouse.click(p.x, p.y);
+  expect((await events(page)).filter((e) => e.type === "click")).toEqual([
+    { type: "click", mark: { key: "layer0/Mar/Pro", layer: 0, datum: { month: "Mar", plan: "Pro", visits: 22 } } },
+  ]);
+});

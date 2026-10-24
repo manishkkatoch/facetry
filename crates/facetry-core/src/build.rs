@@ -14,12 +14,17 @@
 //!
 //! All sizes below are written in CSS pixels and multiplied by the device pixel ratio.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::Theme;
 use crate::scale::{Band, Linear, Ordinal, Ticks, format_number, format_percent, format_value};
-use crate::scene::{Anchor, Bounds, MarkLabel, Rect, Rotation, Rule, RuleKind, Scene, Text};
-use crate::spec::{AxisSpec, ChartSpec, LabelSpec, Orient, Position};
+use crate::scene::{
+    Anchor, Bounds, MarkLabel, PointMark, Polyline, Rect, Rotation, Rule, RuleKind, Scene, Text,
+};
+use crate::spec::{
+    AxisSpec, ChartSpec, DEFAULT_POINT_SIZE, DEFAULT_STROKE_WIDTH, LabelSpec, Mark, Orient,
+    Position,
+};
 use crate::text::TextMeasure;
 use crate::transform;
 use crate::validate::{ColorSource, ResolvedLayer, resolve_layer};
@@ -39,6 +44,10 @@ const MIN_LABEL_GAP: f64 = 8.0;
 const TICK_SPACING: f64 = 50.0;
 const BAND_PADDING_INNER: f64 = 0.2;
 const BAND_PADDING_OUTER: f64 = 0.1;
+/// Roughly one numeric x tick per this much plot width.
+const X_TICK_SPACING: f64 = 80.0;
+/// How near (CSS px) the pointer must be to a line's data point to hover it.
+const POINT_PICK_RADIUS: f64 = 12.0;
 /// Space between the bars of a `group` layer, as a fraction of one bar's slot.
 const GROUP_PADDING_INNER: f64 = 0.1;
 /// Between a bar's end and its value label.
@@ -123,6 +132,18 @@ pub fn build_scene_with_theme(
             continue;
         }
         let scale = match axis.orient {
+            Orient::Bottom if layers.iter().any(|l| l.x_axis == i && l.x_numeric) => {
+                AxisScale::Linear {
+                    scale: Linear::new(
+                        x_domain(axis, layers.iter().filter(|l| l.x_axis == i)),
+                        (0.0, 1.0),
+                    ),
+                    ticks: Ticks {
+                        values: Vec::new(),
+                        decimals: 0,
+                    },
+                }
+            }
             Orient::Bottom => {
                 // Union of every bound layer's categories, in first-seen order.
                 let mut domain: Vec<String> = Vec::new();
@@ -181,6 +202,9 @@ pub fn build_scene_with_theme(
         let AxisScale::Linear { scale, ticks } = &mut p.scale else {
             continue;
         };
+        if p.spec.orient == Orient::Bottom {
+            continue; // a numeric x axis is laid out once its width is known (step 4)
+        }
         let explicit_domain = p.spec.scale.as_ref().is_some_and(|sc| sc.domain.is_some());
         let nice = p
             .spec
@@ -225,52 +249,103 @@ pub fn build_scene_with_theme(
         .round()
         .max(plot_left + 1.0);
 
-    // --- 4. x band scale and label thinning -------------------------------------------------
-    // Two passes: the labels depend on the band width, and if the last one then sticks out
-    // past the canvas the plot is narrowed (which changes the band width) to fit it.
+    // --- 4. x scale and label thinning ------------------------------------------------------
+    // Two passes: the labels depend on the plot's width, and if the first or last one then
+    // sticks out past the canvas the plot is narrowed (which changes its width) to fit it.
     let mut x_labels: Vec<(usize, String)> = Vec::new();
+    // For a numeric x axis: the text of each tick.
+    let mut x_tick_text: Vec<String> = Vec::new();
+    let mut plot_left = plot_left;
     for pass in 0..2 {
+        let (mut over_left, mut over_right) = (0.0_f64, 0.0_f64);
         for p in &mut plans {
-            let AxisScale::Band(band) = &mut p.scale else {
-                continue;
-            };
-            *band = Band::new(
-                band.domain().to_vec(),
-                (plot_left, plot_right),
-                BAND_PADDING_INNER,
-                BAND_PADDING_OUTER,
-            );
-            let widest = band
-                .domain()
-                .iter()
-                .map(|l| f64::from(measure.width(l, label_size)))
-                .fold(0.0, f64::max);
-            // Show every n-th label, the smallest n for which neighbours keep a clear gap.
-            let every = ((widest + MIN_LABEL_GAP * s) / band.step().max(1.0))
-                .ceil()
-                .max(1.0) as usize;
-            x_labels = band
-                .domain()
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| i % every == 0)
-                .map(|(i, l)| (i, l.clone()))
-                .collect();
+            let half_gap = MIN_LABEL_GAP * s / 2.0;
+            match (&mut p.scale, p.spec.orient) {
+                (AxisScale::Band(band), _) => {
+                    *band = Band::new(
+                        band.domain().to_vec(),
+                        (plot_left, plot_right),
+                        BAND_PADDING_INNER,
+                        BAND_PADDING_OUTER,
+                    );
+                    let widest = band
+                        .domain()
+                        .iter()
+                        .map(|l| f64::from(measure.width(l, label_size)))
+                        .fold(0.0, f64::max);
+                    // Show every n-th label, the smallest n for which neighbours keep a clear gap.
+                    let every = ((widest + MIN_LABEL_GAP * s) / band.step().max(1.0))
+                        .ceil()
+                        .max(1.0) as usize;
+                    x_labels = band
+                        .domain()
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| i % every == 0)
+                        .map(|(i, l)| (i, l.clone()))
+                        .collect();
+                    if let Some((i, label)) = x_labels.last() {
+                        over_right = f64::from(measure.width(label, label_size)) / 2.0 + half_gap
+                            - (w - band.center(*i));
+                    }
+                }
+                (AxisScale::Linear { scale, ticks }, Orient::Bottom) => {
+                    let layers_here = layers.iter().filter(|l| l.x_axis == p.spec_index);
+                    *scale = Linear::new(x_domain(p.spec, layers_here), (plot_left, plot_right));
+                    let nice =
+                        p.spec.scale.as_ref().and_then(|sc| sc.nice).unwrap_or(
+                            !p.spec.scale.as_ref().is_some_and(|sc| sc.domain.is_some()),
+                        );
+                    let mut count = (((plot_right - plot_left) / (X_TICK_SPACING * s)).round()
+                        as usize)
+                        .clamp(2, 10);
+                    // Whole-number data (years, counts) gets whole-number ticks: no 2015.5.
+                    let layers_here = layers.iter().filter(|l| l.x_axis == p.spec_index);
+                    let (lo, hi) = scale.domain();
+                    let integral = layers_here
+                        .flat_map(|l| l.x_num.iter())
+                        .all(|v| !v.is_finite() || v.fract() == 0.0);
+                    if integral {
+                        count = count.min((hi - lo).ceil().max(2.0) as usize);
+                    }
+                    if nice {
+                        scale.nice(count);
+                    }
+                    // Fewer ticks until neighbouring labels keep a clear gap.
+                    loop {
+                        *ticks = scale.ticks(count);
+                        x_tick_text = ticks.labels_x();
+                        let widest = x_tick_text
+                            .iter()
+                            .map(|l| f64::from(measure.width(l, label_size)))
+                            .fold(0.0, f64::max);
+                        let spacing = match ticks.values.as_slice() {
+                            [a, b, ..] => (scale.map(*b) - scale.map(*a)).abs(),
+                            _ => f64::INFINITY,
+                        };
+                        if widest + MIN_LABEL_GAP * s <= spacing || count <= 2 {
+                            break;
+                        }
+                        count -= 1;
+                    }
+                    let half = |text: &str| f64::from(measure.width(text, label_size)) / 2.0;
+                    if let (Some(&first), Some(&last)) = (ticks.values.first(), ticks.values.last())
+                    {
+                        over_left = half(&x_tick_text[0]) + half_gap - scale.map(first);
+                        over_right = half(&x_tick_text[x_tick_text.len() - 1]) + half_gap
+                            - (w - scale.map(last));
+                    }
+                }
+                _ => {}
+            }
         }
-        let overflow = plans
-            .iter()
-            .find_map(|p| match (&p.scale, x_labels.last()) {
-                (AxisScale::Band(band), Some((i, label))) => Some(
-                    f64::from(measure.width(label, label_size)) / 2.0 + MIN_LABEL_GAP * s / 2.0
-                        - (w - band.center(*i)),
-                ),
-                _ => None,
-            })
-            .unwrap_or(0.0);
-        if pass == 1 || overflow <= 0.0 {
+        if pass == 1 || (over_left <= 0.0 && over_right <= 0.0) {
             break;
         }
-        plot_right = (plot_right - overflow).ceil().max(plot_left + 1.0);
+        plot_left = (plot_left + over_left.max(0.0)).ceil();
+        plot_right = (plot_right - over_right.max(0.0))
+            .ceil()
+            .max(plot_left + 1.0);
     }
 
     // --- 5. emit ----------------------------------------------------------------------------
@@ -282,6 +357,9 @@ pub fn build_scene_with_theme(
         rules: Vec::new(),
         texts: Vec::new(),
         labels: Vec::new(),
+        polylines: Vec::new(),
+        points: Vec::new(),
+        pick_radius: (POINT_PICK_RADIUS * s) as f32,
     };
     let snap = |v: f64| v.round();
     let rule = |key: String, kind, x: f64, y: f64, w: f64, h: f64, color| Rule {
@@ -304,10 +382,10 @@ pub fn build_scene_with_theme(
     let has_left = plan_index(&plans, Orient::Left).is_some();
     let has_right = plan_index(&plans, Orient::Right).is_some();
 
-    // Gridlines come from the first numeric axis in declaration order.
-    let grid_plan = plans
-        .iter()
-        .position(|p| matches!(p.scale, AxisScale::Linear { .. }));
+    // Gridlines come from the first numeric value axis (left or right) in declaration order.
+    let grid_plan = plans.iter().position(|p| {
+        matches!(p.scale, AxisScale::Linear { .. }) && p.spec.orient != Orient::Bottom
+    });
     if let Some(pi) = grid_plan {
         let id = &plans[pi].spec.id;
         let AxisScale::Linear { scale, ticks } = &plans[pi].scale else {
@@ -350,7 +428,7 @@ pub fn build_scene_with_theme(
 
     // Bars.
     let ordinal = color_scale(&layers, theme);
-    for layer in &layers {
+    for layer in layers.iter().filter(|l| l.mark == Mark::Bar) {
         let (Some(xp), Some(yp)) = (
             plans.iter().find(|p| p.spec_index == layer.x_axis),
             plans.iter().find(|p| p.spec_index == layer.y_axis),
@@ -460,6 +538,152 @@ pub fn build_scene_with_theme(
         }
     }
 
+    // Lines and their data points. Their marks come after the bars in the hover index space.
+    for layer in layers.iter().filter(|l| l.mark == Mark::Line) {
+        let (Some(xp), Some(yp)) = (
+            plans.iter().find(|p| p.spec_index == layer.x_axis),
+            plans.iter().find(|p| p.spec_index == layer.y_axis),
+        ) else {
+            continue;
+        };
+        let AxisScale::Linear { scale: y_scale, .. } = &yp.scale else {
+            continue;
+        };
+        let (d0, d1) = y_scale.domain();
+        let layer_spec = &spec.layers[layer.index];
+        let width = layer_spec
+            .style
+            .as_ref()
+            .and_then(|st| st.stroke_width)
+            .unwrap_or(DEFAULT_STROKE_WIDTH)
+            * s;
+        let marker = layer_spec.point.as_ref().and_then(|p| p.size());
+        let size = marker.unwrap_or(DEFAULT_POINT_SIZE) * s;
+        let series_name = |series: usize| match layer.color {
+            ColorSource::Field { dict, .. } => Some(dict[series].as_str()),
+            _ => None,
+        };
+        let color_of = |series: usize| match layer.color {
+            ColorSource::Default => theme.palette[0],
+            ColorSource::Fixed(c) => c,
+            ColorSource::Field { dict, .. } => ordinal.color(&dict[series]),
+        };
+
+        // Every row with a usable x, as (series, position along x, x in pixels, row).
+        let mut by_series: BTreeMap<usize, Vec<(f64, f64, usize)>> = BTreeMap::new();
+        for row in 0..layer.rows() {
+            let at = match (&xp.scale, layer.x_numeric) {
+                (AxisScale::Band(band), false) => band
+                    .index_of(&layer.x_dict[layer.x_codes[row] as usize])
+                    .map(|i| (i as f64, band.center(i))),
+                (AxisScale::Linear { scale, .. }, true) => Some(layer.x_num[row])
+                    .filter(|v| v.is_finite())
+                    .map(|v| (v, scale.map(v))),
+                _ => None,
+            };
+            let series = match layer.color {
+                ColorSource::Field { codes, .. } => codes[row] as usize,
+                _ => 0,
+            };
+            if let Some((order, px)) = at {
+                by_series.entry(series).or_default().push((order, px, row));
+            }
+        }
+
+        let mut used_keys: HashMap<String, usize> = HashMap::new();
+        for (series, mut rows) in by_series {
+            // Categorical x: band order; numeric x: ascending. Equal x keeps data order.
+            rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let color = color_of(series);
+            let mut runs: Vec<Vec<[f32; 2]>> = Vec::new();
+            let mut current: Vec<[f32; 2]> = Vec::new();
+            for &(_, px, row) in &rows {
+                let value = layer.y[row];
+                // A missing value ends the run: the line has a gap there.
+                if !value.is_finite() {
+                    if !current.is_empty() {
+                        runs.push(std::mem::take(&mut current));
+                    }
+                    continue;
+                }
+                let py = y_scale.map(value.clamp(d0, d1));
+                current.push([px as f32, py as f32]);
+
+                let x_text = if layer.x_numeric {
+                    layer.x_num[row].to_string()
+                } else {
+                    layer.x_dict[layer.x_codes[row] as usize].clone()
+                };
+                let mut base_key = format!("layer{}/{x_text}", layer.index);
+                if let Some(name) = series_name(series) {
+                    base_key = format!("{base_key}/{name}");
+                }
+                // Duplicate keys get `#2`, `#3`, ... so every mark stays addressable.
+                let n = used_keys.entry(base_key.clone()).or_insert(0);
+                *n += 1;
+                let key = if *n == 1 {
+                    base_key
+                } else {
+                    format!("{base_key}#{n}")
+                };
+                if let Some(label) = &layer_spec.label {
+                    let radius = if marker.is_some() {
+                        size / 2.0
+                    } else {
+                        2.0 * s
+                    };
+                    let gap = VALUE_LABEL_GAP * s + radius;
+                    // Above the point, or below it when that would leave the plot.
+                    let above = py - gap;
+                    let baseline = if above - cap >= top {
+                        above
+                    } else {
+                        py + gap + cap
+                    };
+                    scene.labels.push(MarkLabel {
+                        mark: scene.rects.len() + scene.points.len(),
+                        show: label.show,
+                        text: text(
+                            format!("{key}/label"),
+                            format_value(value, label.format.as_ref().and_then(|f| f.decimals)),
+                            px,
+                            baseline,
+                            label_size,
+                            theme.text,
+                            Anchor::Middle,
+                            Rotation::None,
+                        ),
+                    });
+                }
+                scene.points.push(PointMark {
+                    key,
+                    x: px as f32,
+                    y: py as f32,
+                    color,
+                    size: size as f32,
+                    visible: marker.is_some(),
+                    layer: layer.index,
+                    row,
+                });
+            }
+            if !current.is_empty() {
+                runs.push(current);
+            }
+            if !runs.is_empty() {
+                scene.polylines.push(Polyline {
+                    key: match series_name(series) {
+                        Some(name) => format!("layer{}/{name}", layer.index),
+                        None => format!("layer{}", layer.index),
+                    },
+                    color,
+                    width: width as f32,
+                    runs,
+                    layer: layer.index,
+                });
+            }
+        }
+    }
+
     // Axes.
     for p in &plans {
         let id = &p.spec.id;
@@ -495,6 +719,55 @@ pub fn build_scene_with_theme(
                         format!("axis:{id}/label:{label}"),
                         label.clone(),
                         band.center(*i),
+                        baseline,
+                        label_size,
+                        theme.text_muted,
+                        Anchor::Middle,
+                        Rotation::None,
+                    ));
+                }
+                if let Some(t) = title {
+                    scene.texts.push(text(
+                        format!("axis:{id}/title"),
+                        t.to_owned(),
+                        (plot_left + plot_right) / 2.0,
+                        h - pad - f64::from(measure.descent(title_size)),
+                        title_size,
+                        theme.text,
+                        Anchor::Middle,
+                        Rotation::None,
+                    ));
+                }
+            }
+            (AxisScale::Linear { scale, ticks }, Orient::Bottom) => {
+                let x0 = plot_left - if has_left { line } else { 0.0 };
+                let x1 = plot_right + if has_right { line } else { 0.0 };
+                scene.rules.push(rule(
+                    format!("axis:{id}/line"),
+                    RuleKind::Axis,
+                    x0,
+                    plot_bottom,
+                    x1 - x0,
+                    line,
+                    theme.axis,
+                ));
+                let baseline = plot_bottom + line + tick_len + label_gap + label_asc;
+                for (&v, label) in ticks.values.iter().zip(&x_tick_text) {
+                    let cx = scale.map(v);
+                    let name = format_number(v, ticks.decimals, false);
+                    scene.rules.push(rule(
+                        format!("axis:{id}/tick:{name}"),
+                        RuleKind::Tick,
+                        snap(cx) - (line / 2.0).floor(),
+                        plot_bottom + line,
+                        line,
+                        tick_len,
+                        theme.axis,
+                    ));
+                    scene.texts.push(text(
+                        format!("axis:{id}/label:{name}"),
+                        label.clone(),
+                        cx,
                         baseline,
                         label_size,
                         theme.text_muted,
@@ -731,10 +1004,6 @@ pub(crate) fn y_domain<'a>(
     axis: &AxisSpec,
     layers: impl Iterator<Item = &'a ResolvedLayer<'a>>,
 ) -> (f64, f64) {
-    let overrides = axis.scale.as_ref();
-    if let Some([lo, hi]) = overrides.and_then(|s| s.domain) {
-        return (lo, hi);
-    }
     let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
     for layer in layers {
         if let Some((a, b)) = layer.extent() {
@@ -742,7 +1011,34 @@ pub(crate) fn y_domain<'a>(
             hi = hi.max(b);
         }
     }
-    if overrides.and_then(|s| s.zero).unwrap_or(true) {
+    domain_from_extent(axis, lo, hi, true)
+}
+
+/// The domain of a numeric x axis (line layers): a fixed one from the spec, or the extent of
+/// the bound layers' x values. Unlike y it does not include 0 unless `zero: true`, because x
+/// values are positions (years, distances), not quantities that grow from a baseline.
+pub(crate) fn x_domain<'a>(
+    axis: &AxisSpec,
+    layers: impl Iterator<Item = &'a ResolvedLayer<'a>>,
+) -> (f64, f64) {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for layer in layers.filter(|l| l.x_numeric) {
+        for &v in layer.x_num.iter().filter(|v| v.is_finite()) {
+            lo = lo.min(v);
+            hi = hi.max(v);
+        }
+    }
+    domain_from_extent(axis, lo, hi, false)
+}
+
+/// Applies the axis's `scale` overrides to a data extent (`zero_default`: whether 0 is
+/// included when the spec does not say).
+fn domain_from_extent(axis: &AxisSpec, mut lo: f64, mut hi: f64, zero_default: bool) -> (f64, f64) {
+    let overrides = axis.scale.as_ref();
+    if let Some([lo, hi]) = overrides.and_then(|s| s.domain) {
+        return (lo, hi);
+    }
+    if overrides.and_then(|s| s.zero).unwrap_or(zero_default) {
         lo = lo.min(0.0);
         hi = hi.max(0.0);
     }
