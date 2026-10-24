@@ -113,6 +113,99 @@ pub struct PointMark {
     pub row: usize,
 }
 
+/// One slice of a pie or donut, in device pixels. Angles are radians, clockwise from 12
+/// o'clock.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ArcMark {
+    pub key: String,
+    pub color: Color,
+    #[serde(serialize_with = "px2")]
+    pub center: [f32; 2],
+    /// Hole radius (0 for a pie) and outer radius.
+    #[serde(serialize_with = "px")]
+    pub inner: f32,
+    #[serde(serialize_with = "px")]
+    pub outer: f32,
+    /// The slice's share of the circle, before padding.
+    #[serde(serialize_with = "rad")]
+    pub start: f32,
+    #[serde(serialize_with = "rad")]
+    pub end: f32,
+    /// Angular gap between slices: half of it is cut off each side of the slice.
+    #[serde(serialize_with = "rad")]
+    pub pad: f32,
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
+    #[serde(skip)]
+    pub sum: Option<f64>,
+}
+
+fn px2<S: Serializer>(v: &[f32; 2], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 100.0).round() / 100.0;
+    (r(v[0]), r(v[1])).serialize(s)
+}
+
+/// Angles round to 4 decimals (a ten-thousandth of a radian is a fraction of a pixel).
+fn rad<S: Serializer>(v: &f32, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_f64((f64::from(*v) * 10_000.0).round() / 10_000.0)
+}
+
+impl ArcMark {
+    /// The angles the slice really covers: `start..end` with half the padding cut off each
+    /// side. A slice too thin for its padding keeps at least half of its width, and one that
+    /// is the whole circle has no padding.
+    pub fn span(&self) -> (f32, f32) {
+        let sweep = self.end - self.start;
+        if sweep >= std::f32::consts::TAU - 1e-4 {
+            return (self.start, self.end);
+        }
+        let cut = (self.pad / 2.0).min(sweep / 4.0);
+        (self.start + cut, self.end - cut)
+    }
+
+    /// Whether the pixel `(x, y)` is on the slice.
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        let (a0, a1) = self.span();
+        sector_contains(
+            x - self.center[0],
+            self.center[1] - y,
+            self.inner,
+            self.outer,
+            a0,
+            a1,
+        )
+    }
+
+    /// The point at the middle of the slice (middle angle, middle radius).
+    pub fn middle(&self) -> [f32; 2] {
+        let (a0, a1) = self.span();
+        let (angle, r) = ((a0 + a1) / 2.0, (self.inner + self.outer) / 2.0);
+        [
+            self.center[0] + r * angle.sin(),
+            self.center[1] - r * angle.cos(),
+        ]
+    }
+}
+
+/// Whether the offset `(dx, up)` from a pie's centre (`up` is toward 12 o'clock) lies within
+/// the ring sector between radii `inner..=outer` and angles `a0..=a1` (radians clockwise from
+/// 12 o'clock; a sweep of a full turn or more covers every angle). Shared by 2D and 3D
+/// picking.
+pub fn sector_contains(dx: f32, up: f32, inner: f32, outer: f32, a0: f32, a1: f32) -> bool {
+    let r = dx.hypot(up);
+    if r < inner || r > outer {
+        return false;
+    }
+    let sweep = a1 - a0;
+    if sweep >= std::f32::consts::TAU {
+        return true;
+    }
+    let angle = dx.atan2(up);
+    (angle - a0).rem_euclid(std::f32::consts::TAU) <= sweep
+}
+
 /// What a rule is, which decides when it is drawn: gridlines go *behind* bars, axis lines
 /// and ticks in front.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -197,6 +290,9 @@ pub struct Scene {
     /// Line layers' data points.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub points: Vec<PointMark>,
+    /// The slices of a pie or donut.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arcs: Vec<ArcMark>,
     /// How close (device pixels) the pointer must be to a point to pick it.
     #[serde(skip)]
     pub pick_radius: f32,
@@ -227,14 +323,15 @@ impl Scene {
             labels: Vec::new(),
             polylines: Vec::new(),
             points: Vec::new(),
+            arcs: Vec::new(),
             pick_radius: 0.0,
         }
     }
 
     /// Marks that hover and click can report, in one index space: the bars (`rects`), then
-    /// the line points.
+    /// the line points, then the pie slices.
     pub fn mark_count(&self) -> usize {
-        self.rects.len() + self.points.len()
+        self.rects.len() + self.points.len() + self.arcs.len()
     }
 
     /// Mark number `index` of [`mark_count`](Self::mark_count).
@@ -247,12 +344,21 @@ impl Scene {
                 sum: r.sum,
             });
         }
-        let p = self.points.get(index.checked_sub(self.rects.len())?)?;
+        let index = index.checked_sub(self.rects.len())?;
+        if let Some(p) = self.points.get(index) {
+            return Some(MarkRef {
+                key: &p.key,
+                layer: p.layer,
+                row: p.row,
+                sum: None,
+            });
+        }
+        let a = self.arcs.get(index.checked_sub(self.points.len())?)?;
         Some(MarkRef {
-            key: &p.key,
-            layer: p.layer,
-            row: p.row,
-            sum: None,
+            key: &a.key,
+            layer: a.layer,
+            row: a.row,
+            sum: a.sum,
         })
     }
 
@@ -262,8 +368,10 @@ impl Scene {
             let b = r.bounds;
             return Some([b.x + b.w / 2.0, b.y + b.h / 2.0]);
         }
-        let p = self.points.iter().find(|p| p.key == key)?;
-        Some([p.x, p.y])
+        if let Some(p) = self.points.iter().find(|p| p.key == key) {
+            return Some([p.x, p.y]);
+        }
+        self.arcs.iter().find(|a| a.key == key).map(ArcMark::middle)
     }
 
     /// The mark under the pixel `(x, y)`, as an index into the marks (see
@@ -285,7 +393,11 @@ impl Scene {
         if let Some((i, _)) = near {
             return Some(self.rects.len() + i);
         }
-        self.rects.iter().rposition(|r| r.bounds.contains(x, y))
+        if let Some(i) = self.rects.iter().rposition(|r| r.bounds.contains(x, y)) {
+            return Some(i);
+        }
+        let i = self.arcs.iter().position(|a| a.contains(x, y))?;
+        Some(self.rects.len() + self.points.len() + i)
     }
 
     /// Back-to-front draw order: gridlines, bars, then axis lines and ticks. Text goes on top

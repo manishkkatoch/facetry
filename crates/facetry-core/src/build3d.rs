@@ -91,6 +91,16 @@ pub fn build_scene_3d_with_theme(
     measure: &dyn TextMeasure,
     theme: &Theme,
 ) -> Scene3d {
+    // An extruded pie is a chart of its own: no axes, no walls.
+    if let Some(i) = spec
+        .layers
+        .iter()
+        .position(|l| l.mark == crate::spec::Mark::Arc)
+    {
+        if let Ok(arc) = crate::validate::resolve_arc(spec, i) {
+            return crate::build_arc3d::build_pie_3d(spec, &arc, viewport_px, dpr, measure, theme);
+        }
+    }
     let s = f64::from(dpr).clamp(0.25, 16.0);
     let layers: Vec<ResolvedLayer> = (0..spec.layers.len())
         .filter_map(|i| resolve_layer(spec, i).ok())
@@ -199,6 +209,7 @@ pub fn build_scene_3d_with_theme(
         size: [width as f32, 1.0, depth as f32],
         halo_px: s.round().max(1.0) as f32,
         boxes: Vec::new(),
+        slices: Vec::new(),
         lines: Vec::new(),
         texts: Vec::new(),
         labels: Vec::new(),
@@ -326,7 +337,13 @@ pub fn build_scene_3d_with_theme(
             align: Anchor::Middle,
             valign,
             azimuths: None,
-            role: LabelRole::Fixed,
+            // A label on a segment is hidden while the segment is behind another box.
+            role: if pending.inside {
+                LabelRole::OnMark(pending.mark as u32)
+            } else {
+                LabelRole::Fixed
+            },
+            halo: !pending.inside,
         };
         scene.labels.push(MarkLabel3 {
             mark: pending.mark,
@@ -489,6 +506,7 @@ pub fn build_scene_3d_with_theme(
             valign,
             azimuths,
             role,
+            halo: true,
         });
     };
 

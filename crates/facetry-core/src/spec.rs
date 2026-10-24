@@ -293,6 +293,8 @@ pub enum Mark {
     Bar,
     /// One polyline per series (2D only).
     Line,
+    /// Pie and donut slices (`encoding.theta`), flat in 2D and extruded in 3D. No axes.
+    Arc,
 }
 
 /// How the bars of one layer share an `x` category when they have a `color.field` (the
@@ -388,7 +390,27 @@ pub struct StyleSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub stroke_width: Option<f64>,
+    /// Arcs: the hole's radius as a fraction of the outer radius, `0` (a pie, the default) up
+    /// to but not including `1`. Above 0 it is a donut.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub inner_radius: Option<f64>,
+    /// Arcs: the angular gap between slices, in degrees (default 0).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub pad_angle: Option<f64>,
+    /// Arcs: where the first slice starts, in degrees clockwise from 12 o'clock (default 0).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub start_angle: Option<f64>,
+    /// Arcs in 3D: the thickness of the pie as a fraction of its radius (default 0.2).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub depth: Option<f64>,
 }
+
+/// Default thickness of an extruded pie, as a fraction of its radius.
+pub const DEFAULT_PIE_DEPTH: f64 = 0.2;
 
 /// Value labels: the `y` value written above each bar (below a negative one).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -414,8 +436,14 @@ pub enum LabelShow {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct LabelFormat {
+    /// Print the share of the total as a percentage (`33.3%`) instead of the value: of the
+    /// pie for arcs, of the stack for stacked bars. Arcs and `stack`/`normalize` layers only
+    /// (a `normalize` layer always prints percentages).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub percent: Option<bool>,
     /// Digits after the decimal point (0 to 10). Default: as many as the value needs, up to 4,
-    /// so `1200` reads `1,200` and `0.25` reads `0.25`.
+    /// so `1200` reads `1,200` and `0.25` reads `0.25`; percentages default to at most one.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub decimals: Option<u32>,
@@ -428,10 +456,19 @@ pub const MAX_LABEL_DECIMALS: u32 = 10;
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct Encoding {
-    /// Must be a categorical field (band scale).
-    pub x: PositionEncoding,
-    /// Must be a numeric field (linear scale).
-    pub y: PositionEncoding,
+    /// Bars: a categorical field (band scale). Lines: categorical or numeric. Arcs: none.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub x: Option<PositionEncoding>,
+    /// A numeric field (linear scale). Arcs: none.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub y: Option<PositionEncoding>,
+    /// Arcs: the numeric field (not negative) that sizes each slice: a slice's angle is its
+    /// share of the total.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub theta: Option<ThetaEncoding>,
     /// 3D only: a categorical field (band scale) that spreads bars along the depth axis.
     /// Optional: without it the bars form a single row at the front.
     #[serde(default)]
@@ -472,6 +509,13 @@ pub struct ColorEncoding {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub field: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct ThetaEncoding {
+    pub field: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

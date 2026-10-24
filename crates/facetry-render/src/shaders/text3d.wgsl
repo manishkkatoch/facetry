@@ -31,10 +31,10 @@ struct Globals {
 @group(0) @binding(1) var atlas_texture: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
 
-// One entry per label slot: x visible (0 or 1), y and z the nudge in pixels, w spare. 256
-// entries (4 KiB): the largest uniform block WebGL2 is guaranteed to allow is 16 KiB.
+// One entry per label slot: x visible (0 or 1), y and z the nudge in pixels, w spare. 512
+// entries (8 KiB): the largest uniform block WebGL2 is guaranteed to allow is 16 KiB.
 struct LabelStates {
-    items: array<vec4<f32>, 256>,
+    items: array<vec4<f32>, 512>,
 }
 @group(0) @binding(3) var<uniform> labels: LabelStates;
 

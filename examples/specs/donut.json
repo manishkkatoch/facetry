@@ -1,0 +1,15 @@
+{
+  "dimension": "2d",
+  "data": {
+    "plans": { "plan": ["Free", "Pro", "Team", "Enterprise"], "users": [520, 310, 120, 40] }
+  },
+  "layers": [
+    {
+      "mark": "arc",
+      "data": "plans",
+      "style": { "innerRadius": 0.55, "padAngle": 1.5 },
+      "encoding": { "theta": { "field": "users" }, "color": { "field": "plan" } },
+      "label": { "show": "always" }
+    }
+  ]
+}

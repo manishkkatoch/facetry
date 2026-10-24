@@ -333,7 +333,7 @@ impl Chart {
         );
         let hit = match &self.scene {
             SceneKind::TwoD(scene) => scene.pick(x, y),
-            SceneKind::ThreeD(scene) => self.renderer.pick_3d(&scene.boxes, x, y),
+            SceneKind::ThreeD(scene) => self.renderer.pick_3d(scene, x, y),
         };
         hit.map_or(-1, |i| i as i32)
     }
@@ -357,7 +357,13 @@ impl Chart {
             SceneKind::ThreeD(s) => s
                 .boxes
                 .get(mark)
-                .map(|b| (b.key.as_str(), b.layer, b.row, b.sum)),
+                .map(|b| (b.key.as_str(), b.layer, b.row, b.sum))
+                .or_else(|| {
+                    let i = mark.checked_sub(s.boxes.len())?;
+                    s.slices
+                        .get(i)
+                        .map(|p| (p.key.as_str(), p.layer, p.row, p.sum))
+                }),
         }
         .map_or((None, 0, 0, None), |(k, l, r, s)| (Some(k), l, r, s));
         let Some(key) = key else {
@@ -382,10 +388,20 @@ impl Chart {
         let dpr = f64::from(self.dpr);
         let device = match &self.scene {
             SceneKind::TwoD(s) => s.mark_center(key),
-            SceneKind::ThreeD(s) => s.boxes.iter().find(|b| b.key == key).and_then(|b| {
-                let centre = [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0);
-                self.renderer.project_3d(centre)
-            }),
+            SceneKind::ThreeD(s) => {
+                let centre = s
+                    .boxes
+                    .iter()
+                    .find(|b| b.key == key)
+                    .map(|b| [0, 1, 2].map(|i| (b.min[i] + b.max[i]) / 2.0))
+                    .or_else(|| {
+                        // A slice: the middle of its top face.
+                        let p = s.slices.iter().find(|p| p.key == key)?;
+                        let (a0, a1) = p.span();
+                        Some(p.point((a0 + a1) / 2.0, (p.inner + p.outer) / 2.0, p.height))
+                    });
+                centre.and_then(|c| self.renderer.project_3d(c))
+            }
         };
         let Some([x, y]) = device else {
             return JsValue::UNDEFINED;
@@ -546,7 +562,13 @@ impl Chart {
         let object = js_sys::Object::new();
         let spec_layer = self.spec.layers.get(layer);
         let table = spec_layer.and_then(|l| self.spec.data.get(&l.data));
-        let y_field = spec_layer.map(|l| l.encoding.y.field.as_str());
+        // The field a merged mark's sum stands in for: y for bars, theta for pie slices.
+        let y_field = spec_layer.and_then(|l| {
+            let e = &l.encoding;
+            e.y.as_ref()
+                .map(|y| y.field.as_str())
+                .or_else(|| e.theta.as_ref().map(|t| t.field.as_str()))
+        });
         for (name, column) in table.into_iter().flatten() {
             if let (Some(sum), true) = (sum, Some(name.as_str()) == y_field) {
                 let _ = js_sys::Reflect::set(&object, &name.as_str().into(), &sum.into());

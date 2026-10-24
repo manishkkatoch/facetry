@@ -27,16 +27,16 @@ use crate::spec::{
 };
 use crate::text::TextMeasure;
 use crate::transform;
-use crate::validate::{ColorSource, ResolvedLayer, resolve_layer};
+use crate::validate::{ColorSource, ResolvedLayer, resolve_arc, resolve_layer};
 
 // Layout constants, in CSS px.
-const PADDING: f64 = 12.0;
+pub(crate) const PADDING: f64 = 12.0;
 const TICK_LENGTH: f64 = 6.0;
 /// Between the end of a tick and its label.
 const LABEL_GAP: f64 = 4.0;
 /// Between tick labels and the axis title.
 const TITLE_GAP: f64 = 8.0;
-const LABEL_SIZE: f64 = 12.0;
+pub(crate) const LABEL_SIZE: f64 = 12.0;
 const TITLE_SIZE: f64 = 13.0;
 /// Smallest clear space between two neighbouring x labels.
 const MIN_LABEL_GAP: f64 = 8.0;
@@ -51,7 +51,7 @@ const POINT_PICK_RADIUS: f64 = 12.0;
 /// Space between the bars of a `group` layer, as a fraction of one bar's slot.
 const GROUP_PADDING_INNER: f64 = 0.1;
 /// Between a bar's end and its value label.
-const VALUE_LABEL_GAP: f64 = 4.0;
+pub(crate) const VALUE_LABEL_GAP: f64 = 4.0;
 
 /// Builds the scene with the default (light) theme.
 ///
@@ -102,6 +102,12 @@ pub fn build_scene_with_theme(
     measure: &dyn TextMeasure,
     theme: &Theme,
 ) -> Scene {
+    // A pie or donut is a chart of its own: no axes, no scales.
+    if let Some(i) = spec.layers.iter().position(|l| l.mark == Mark::Arc) {
+        if let Ok(arc) = resolve_arc(spec, i) {
+            return crate::build_arc::build_pie(spec, &arc, viewport_px, dpr, measure, theme);
+        }
+    }
     let s = f64::from(dpr).clamp(0.25, 16.0);
     let (w, h) = (f64::from(viewport_px.0), f64::from(viewport_px.1));
     let layers: Vec<ResolvedLayer> = (0..spec.layers.len())
@@ -359,6 +365,7 @@ pub fn build_scene_with_theme(
         labels: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),
+        arcs: Vec::new(),
         pick_radius: (POINT_PICK_RADIUS * s) as f32,
     };
     let snap = |v: f64| v.round();

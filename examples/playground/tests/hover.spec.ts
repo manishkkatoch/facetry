@@ -390,3 +390,92 @@ test("line points: click reports the point, and a point is reachable by its key"
     { type: "click", mark: { key: "layer0/Mar/Pro", layer: 0, datum: { month: "Mar", plan: "Pro", visits: 22 } } },
   ]);
 });
+
+test("pie: a slice is hovered by angle and radius, reports its datum and sum, and the hole reports nothing", async ({ page }) => {
+  await open(page, "donut");
+  await listen(page);
+  const pro = await where(page, "layer0/Pro");
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  await page.mouse.move(pro.x, pro.y);
+  expect(await events(page)).toEqual([
+    { type: "hover", mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 310 } } },
+  ]);
+  const lit = diff(idle, await shot(page), 8);
+  expect(lit.n).toBeGreaterThan(5_000); // the slice is lightened, nothing else
+  // The donut's hole: nothing. (Its middle is where the slices' common corner is.)
+  
+  // The chord midpoint of two ring-middle points lies inside the ring's hole for slices on opposite sides.
+  const centre = await page.evaluate(() => {
+    const c = (window as any).facetryChart;
+    const a = c.markPosition("layer0/Free");
+    const b = c.markPosition("layer0/Team");
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  });
+  const box = (await page.locator("#chart").boundingBox())!;
+
+  await page.mouse.move(box.x + centre.x, box.y + centre.y);
+  expect((await events(page)).at(-1)).toEqual({ type: "hover", mark: null });
+  // Clicking a slice reports it too.
+  await page.mouse.click(pro.x, pro.y);
+  expect((await events(page)).filter((e) => e.type === "click")).toEqual([
+    { type: "click", mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 310 } } },
+  ]);
+  // Rows of the same plan are merged into one slice; its datum carries the sum.
+  await page.evaluate(() => {
+    const spec = JSON.parse((document.querySelector("#json") as HTMLTextAreaElement).value);
+    spec.data.plans.plan.push("Pro");
+    spec.data.plans.users.push(90);
+    (window as any).facetryChart.update(spec);
+  });
+  const merged = await where(page, "layer0/Pro");
+  await page.mouse.move(merged.x, merged.y);
+  expect((await events(page)).at(-1)).toEqual({
+    type: "hover",
+    mark: { key: "layer0/Pro", layer: 0, datum: { plan: "Pro", users: 400 } },
+  });
+});
+
+test("pie: a hover-mode label shows only on the hovered slice", async ({ page }) => {
+  await open(page, "donut");
+  await edit(page, (s) => (s.layers[0].label.show = "hover"));
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const team = await where(page, "layer0/Team");
+  await page.mouse.move(team.x, team.y);
+  const withLabel = await shot(page);
+  await edit(page, (s) => delete s.layers[0].label);
+  await page.mouse.move(2, 2);
+  await page.mouse.move(team.x, team.y);
+  const without = await shot(page);
+  expect(diff(idle, without, 8).n).toBeGreaterThan(1_000); // the lit slice
+  const label = diff(withLabel, without);
+  expect(label.n).toBeGreaterThan(20); // "120"
+  expect(Math.abs((label.x0 + label.x1) / 2 - team.inCanvas.x)).toBeLessThan(40);
+});
+
+test("3D pie: hovering a slice's top face reports it and lights it; the camera can orbit and it still works", async ({ page }) => {
+  await open(page, "pie3d");
+  await listen(page);
+  await page.mouse.move(2, 2);
+  const idle = await shot(page);
+  const key = "layer0/Social";
+  const p = await where(page, key);
+  await page.mouse.move(p.x, p.y);
+  const log = await events(page);
+  expect(log.at(-1)).toEqual({
+    type: "hover",
+    mark: { key, layer: 0, datum: { source: "Social", visits: 280 } },
+  });
+  expect(diff(idle, await shot(page), 8).n).toBeGreaterThan(3_000);
+  // Turned around, the same slice is still found where it now is.
+  await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 200, elevation: 50 }));
+  await page.mouse.move(2, 2);
+  await events(page);
+  const q = await where(page, key);
+  await page.mouse.move(q.x, q.y);
+  expect((await events(page)).at(-1)?.mark?.key).toBe(key);
+  // Off the pie.
+  await page.mouse.move(2, 2);
+  expect((await events(page)).at(-1)).toEqual({ type: "hover", mark: null });
+});

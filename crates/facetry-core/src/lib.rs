@@ -4,6 +4,8 @@
 
 mod build;
 mod build3d;
+mod build_arc;
+mod build_arc3d;
 mod color;
 pub mod scale;
 pub mod scene;

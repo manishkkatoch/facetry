@@ -68,7 +68,7 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
 - `axes`: `{ id, orient: "bottom" | "left" | "right", title?, scale? }`. `scale` (numeric axes
   only) takes `{ domain: [min, max], nice, zero }`. At most one axis per side. A layer binds a
   channel to an axis by `id`, so a layer can use a `right` axis that has its own domain.
-- `layers[]`: `{ mark: "bar" | "line", data, encoding, position?, point?, style?, label? }`. `x` must be a categorical field (band scale),
+- `layers[]`: `{ mark: "bar" | "line" | "arc", data, encoding, position?, point?, style?, label? }`. `x` must be a categorical field (band scale),
   `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
   `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
   key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
@@ -119,7 +119,10 @@ column), so the three non-default positions need it.
   segment's value (normalised: its percentage, `33.3%`), and **no label is drawn when the text
   does not fit** in the segment; grouped bars are labelled above their ends like plain bars,
   except where the text is wider than the slot. There are no totals. In 3D the same rule is
-  decided at the starting camera.
+  decided at the starting camera, and a segment's label is also hidden **while another box is
+  in front of the segment's middle** (the renderer tests that per frame with the picking ray,
+  so stacks seen from above only show their top segment's number); `label.format.percent: true`
+  prints a segment's share of its stack.
 - 3D: `stack`/`normalize` pile boxes up inside each (x, z) cell, `group` splits the x cell into
   sub-cells (z stays one cell).
 
@@ -170,6 +173,55 @@ column), so the three non-default positions need it.
   line widths (so a zigzag does not grow spikes), butt caps, and neighbouring segments sharing
   their inner corners so a translucent colour does not double up at a bend. One draw call per
   layer; 4x MSAA smooths the edges. Only WebGL2-compatible features are used.
+
+### Pie and donut charts
+
+`mark: "arc"` with `encoding.theta` (the numeric field that sizes each slice) and
+`encoding.color.field` (one slice per category). A pie has no axes:
+
+```jsonc
+{
+  "data": { "traffic": { "source": ["Search", "Social", "Direct", "Email"], "visits": [420, 280, 190, 60] } },
+  "layers": [{
+    "mark": "arc", "data": "traffic",
+    "style": { "innerRadius": 0.55, "padAngle": 1.5, "startAngle": 0 },   // all optional
+    "encoding": { "theta": { "field": "visits" }, "color": { "field": "source" }, "key": { "field": "source" } },
+    "label": { "show": "always", "format": { "percent": true } }
+  }]
+}
+```
+
+- Slices follow the colour field's order, clockwise from `startAngle` (degrees, `0` = 12
+  o'clock). `innerRadius` is the hole as a fraction of the outer radius (`0` pie, `> 0` donut,
+  below 1); `padAngle` is the gap between slices in degrees (half is cut off each side).
+  `cornerRadius` is not supported yet. Rows with the same colour value are summed into one slice
+  (hover reports the first row with the summed `visits`); zero and missing values are no slice.
+  Slice keys are `layer0/<colour value>` (an `encoding.key` field replaces the value).
+- `theta` must be numeric and not negative, `color` a categorical field; an arc layer cannot have
+  `x`/`y`/`z`, cannot be mixed with other layers (or a second arc layer), and a spec with an arc
+  layer **must not declare `axes`**: each is a validation issue with its path.
+- `label.format.percent: true` prints each slice's share (`42.8%`, at most one decimal; `decimals`
+  overrides) instead of its value. A label goes **inside** its slice, centred in the ring (at
+  0.62 of the radius for a pie), when the text fits there; otherwise it goes **outside** on a
+  short leader line (the pie shrinks to leave room for those labels). A label that would touch
+  an outside label already placed is left out; with `show: "hover"` there are no leader lines
+  and no overlap pruning, since only one label shows at a time.
+- 2D: CPU tessellation into triangles, segments of at most 2 degrees (at least 3 per slice);
+  neighbouring slices share their boundary vertices, so there are no seams. Picking is a
+  point-in-sector test (angle and radius); the hovered slice is drawn again a little lighter.
+- **3D** (`dimension: "3d"`): an extruded pie standing on the floor, thickness `style.depth` (a
+  fraction of the radius, default 0.2). It is a lit mesh with a top face, an outer wall, the hole's
+  wall for a donut, and the flat faces at each slice's edges (no bottom: the camera never goes
+  below the floor); curved walls use smooth radial normals, the rest flat ones. There are no
+  axes or back walls. The orbit camera works as for bars. Picking intersects the ray with the
+  plane of the top face and tests the slice's sector there, so **the sides of an extruded pie
+  are not pickable** (from the elevations the camera allows, the top is nearly always what the
+  pointer is over). 3D labels sit on the top face (outside ones centred beyond a leader line, so
+  they read from any side); what fits is judged at the starting camera.
+- Why a new lit-mesh pipeline for 3D: the bars' pipeline stretches one static unit cube to
+  every bar, which cannot express curved walls. `mesh3d.wgsl` has the same Lambert lighting as
+  `box.wgsl` and takes ready-made vertices (position, normal, colour, hover flag) from
+  `facetry-render/src/arc.rs`.
 
 ### 3D charts
 

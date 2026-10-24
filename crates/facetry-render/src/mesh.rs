@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::Color;
-use facetry_core::scene::{PointMark, Scene};
+use facetry_core::scene::{ArcMark, PointMark, Scene};
 
 use crate::gpu::InstanceBuffer;
 use crate::rect::uniform_entry;
@@ -62,6 +62,23 @@ pub fn line_mesh(scene: &Scene, encode: impl Fn(Color) -> [f32; 4]) -> MeshData 
         }
     }
     mesh.close_range(start);
+    mesh
+}
+
+/// Appends a pie slice in `color`.
+pub fn push_arc(mesh: &mut MeshData, arc: &ArcMark, color: [f32; 4]) {
+    let mut tris = Vec::new();
+    crate::arc::sector(arc, &mut tris);
+    mesh.push_triangles(&tris, color);
+}
+
+/// Every slice of a pie or donut, as one draw call.
+pub fn arc_mesh(scene: &Scene, encode: impl Fn(Color) -> [f32; 4]) -> MeshData {
+    let mut mesh = MeshData::default();
+    for arc in &scene.arcs {
+        push_arc(&mut mesh, arc, encode(arc.color));
+    }
+    mesh.close_range(0);
     mesh
 }
 
@@ -237,6 +254,16 @@ mod tests {
         );
         // No lines, no draw calls.
         assert!(line_mesh(&scene("bar-basic"), identity).ranges.is_empty());
+    }
+
+    #[test]
+    fn a_pie_is_one_draw_call_of_whole_triangles() {
+        let pie = scene("pie");
+        let mesh = arc_mesh(&pie, identity);
+        assert_eq!(mesh.ranges.len(), 1);
+        assert_eq!(mesh.vertices.len() % 3, 0);
+        assert!(!mesh.vertices.is_empty());
+        assert!(arc_mesh(&scene("bar-basic"), identity).ranges.is_empty());
     }
 
     #[test]

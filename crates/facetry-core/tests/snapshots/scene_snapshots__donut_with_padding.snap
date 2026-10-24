@@ -1,0 +1,124 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"donut\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [],
+  "rules": [],
+  "texts": [],
+  "labels": [
+    {
+      "mark": 0,
+      "show": "always",
+      "text": {
+        "key": "layer0/Free/label",
+        "text": "520",
+        "x": 584.0,
+        "y": 269.0,
+        "size_px": 12.0,
+        "color": "#ffffff",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 1,
+      "show": "always",
+      "text": {
+        "key": "layer0/Pro/label",
+        "text": "310",
+        "x": 232.0,
+        "y": 331.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 2,
+      "show": "always",
+      "text": {
+        "key": "layer0/Team/label",
+        "text": "120",
+        "x": 291.0,
+        "y": 106.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 3,
+      "show": "always",
+      "text": {
+        "key": "layer0/Enterprise/label",
+        "text": "40",
+        "x": 377.0,
+        "y": 71.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ],
+  "arcs": [
+    {
+      "key": "layer0/Free",
+      "color": "#4c78a8",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 0.0,
+      "end": 3.3003,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Pro",
+      "color": "#f58518",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 3.3003,
+      "end": 5.2677,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Team",
+      "color": "#e45756",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 5.2677,
+      "end": 6.0293,
+      "pad": 0.0262
+    },
+    {
+      "key": "layer0/Enterprise",
+      "color": "#72b7b2",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 130.9,
+      "outer": 238.0,
+      "start": 6.0293,
+      "end": 6.2832,
+      "pad": 0.0262
+    }
+  ]
+}

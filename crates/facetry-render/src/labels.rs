@@ -29,12 +29,19 @@ use facetry_core::scene3d::{AXIS_X, AXIS_Y, AXIS_Z, AzimuthRange, LabelRole, Sce
 use facetry_font::FontMetrics;
 use glam::{Mat4, Vec2, Vec3};
 
+use crate::pick::{ray_box, ray_through_pixel};
 use crate::text::NO_SLOT;
 
-/// Entries in the label-state table (matches `LabelStates` in `text3d.wgsl`).
-pub const SLOTS: usize = 256;
-/// The last slot is never visible: labels beyond the table's capacity point at it.
-const OVERFLOW_SLOT: usize = SLOTS - 1;
+/// Entries in the label-state table (matches `LabelStates` in `text3d.wgsl`): the first half
+/// for axis labels (numbered within each azimuth sector), the second for value labels that
+/// hide while their box is out of sight.
+pub const SLOTS: usize = 512;
+/// Axis labels use slots `0..SECTOR_SLOTS`; the last of those is never visible: labels beyond
+/// the capacity point at it.
+const SECTOR_SLOTS: usize = SLOTS / 2;
+const OVERFLOW_SLOT: usize = SECTOR_SLOTS - 1;
+/// Value labels on boxes use `VALUE_SLOTS..SLOTS - 1`; the very last slot is the overflow.
+const VALUE_SLOTS: usize = SLOTS / 2;
 /// How far (pixels) a label may be pushed to clear the box before it is given up on.
 const MAX_PUSH: i32 = 240;
 
@@ -92,6 +99,20 @@ pub struct LabelPlan {
     size: Vec3,
     /// Clear space kept between labels, device pixels.
     gap: f32,
+    /// Value labels that are only visible while their box is (see [`LabelRole::OnMark`]),
+    /// the boxes they test against, and the slot of every one of `scene.labels` ([`NO_SLOT`]
+    /// for the rest).
+    on_boxes: Vec<OnBox>,
+    boxes: Vec<(Vec3, Vec3)>,
+    label_slots: Vec<f32>,
+}
+
+/// A value label printed on a box.
+#[derive(Debug, Clone)]
+struct OnBox {
+    slot: usize,
+    mark: usize,
+    anchor: Vec3,
 }
 
 impl LabelPlan {
@@ -109,7 +130,8 @@ impl LabelPlan {
         let mut slots = Vec::with_capacity(scene.texts.len());
         for t in &scene.texts {
             let (class, rank) = match t.role {
-                LabelRole::Fixed => {
+                // Always shown here (an `OnMark` label is a value label, planned below).
+                LabelRole::Fixed | LabelRole::OnMark(_) => {
                     slots.push(NO_SLOT);
                     continue;
                 }
@@ -144,12 +166,48 @@ impl LabelPlan {
             *sector += 1;
             slots.push(slot as f32);
         }
+        // Value labels on boxes: one slot each, past the axis labels'.
+        let mut on_boxes = Vec::new();
+        let mut label_slots = Vec::with_capacity(scene.labels.len());
+        for l in &scene.labels {
+            match l.text.role {
+                LabelRole::OnMark(mark) if l.show == facetry_core::spec::LabelShow::Always => {
+                    let slot = (VALUE_SLOTS + on_boxes.len()).min(SLOTS - 1);
+                    if slot < SLOTS - 1 {
+                        on_boxes.push(OnBox {
+                            slot,
+                            mark: mark as usize,
+                            anchor: Vec3::from(l.text.anchor),
+                        });
+                    }
+                    label_slots.push(slot as f32);
+                }
+                _ => label_slots.push(NO_SLOT),
+            }
+        }
+        let boxes = if on_boxes.is_empty() {
+            Vec::new()
+        } else {
+            scene
+                .boxes
+                .iter()
+                .map(|b| (Vec3::from(b.min), Vec3::from(b.max)))
+                .collect()
+        };
         let plan = Self {
             entries,
             size: Vec3::from(scene.size),
             gap: 4.0 * scene.halo_px,
+            on_boxes,
+            boxes,
+            label_slots,
         };
         (plan, slots)
+    }
+
+    /// The slot for each of `scene.labels` ([`NO_SLOT`] where the label always shows).
+    pub fn label_slots(&self) -> &[f32] {
+        &self.label_slots
     }
 
     /// Decides every label of the sector `azimuth` (degrees) is in, for the given
@@ -212,6 +270,30 @@ impl LabelPlan {
         for p in self.place(view_proj, viewport, azimuth) {
             if p.visible {
                 table[p.slot] = [1.0, p.push[0], p.push[1], 0.0];
+            }
+        }
+        // A label printed on a box shows if the first box the camera sees through its anchor's
+        // pixel is that box: the same ray test as picking.
+        for label in &self.on_boxes {
+            let c = view_proj * label.anchor.extend(1.0);
+            if c.w <= 0.0 {
+                continue;
+            }
+            let px = (
+                (c.x / c.w * 0.5 + 0.5) * viewport[0],
+                (0.5 - c.y / c.w * 0.5) * viewport[1],
+            );
+            let Some(ray) = ray_through_pixel(view_proj, (viewport[0], viewport[1]), px) else {
+                continue;
+            };
+            let first = self
+                .boxes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (min, max))| Some((i, ray_box(&ray, *min, *max)?)))
+                .min_by(|a, b| a.1.total_cmp(&b.1));
+            if first.is_some_and(|(i, _)| i == label.mark) {
+                table[label.slot] = [1.0, 0.0, 0.0, 0.0];
             }
         }
         table
@@ -593,5 +675,96 @@ mod tests {
         let (plan, slots) = LabelPlan::new(&s, FontMetrics::inter());
         assert_eq!(plan.entries.len(), OVERFLOW_SLOT);
         assert_eq!(slots[OVERFLOW_SLOT + 10], OVERFLOW_SLOT as f32);
+    }
+
+    /// Which of a stacked chart's value labels are shown from `camera`: the keys of their boxes.
+    fn shown_value_labels(scene: &Scene3d, camera: Camera) -> Vec<String> {
+        let (plan, _) = LabelPlan::new(scene, FontMetrics::inter());
+        let viewport = (800.0, 500.0);
+        let table = plan.states(
+            camera.plot_view_proj(scene.size, viewport),
+            [viewport.0, viewport.1],
+            camera.azimuth,
+        );
+        plan.label_slots()
+            .iter()
+            .zip(&scene.labels)
+            .filter(|(slot, _)| table[**slot as usize][0] == 1.0)
+            .map(|(_, l)| {
+                scene.boxes[match l.text.role {
+                    LabelRole::OnMark(m) => m as usize,
+                    other => panic!("{other:?}"),
+                }]
+                .key
+                .clone()
+            })
+            .collect()
+    }
+
+    fn stacked_with_labels() -> Scene3d {
+        let json = include_str!("../../../examples/specs/bar3d-stacked.json").replace(
+            r#""encoding": {"#,
+            r#""label": { "show": "always" }, "encoding": {"#,
+        );
+        let s = scene(&json);
+        assert!(
+            s.labels
+                .iter()
+                .all(|l| matches!(l.text.role, LabelRole::OnMark(_)))
+        );
+        s
+    }
+
+    #[test]
+    fn labels_on_boxes_hide_behind_other_boxes() {
+        let s = stacked_with_labels();
+        // 36 segments; the thinnest ones (Q4 Services) have no room for a label at all.
+        assert!(s.labels.len() >= 30, "{}", s.labels.len());
+        // From almost straight above only the top segment of each stack is in view: the
+        // segments below are hidden under it.
+        let mut top = Camera::default();
+        top.set(Some(0.0), Some(85.0), None);
+        let shown = shown_value_labels(&s, top);
+        assert!(!shown.is_empty());
+        assert!(
+            shown.iter().all(|k| k.contains("/Services/")),
+            "only the topmost segments: {shown:?}"
+        );
+        // From the front at a low elevation the nearest row of every stack shows all three
+        // segments, and the rows behind them are hidden.
+        let mut front = Camera::default();
+        front.set(Some(0.0), Some(8.0), None);
+        let shown = shown_value_labels(&s, front);
+        assert!(
+            shown.contains(&"layer0/Q1/Hardware/North".to_owned()),
+            "{shown:?}"
+        );
+        assert!(shown.contains(&"layer0/Q1/Software/North".to_owned()));
+        assert!(!shown.iter().any(|k| k.ends_with("/West")), "{shown:?}");
+        // Whatever the view, something is shown and nothing is shown twice.
+        for az in (0..360).step_by(20) {
+            for el in [10.0, 30.0, 60.0] {
+                let mut c = Camera::default();
+                c.set(Some(az as f32), Some(el), None);
+                let shown = shown_value_labels(&s, c);
+                assert!(!shown.is_empty(), "{az}/{el}");
+                let mut unique = shown.clone();
+                unique.sort();
+                unique.dedup();
+                assert_eq!(unique.len(), shown.len());
+            }
+        }
+    }
+
+    #[test]
+    fn value_slots_do_not_collide_with_axis_label_slots() {
+        let s = stacked_with_labels();
+        let (plan, text_slots) = LabelPlan::new(&s, FontMetrics::inter());
+        let axis_max = text_slots
+            .iter()
+            .filter(|s| **s >= 0.0)
+            .fold(0.0_f32, |a, b| a.max(*b));
+        let value_min = plan.label_slots().iter().fold(f32::MAX, |a, b| a.min(*b));
+        assert!((axis_max as usize) < SLOTS / 2 && (value_min as usize) >= SLOTS / 2);
     }
 }

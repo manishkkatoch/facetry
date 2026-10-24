@@ -1,0 +1,183 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene_for(\"pie\", (800, 500), 1.0)"
+---
+{
+  "width": 800,
+  "height": 500,
+  "background": "#ffffff",
+  "rects": [],
+  "rules": [],
+  "texts": [],
+  "labels": [
+    {
+      "mark": 0,
+      "show": "always",
+      "text": {
+        "key": "layer0/Search/label",
+        "text": "42.8%",
+        "x": 528.0,
+        "y": 225.0,
+        "size_px": 12.0,
+        "color": "#ffffff",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 1,
+      "show": "always",
+      "text": {
+        "key": "layer0/Social/label",
+        "text": "28.5%",
+        "x": 344.0,
+        "y": 373.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 2,
+      "show": "always",
+      "text": {
+        "key": "layer0/Direct/label",
+        "text": "19.3%",
+        "x": 277.0,
+        "y": 206.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 3,
+      "show": "always",
+      "text": {
+        "key": "layer0/Email/label",
+        "text": "6.1%",
+        "x": 349.0,
+        "y": 133.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    },
+    {
+      "mark": 4,
+      "show": "always",
+      "text": {
+        "key": "layer0/Referral/label",
+        "text": "2%",
+        "x": 369.0,
+        "y": 26.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "middle",
+        "rotation": "none"
+      }
+    }
+  ],
+  "polylines": [
+    {
+      "key": "layer0/Referral/leader",
+      "color": "#6e7781",
+      "width": 1.0,
+      "runs": [
+        [
+          [
+            370.2,
+            39.73
+          ],
+          [
+            368.8,
+            29.82
+          ]
+        ]
+      ]
+    }
+  ],
+  "arcs": [
+    {
+      "key": "layer0/Search",
+      "color": "#4c78a8",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 0.0,
+      "end": 2.6873,
+      "pad": 0.0
+    },
+    {
+      "key": "layer0/Social",
+      "color": "#f58518",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 2.6873,
+      "end": 4.4788,
+      "pad": 0.0
+    },
+    {
+      "key": "layer0/Direct",
+      "color": "#e45756",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 4.4788,
+      "end": 5.6945,
+      "pad": 0.0
+    },
+    {
+      "key": "layer0/Email",
+      "color": "#72b7b2",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 5.6945,
+      "end": 6.0784,
+      "pad": 0.0
+    },
+    {
+      "key": "layer0/Referral",
+      "color": "#54a24b",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 6.0784,
+      "end": 6.2064,
+      "pad": 0.0
+    },
+    {
+      "key": "layer0/Other",
+      "color": "#eeca3b",
+      "center": [
+        400.0,
+        250.0
+      ],
+      "inner": 0.0,
+      "outer": 212.38,
+      "start": 6.2064,
+      "end": 6.2832,
+      "pad": 0.0
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "dimension": "3d",
+  "data": {
+    "traffic": {
+      "source": ["Search", "Social", "Direct", "Email", "Referral", "Other"],
+      "visits": [420, 280, 190, 60, 20, 12]
+    }
+  },
+  "layers": [
+    {
+      "mark": "arc",
+      "data": "traffic",
+      "style": { "depth": 0.25, "padAngle": 1 },
+      "encoding": { "theta": { "field": "visits" }, "color": { "field": "source" } },
+      "label": { "show": "always", "format": { "percent": true } }
+    }
+  ],
+  "camera": { "type": "perspective", "azimuth": 20, "elevation": 40, "distance": 2.7 },
+  "interaction": { "orbit": true }
+}

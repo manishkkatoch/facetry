@@ -1,9 +1,12 @@
 //! The 3D pipelines for geometry: instanced boxes (bars) and thick world-space lines.
 
+use std::ops::Range;
+
 use bytemuck::{Pod, Zeroable};
 use facetry_core::Color;
 use facetry_core::scene3d::Scene3d;
 
+use crate::arc::Vertex3;
 use crate::gpu::{DEPTH_FORMAT, InstanceBuffer, QUAD_LAYOUT, show_range};
 use crate::rect::uniform_entry;
 
@@ -299,6 +302,108 @@ impl BoxPipeline {
         pass.set_vertex_buffer(0, self.cube.slice(..));
         pass.set_vertex_buffer(1, buffer.slice(..));
         pass.draw(0..36, 0..count);
+    }
+}
+
+/// The slices of an extruded pie: one lit mesh, drawn with depth testing like the bars. The
+/// vertices are kept on the CPU too, so hovering a slice can rewrite just its range.
+#[derive(Debug)]
+pub struct SlicePipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    vertices: Vec<Vertex3>,
+    /// Each slice's vertices within `vertices`, in slice order.
+    ranges: Vec<Range<usize>>,
+    buffer: InstanceBuffer,
+}
+
+impl SlicePipeline {
+    pub fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        samples: u32,
+        globals: &wgpu::Buffer,
+    ) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("mesh3d shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/mesh3d.wgsl").into()),
+        });
+        let (layout, bind_group) = globals_only(device, "mesh3d", globals);
+        let attrs = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32
+        ];
+        let pipeline = pipeline(
+            device,
+            &PipelineDesc {
+                label: "mesh3d pipeline",
+                module: &module,
+                layout: &layout,
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vertex3>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attrs,
+                })],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                // Both sides are drawn (the depth test hides what is behind): a slice is a
+                // closed solid except for its floor, which is never seen.
+                cull_mode: None,
+                depth_write: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                blend: wgpu::BlendState::REPLACE,
+            },
+            format,
+            samples,
+        );
+        Self {
+            pipeline,
+            bind_group,
+            vertices: Vec::new(),
+            ranges: Vec::new(),
+            buffer: InstanceBuffer::new("slice vertices"),
+        }
+    }
+
+    pub fn set(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &Scene3d,
+        encode: impl Fn(Color) -> [f32; 4],
+    ) {
+        self.vertices.clear();
+        self.ranges.clear();
+        for s in &scene.slices {
+            let start = self.vertices.len();
+            crate::arc::slice(s, encode(s.color), &mut self.vertices);
+            self.ranges.push(start..self.vertices.len());
+        }
+        self.buffer.set(device, queue, &self.vertices);
+    }
+
+    /// Lights slice `index` up (or not): rewrites the hover flag of its vertices only.
+    pub fn set_hover(&mut self, queue: &wgpu::Queue, index: usize, on: bool) {
+        let Some(range) = self.ranges.get(index).cloned() else {
+            return;
+        };
+        for v in &mut self.vertices[range.clone()] {
+            v.hover = if on { 1.0 } else { 0.0 };
+        }
+        let stride = std::mem::size_of::<Vertex3>();
+        self.buffer.patch(
+            queue,
+            (range.start * stride) as u64,
+            bytemuck::cast_slice(&self.vertices[range]),
+        );
+    }
+
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        let Some((buffer, count)) = self.buffer.bound() else {
+            return;
+        };
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, buffer.slice(..));
+        pass.draw(0..count, 0..1);
     }
 }
 

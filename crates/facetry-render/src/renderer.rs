@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use facetry_core::scene::{PointMark, Scene, Text};
-use facetry_core::scene3d::{BoxMark, Scene3d, Text3};
+use facetry_core::scene::{ArcMark, PointMark, Scene, Text};
+use facetry_core::scene3d::{Scene3d, Text3};
 use facetry_core::spec::LabelShow;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
@@ -17,7 +17,7 @@ use crate::labels::{LabelPlan, SLOTS};
 use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
 use crate::pick;
 use crate::rect::{self, RectPipeline};
-use crate::solid::{self, BoxPipeline, LinePipeline};
+use crate::solid::{self, BoxPipeline, LinePipeline, SlicePipeline};
 use crate::text::{
     self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
 };
@@ -92,6 +92,7 @@ struct Solid {
     /// Per-label "show it, nudge it" table the text shader reads (see `labels.rs`).
     label_states: wgpu::Buffer,
     boxes: BoxPipeline,
+    slices: SlicePipeline,
     lines: LinePipeline,
     text: Text3dPipeline,
 }
@@ -147,12 +148,16 @@ pub struct Renderer {
     /// 2D: bars follow the gridlines in the rect buffer, so bar `i` is instance
     /// `bar_offset + i`.
     bar_offset: usize,
-    /// 2D: how many of the marks are bars; the marks after them are the line points.
+    /// 2D: how many of the marks are bars; then come the line points, then the pie slices.
     bar_count: usize,
-    /// 2D: the line points, kept for the marker drawn while one is hovered.
+    /// 2D: the line points and pie slices, kept for what is drawn over them while hovered.
     point_marks: Vec<PointMark>,
-    /// 2D triangles: tessellated line strokes, point markers, and the hover marker.
+    arc_marks: Vec<ArcMark>,
+    /// 3D: how many of the marks are boxes; the rest are pie slices.
+    box_count: usize,
+    /// 2D triangles: pie slices, tessellated line strokes, point markers, and the hover mark.
     mesh: MeshPipeline,
+    arcs: Mesh,
     lines: Mesh,
     markers: Mesh,
     hover_marker: Mesh,
@@ -301,7 +306,10 @@ impl Renderer {
             bar_offset: 0,
             bar_count: 0,
             point_marks: Vec::new(),
+            arc_marks: Vec::new(),
+            box_count: 0,
             mesh,
+            arcs: Mesh::new("pie slices"),
             lines: Mesh::new("line strokes"),
             markers: Mesh::new("point markers"),
             hover_marker: Mesh::new("hover marker"),
@@ -409,6 +417,8 @@ impl Renderer {
         self.background = scene.background;
         let rects = rect::instances(scene, |c| self.encode_color(c));
         self.rects.set_instances(&self.device, &self.queue, &rects);
+        let arcs = mesh::arc_mesh(scene, |c| self.encode_color(c));
+        self.arcs.set(&self.device, &self.queue, &arcs);
         let lines = mesh::line_mesh(scene, |c| self.encode_color(c));
         self.lines.set(&self.device, &self.queue, &lines);
         let markers = mesh::point_mesh(
@@ -420,6 +430,7 @@ impl Renderer {
         self.hover_marker
             .set(&self.device, &self.queue, &MeshData::default());
         self.point_marks.clone_from(&scene.points);
+        self.arc_marks.clone_from(&scene.arcs);
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
@@ -473,6 +484,7 @@ impl Renderer {
             });
             Solid {
                 boxes: BoxPipeline::new(device, format, samples, &globals),
+                slices: SlicePipeline::new(device, format, samples, &globals),
                 lines: LinePipeline::new(device, format, samples, &globals),
                 text: Text3dPipeline::new(device, atlas, format, samples, &globals, &label_states),
                 globals,
@@ -485,6 +497,7 @@ impl Renderer {
             &self.queue,
             &solid::box_instances(scene, encode),
         );
+        solid.slices.set(&self.device, &self.queue, scene, encode);
         solid.lines.set_instances(
             &self.device,
             &self.queue,
@@ -493,16 +506,27 @@ impl Renderer {
         let font = FontMetrics::inter();
         let (plan, slots) = LabelPlan::new(scene, font);
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
+        // The glyphs that get an outline (labels printed on a bar or slice do not).
+        let mut outlined: Vec<Glyph3Instance> = Vec::new();
         for (t, &slot) in scene.texts.iter().zip(&slots) {
+            let from = glyphs.len();
             text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
+            if t.halo {
+                outlined.extend_from_slice(&glyphs[from..]);
+            }
         }
         self.hover_labels.clear();
         self.hover_labels_3d.clear();
-        for label in &scene.labels {
+        for (index, label) in scene.labels.iter().enumerate() {
             let color = encode(label.text.color);
             match label.show {
                 LabelShow::Always => {
-                    text::layout_glyphs_3d(&label.text, color, NO_SLOT, font, &mut glyphs)
+                    let from = glyphs.len();
+                    let slot = plan.label_slots().get(index).copied().unwrap_or(NO_SLOT);
+                    text::layout_glyphs_3d(&label.text, color, slot, font, &mut glyphs);
+                    if label.text.halo {
+                        outlined.extend_from_slice(&glyphs[from..]);
+                    }
                 }
                 LabelShow::Hover => self.hover_labels_3d.push(HoverLabel3 {
                     mark: label.mark,
@@ -514,7 +538,7 @@ impl Renderer {
         // Outlines first (every label's, so no outline covers another label's letters), then
         // the letters themselves.
         self.halo = (encode(scene.background), scene.halo_px);
-        let mut instances = text::halo_instances(&glyphs, self.halo.0, self.halo.1);
+        let mut instances = text::halo_instances(&outlined, self.halo.0, self.halo.1);
         instances.extend(glyphs);
         solid
             .text
@@ -523,7 +547,8 @@ impl Renderer {
         self.label_plan = Some(plan);
         self.label_key = None;
         self.hover = None;
-        self.mark_count = scene.boxes.len();
+        self.mark_count = scene.boxes.len() + scene.slices.len();
+        self.box_count = scene.boxes.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -547,24 +572,39 @@ impl Renderer {
         let previous = std::mem::replace(&mut self.hover, mark);
         let font = FontMetrics::inter();
         if let (Some(solid), Some(_)) = (&mut self.solid, self.box_size) {
+            // Marks 0..box_count are boxes; the rest are pie slices.
             if let Some(p) = previous {
-                solid.boxes.set_hover(&self.queue, p, false);
+                if p < self.box_count {
+                    solid.boxes.set_hover(&self.queue, p, false);
+                } else {
+                    solid
+                        .slices
+                        .set_hover(&self.queue, p - self.box_count, false);
+                }
             }
             let mut instances = Vec::new();
             if let Some(m) = mark {
-                solid.boxes.set_hover(&self.queue, m, true);
+                if m < self.box_count {
+                    solid.boxes.set_hover(&self.queue, m, true);
+                } else {
+                    solid
+                        .slices
+                        .set_hover(&self.queue, m - self.box_count, true);
+                }
                 if let Some(l) = self.hover_labels_3d.iter().find(|l| l.mark == m) {
                     text::layout_glyphs_3d(&l.text, l.color, NO_SLOT, font, &mut instances);
-                    let halo = text::halo_instances(&instances, self.halo.0, self.halo.1);
-                    instances.splice(0..0, halo);
+                    if l.text.halo {
+                        let halo = text::halo_instances(&instances, self.halo.0, self.halo.1);
+                        instances.splice(0..0, halo);
+                    }
                 }
             }
             solid
                 .text
                 .set_overlay(&self.device, &self.queue, &instances);
         } else {
-            // Marks 0..bar_count are bars (a flag in the rect buffer); the rest are line
-            // points, which get a marker drawn over them instead.
+            // Marks 0..bar_count are bars (a flag in the rect buffer); then come the line
+            // points and the pie slices, which get something drawn over them instead.
             if let Some(p) = previous.filter(|&p| p < self.bar_count) {
                 self.rects
                     .set_hover(&self.queue, self.bar_offset + p, false);
@@ -572,9 +612,11 @@ impl Renderer {
             let mut glyphs = Vec::new();
             let mut marker = MeshData::default();
             if let Some(m) = mark {
+                let points = self.bar_count + self.point_marks.len();
                 if m < self.bar_count {
                     self.rects.set_hover(&self.queue, self.bar_offset + m, true);
-                } else if let Some(p) = self.point_marks.get(m - self.bar_count) {
+                } else if m < points {
+                    let p = &self.point_marks[m - self.bar_count];
                     let background = self.encode_color(self.background);
                     // Bigger than the plain marker, with the same rim.
                     mesh::push_marker(
@@ -584,6 +626,12 @@ impl Renderer {
                         background,
                         self.encode_color(p.color),
                     );
+                    marker.ranges.push(0..marker.vertices.len() as u32);
+                } else if let Some(a) = self.arc_marks.get(m - points) {
+                    // The slice again, a little lighter, exactly on top of itself.
+                    let [r, g, b, alpha] = self.encode_color(a.color);
+                    let lighter = |c: f32| c + (1.0 - c) * 0.12;
+                    mesh::push_arc(&mut marker, a, [lighter(r), lighter(g), lighter(b), alpha]);
                     marker.ranges.push(0..marker.vertices.len() as u32);
                 }
                 if let Some(l) = self.hover_labels.iter().find(|l| l.mark == m) {
@@ -595,13 +643,14 @@ impl Renderer {
         }
     }
 
-    /// The bar of `boxes` under pixel `(x, y)` of the surface, in the current camera: a ray
-    /// through the pixel against every box, nearest wins. `None` in a 2D chart.
-    pub fn pick_3d(&self, boxes: &[BoxMark], x: f32, y: f32) -> Option<usize> {
+    /// The mark of `scene` (a bar, or a pie slice after the bars) under pixel `(x, y)` of the
+    /// surface, in the current camera: a ray through the pixel against every box and every
+    /// slice's top face, nearest wins. `None` in a 2D chart.
+    pub fn pick_3d(&self, scene: &Scene3d, x: f32, y: f32) -> Option<usize> {
         let size = self.box_size?;
         let viewport = (self.config.width as f32, self.config.height as f32);
-        pick::pick_3d(
-            boxes,
+        pick::pick_scene(
+            scene,
             self.camera.plot_view_proj(size, viewport),
             viewport,
             (x, y),
@@ -734,6 +783,7 @@ impl Renderer {
         match (&self.solid, self.box_size) {
             (Some(solid), Some(_)) => {
                 solid.boxes.draw(&mut pass);
+                solid.slices.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,
                 // and a label hidden behind a bar is worse than one drawn over it.
@@ -741,10 +791,11 @@ impl Renderer {
             }
             // No depth test in 2D: draw order alone decides what is on top.
             _ => {
-                // Back to front: gridlines and bars, then the line layers and their markers,
+                // Back to front: gridlines and bars, then pie slices, the line layers and their markers,
                 // then axis lines and ticks, the hover marker, and text on top.
                 let split = (self.bar_offset + self.bar_count) as u32;
                 self.rects.draw_range(&mut pass, &self.quad, 0..split);
+                self.arcs.draw(&mut pass, &self.mesh);
                 self.lines.draw(&mut pass, &self.mesh);
                 self.markers.draw(&mut pass, &self.mesh);
                 self.rects
