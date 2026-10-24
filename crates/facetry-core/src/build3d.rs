@@ -102,6 +102,17 @@ pub fn build_scene_3d_with_theme(
         }
     }
     let s = f64::from(dpr).clamp(0.25, 16.0);
+    // The legend takes a band of the canvas; the 3D plot is framed in the rest.
+    let legend = crate::legend::layout(
+        spec,
+        theme,
+        (f64::from(viewport_px.0), f64::from(viewport_px.1)),
+        s,
+        crate::build::PADDING * s,
+        measure,
+    );
+    let plot = legend.as_ref().map(|l| plot_area(viewport_px, l));
+    let plot_h = plot.map_or(viewport_px.1 as f32, |p| p[3]);
     let layers: Vec<ResolvedLayer> = (0..spec.layers.len())
         .filter_map(|i| resolve_layer(spec, i).ok())
         .collect();
@@ -170,7 +181,7 @@ pub fn build_scene_3d_with_theme(
         .clamp(0.5, 20.0);
     let radius = f64::from(framing_radius([width as f32, 1.0, depth as f32]));
     let half_fov = (FOV_Y_DEGREES / 2.0).to_radians().tan();
-    let px_per_unit = f64::from(viewport_px.1.max(1)) / (2.0 * distance * radius * half_fov);
+    let px_per_unit = f64::from(plot_h.max(1.0)) / (2.0 * distance * radius * half_fov);
 
     // --- y scale ----------------------------------------------------------------------------
     let y_plan = y_axis.map(|i| (i, &spec.axes[i]));
@@ -205,6 +216,8 @@ pub fn build_scene_3d_with_theme(
     let mut scene = Scene3d {
         width: viewport_px.0,
         height: viewport_px.1,
+        plot,
+        overlay: legend.map(overlay).unwrap_or_default(),
         background: theme.background,
         size: [width as f32, 1.0, depth as f32],
         halo_px: s.round().max(1.0) as f32,
@@ -356,7 +369,7 @@ pub fn build_scene_3d_with_theme(
         |key: String, kind: RuleKind, a: [f32; 3], b: [f32; 3], azimuths: Option<AzimuthRange>| {
             let (width_px, color) = match kind {
                 RuleKind::Grid => (hair, theme.grid),
-                RuleKind::Axis | RuleKind::Tick => (heavy, theme.axis),
+                RuleKind::Axis | RuleKind::Tick | RuleKind::Swatch => (heavy, theme.axis),
             };
             scene.lines.push(Line3 {
                 key,
@@ -732,6 +745,27 @@ pub fn build_scene_3d_with_theme(
         }
     }
     scene
+}
+
+/// The part of the canvas left for the 3D plot once the legend has its band.
+pub(crate) fn plot_area(viewport_px: (u32, u32), legend: &crate::legend::Legend) -> [f32; 4] {
+    let (w, h) = (f64::from(viewport_px.0), f64::from(viewport_px.1));
+    let width = (w - legend.left - legend.right).max(1.0);
+    let height = (h - legend.top - legend.bottom).max(1.0);
+    [
+        legend.left as f32,
+        legend.top as f32,
+        width as f32,
+        height as f32,
+    ]
+}
+
+/// The legend as the scene's screen-space overlay.
+pub(crate) fn overlay(legend: crate::legend::Legend) -> Overlay {
+    Overlay {
+        rules: legend.rules,
+        texts: legend.texts,
+    }
 }
 
 /// A value label waiting for the pixel sizes (known only after the bars are placed).

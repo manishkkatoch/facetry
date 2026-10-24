@@ -5,6 +5,94 @@ expression: "scene3d_for(\"bar3d-row\")"
 {
   "width": 800,
   "height": 500,
+  "plot": [
+    0.0,
+    0.0,
+    755.07,
+    500.0
+  ],
+  "overlay": {
+    "rules": [
+      {
+        "key": "legend/swatch:Q1",
+        "kind": "swatch",
+        "x": 755.0,
+        "y": 15.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#4c78a8"
+      },
+      {
+        "key": "legend/swatch:Q2",
+        "kind": "swatch",
+        "x": 755.0,
+        "y": 36.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#f58518"
+      },
+      {
+        "key": "legend/swatch:Q3",
+        "kind": "swatch",
+        "x": 755.0,
+        "y": 57.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#e45756"
+      },
+      {
+        "key": "legend/swatch:Q4",
+        "kind": "swatch",
+        "x": 755.0,
+        "y": 78.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#72b7b2"
+      }
+    ],
+    "texts": [
+      {
+        "key": "legend/label:Q1",
+        "text": "Q1",
+        "x": 771.0,
+        "y": 24.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Q2",
+        "text": "Q2",
+        "x": 771.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Q3",
+        "text": "Q3",
+        "x": 771.0,
+        "y": 66.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Q4",
+        "text": "Q4",
+        "x": 771.0,
+        "y": 87.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      }
+    ]
+  },
   "background": "#ffffff",
   "size": [
     1.2,

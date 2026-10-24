@@ -24,8 +24,15 @@ pub fn instances(
     scene: &Scene,
     encode: impl Fn(facetry_core::Color) -> [f32; 4],
 ) -> Vec<RectInstance> {
-    scene
-        .boxes_in_draw_order()
+    from_boxes(scene.boxes_in_draw_order(), encode)
+}
+
+/// Rectangle instances for any list of `(bounds, colour)` (a 3D chart's legend swatches).
+pub fn from_boxes(
+    boxes: impl Iterator<Item = (facetry_core::scene::Bounds, facetry_core::Color)>,
+    encode: impl Fn(facetry_core::Color) -> [f32; 4],
+) -> Vec<RectInstance> {
+    boxes
         .map(|(b, color)| RectInstance {
             rect: [b.x, b.y, b.w, b.h],
             color: encode(color),

@@ -115,6 +115,12 @@ pub fn build_scene_with_theme(
         .collect();
 
     let pad = PADDING * s;
+    // The legend takes a band of the canvas on its side; everything else is laid out in the
+    // rest. `ax0..ax1` and `ay0..ay1` are the edges of that area.
+    let legend = crate::legend::layout(spec, theme, (w, h), s, pad, measure);
+    let (ax0, ay0, ax1, ay1) = legend.as_ref().map_or((0.0, 0.0, w, h), |l| {
+        (l.left, l.top, w - l.right, h - l.bottom)
+    });
     let tick_len = TICK_LENGTH * s;
     let label_gap = LABEL_GAP * s;
     let title_gap = TITLE_GAP * s;
@@ -190,7 +196,7 @@ pub fn build_scene_with_theme(
 
     // --- 2. vertical room -----------------------------------------------------------------
     // The top tick label is centred on the plot's top edge, so half of it sticks out above.
-    let top = (pad + label_h / 2.0).round();
+    let top = (ay0 + pad + label_h / 2.0).round();
     let mut bottom_block = 0.0;
     if let Some(p) = plan_index(&plans, Orient::Bottom).map(|i| &plans[i]) {
         bottom_block = line + tick_len + label_gap + label_h;
@@ -198,7 +204,7 @@ pub fn build_scene_with_theme(
             bottom_block += title_gap + title_h;
         }
     }
-    let plot_bottom = (h - pad - bottom_block).round().max(top + 1.0);
+    let plot_bottom = (ay1 - pad - bottom_block).round().max(top + 1.0);
     let plot_h = plot_bottom - top;
 
     // --- 3. y scales, ticks, horizontal room ------------------------------------------------
@@ -250,8 +256,8 @@ pub fn build_scene_with_theme(
         }
         width
     };
-    let plot_left = (pad + side_block(Orient::Left)).round();
-    let mut plot_right = (w - pad - side_block(Orient::Right))
+    let plot_left = (ax0 + pad + side_block(Orient::Left)).round();
+    let mut plot_right = (ax1 - pad - side_block(Orient::Right))
         .round()
         .max(plot_left + 1.0);
 
@@ -292,7 +298,7 @@ pub fn build_scene_with_theme(
                         .collect();
                     if let Some((i, label)) = x_labels.last() {
                         over_right = f64::from(measure.width(label, label_size)) / 2.0 + half_gap
-                            - (w - band.center(*i));
+                            - (ax1 - band.center(*i));
                     }
                 }
                 (AxisScale::Linear { scale, ticks }, Orient::Bottom) => {
@@ -337,9 +343,9 @@ pub fn build_scene_with_theme(
                     let half = |text: &str| f64::from(measure.width(text, label_size)) / 2.0;
                     if let (Some(&first), Some(&last)) = (ticks.values.first(), ticks.values.last())
                     {
-                        over_left = half(&x_tick_text[0]) + half_gap - scale.map(first);
+                        over_left = half(&x_tick_text[0]) + half_gap - (scale.map(first) - ax0);
                         over_right = half(&x_tick_text[x_tick_text.len() - 1]) + half_gap
-                            - (w - scale.map(last));
+                            - (ax1 - scale.map(last));
                     }
                 }
                 _ => {}
@@ -738,7 +744,7 @@ pub fn build_scene_with_theme(
                         format!("axis:{id}/title"),
                         t.to_owned(),
                         (plot_left + plot_right) / 2.0,
-                        h - pad - f64::from(measure.descent(title_size)),
+                        ay1 - pad - f64::from(measure.descent(title_size)),
                         title_size,
                         theme.text,
                         Anchor::Middle,
@@ -787,7 +793,7 @@ pub fn build_scene_with_theme(
                         format!("axis:{id}/title"),
                         t.to_owned(),
                         (plot_left + plot_right) / 2.0,
-                        h - pad - f64::from(measure.descent(title_size)),
+                        ay1 - pad - f64::from(measure.descent(title_size)),
                         title_size,
                         theme.text,
                         Anchor::Middle,
@@ -851,9 +857,9 @@ pub fn build_scene_with_theme(
                 if let Some(t) = title {
                     // Rotated text: glyph tops point left, so the baseline is the title's right edge.
                     let baseline_x = if left {
-                        pad + title_asc
+                        ax0 + pad + title_asc
                     } else {
-                        w - pad - f64::from(measure.descent(title_size))
+                        ax1 - pad - f64::from(measure.descent(title_size))
                     };
                     scene.texts.push(text(
                         format!("axis:{id}/title"),
@@ -869,6 +875,10 @@ pub fn build_scene_with_theme(
             }
             _ => {}
         }
+    }
+    if let Some(l) = legend {
+        scene.rules.extend(l.rules);
+        scene.texts.extend(l.texts);
     }
     scene
 }

@@ -22,6 +22,15 @@ use crate::text::{
     self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
 };
 
+/// What one `record_pass` is for: the clear colour, whether hover overlays are drawn (not in
+/// snapshots), and the size of the target in pixels.
+#[derive(Debug, Clone, Copy)]
+struct PassSpec {
+    clear: [f32; 4],
+    overlay: bool,
+    size: (u32, u32),
+}
+
 /// How much larger than its normal marker a hovered line point is drawn.
 const HOVER_MARKER_SCALE: f32 = 1.5;
 
@@ -155,6 +164,11 @@ pub struct Renderer {
     arc_marks: Vec<ArcMark>,
     /// 3D: how many of the marks are boxes; the rest are pie slices.
     box_count: usize,
+    /// 3D: the part of the canvas the plot is drawn in (`[x, y, w, h]`, device pixels; `None`
+    /// is all of it: a legend takes a band), and whether a 2D overlay (the legend) is drawn
+    /// over the finished picture in a second pass.
+    plot_rect: Option<[f32; 4]>,
+    has_overlay: bool,
     /// 2D triangles: pie slices, tessellated line strokes, point markers, and the hover mark.
     mesh: MeshPipeline,
     arcs: Mesh,
@@ -308,6 +322,8 @@ impl Renderer {
             point_marks: Vec::new(),
             arc_marks: Vec::new(),
             box_count: 0,
+            plot_rect: None,
+            has_overlay: false,
             mesh,
             arcs: Mesh::new("pie slices"),
             lines: Mesh::new("line strokes"),
@@ -431,6 +447,8 @@ impl Renderer {
             .set(&self.device, &self.queue, &MeshData::default());
         self.point_marks.clone_from(&scene.points);
         self.arc_marks.clone_from(&scene.arcs);
+        self.plot_rect = None;
+        self.has_overlay = false;
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
@@ -544,6 +562,25 @@ impl Renderer {
             .text
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
+        // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
+        // buffers a 3D chart does not otherwise use).
+        let swatches = rect::from_boxes(
+            scene.overlay.rules.iter().map(|r| (r.bounds, r.color)),
+            encode,
+        );
+        self.rects
+            .set_instances(&self.device, &self.queue, &swatches);
+        let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
+        for t in &scene.overlay.texts {
+            text::layout_glyphs(t, encode(t.color), font, &mut legend_glyphs);
+        }
+        self.text
+            .set_instances(&self.device, &self.queue, &legend_glyphs);
+        self.text.set_overlay(&self.device, &self.queue, &[]);
+        self.has_overlay = !scene.overlay.is_empty();
+        self.plot_rect = scene.plot;
+        self.bar_offset = 0;
+        self.bar_count = 0;
         self.label_plan = Some(plan);
         self.label_key = None;
         self.hover = None;
@@ -648,21 +685,22 @@ impl Renderer {
     /// slice's top face, nearest wins. `None` in a 2D chart.
     pub fn pick_3d(&self, scene: &Scene3d, x: f32, y: f32) -> Option<usize> {
         let size = self.box_size?;
-        let viewport = (self.config.width as f32, self.config.height as f32);
+        // The plot has its own part of the canvas (a legend takes a band).
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
         pick::pick_scene(
             scene,
-            self.camera.plot_view_proj(size, viewport),
-            viewport,
-            (x, y),
+            self.camera.plot_view_proj(size, (w, h)),
+            (w, h),
+            (x - ox, y - oy),
         )
     }
 
     /// Where a world point is on the surface right now, in pixels. `None` in a 2D chart.
     pub fn project_3d(&self, point: [f32; 3]) -> Option<[f32; 2]> {
         let size = self.box_size?;
-        let viewport = (self.config.width as f32, self.config.height as f32);
-        let vp = self.camera.plot_view_proj(size, viewport);
-        pick::project(vp, viewport, Vec3::from(point)).map(|(x, y)| [x, y])
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
+        let vp = self.camera.plot_view_proj(size, (w, h));
+        pick::project(vp, (w, h), Vec3::from(point)).map(|(x, y)| [x + ox, y + oy])
     }
 
     /// The largest width or height a surface or snapshot may have.
@@ -673,7 +711,8 @@ impl Renderer {
     /// The globals for a frame drawn into a target of `target` pixels, from the camera.
     fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
         let (centre, radius) = Camera::plot_frame(size);
-        let (w, h) = (target.0 as f32, target.1 as f32);
+        // The plot is drawn in its own part of the canvas (see `plot_viewport`).
+        let [_, _, w, h] = self.plot_viewport(target);
         let eye = self.camera.eye(centre, radius);
         let font = FontMetrics::inter();
         Globals3 {
@@ -707,7 +746,8 @@ impl Renderer {
             let key = Some((self.camera, target));
             if self.label_key != key {
                 if let Some(plan) = &self.label_plan {
-                    let viewport = (target.0 as f32, target.1 as f32);
+                    let [_, _, w, h] = self.plot_viewport(target);
+                    let viewport = (w, h);
                     let table = plan.states(
                         self.camera.plot_view_proj(size, viewport),
                         [viewport.0, viewport.1],
@@ -742,22 +782,29 @@ impl Renderer {
         color: &wgpu::TextureView,
         resolve: Option<&wgpu::TextureView>,
         depth: Option<&wgpu::TextureView>,
-        clear: [f32; 4],
-        overlay: bool,
+        frame: PassSpec,
     ) {
+        let PassSpec {
+            clear,
+            overlay,
+            size: target,
+        } = frame;
         let [r, g, b, a] = clear;
-        // The multisampled contents are thrown away once resolved.
-        let store = if resolve.is_some() {
-            wgpu::StoreOp::Discard
-        } else {
-            wgpu::StoreOp::Store
+        // A 3D chart with a legend is drawn in two passes (the 3D scene with its depth
+        // buffer, then the legend without one), so the first must keep its colour for the
+        // second to load, and only the last resolves.
+        let two_passes = self.box_size.is_some() && self.has_overlay;
+        let (resolve_now, store) = match resolve {
+            // The multisampled contents are thrown away once resolved.
+            Some(_) if !two_passes => (resolve, wgpu::StoreOp::Discard),
+            _ => (None, wgpu::StoreOp::Store),
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("chart pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color,
                 depth_slice: None,
-                resolve_target: resolve,
+                resolve_target: resolve_now,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
                         r: f64::from(r),
@@ -782,6 +829,9 @@ impl Renderer {
         });
         match (&self.solid, self.box_size) {
             (Some(solid), Some(_)) => {
+                // The plot is framed in the part of the canvas the legend leaves.
+                let [x, y, w, h] = self.plot_viewport(target);
+                pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 solid.boxes.draw(&mut pass);
                 solid.slices.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
@@ -806,6 +856,40 @@ impl Renderer {
                 self.text.draw(&mut pass, &self.quad, overlay);
             }
         }
+        drop(pass);
+        if two_passes {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("legend pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color,
+                    depth_slice: None,
+                    resolve_target: resolve,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: if resolve.is_some() {
+                            wgpu::StoreOp::Discard
+                        } else {
+                            wgpu::StoreOp::Store
+                        },
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.rects.draw_range(&mut pass, &self.quad, 0..u32::MAX);
+            self.text.draw(&mut pass, &self.quad, false);
+        }
+    }
+
+    /// The part of a `target`-sized canvas the 3D plot is drawn in, `[x, y, w, h]`, clamped
+    /// to the canvas. The whole canvas unless a legend takes a band of it.
+    fn plot_viewport(&self, target: (u32, u32)) -> [f32; 4] {
+        let (tw, th) = (target.0.max(1) as f32, target.1.max(1) as f32);
+        let [x, y, w, h] = self.plot_rect.unwrap_or([0.0, 0.0, tw, th]);
+        let (x, y) = (x.clamp(0.0, tw - 1.0), y.clamp(0.0, th - 1.0));
+        [x, y, w.clamp(1.0, tw - x), h.clamp(1.0, th - y)]
     }
 
     /// Draws one frame to the surface.
@@ -853,8 +937,11 @@ impl Renderer {
             view,
             resolve,
             self.depth_view.as_ref(),
-            clear,
-            true,
+            PassSpec {
+                clear,
+                overlay: true,
+                size: (self.config.width, self.config.height),
+            },
         );
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
@@ -963,8 +1050,11 @@ impl Renderer {
             view,
             resolve,
             depth_view.as_ref(),
-            clear,
-            false,
+            PassSpec {
+                clear,
+                overlay: false,
+                size: (width, height),
+            },
         );
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {

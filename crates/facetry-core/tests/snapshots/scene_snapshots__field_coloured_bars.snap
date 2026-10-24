@@ -9,73 +9,73 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
   "rects": [
     {
       "key": "layer0/Apple",
-      "x": 89.0,
+      "x": 88.0,
       "y": 327.0,
-      "w": 63.0,
+      "w": 55.0,
       "h": 112.0,
       "color": "#4c78a8"
     },
     {
       "key": "layer0/Banana",
-      "x": 167.0,
+      "x": 157.0,
       "y": 122.0,
-      "w": 63.0,
+      "w": 54.0,
       "h": 317.0,
       "color": "#f58518"
     },
     {
       "key": "layer0/Cherry",
-      "x": 246.0,
+      "x": 225.0,
       "y": 387.0,
-      "w": 63.0,
+      "w": 55.0,
       "h": 52.0,
       "color": "#e45756"
     },
     {
       "key": "layer0/Date",
-      "x": 325.0,
+      "x": 294.0,
       "y": 243.0,
-      "w": 62.0,
+      "w": 55.0,
       "h": 196.0,
       "color": "#72b7b2"
     },
     {
       "key": "layer0/Elderberry",
-      "x": 403.0,
+      "x": 363.0,
       "y": 348.0,
-      "w": 63.0,
+      "w": 54.0,
       "h": 91.0,
       "color": "#54a24b"
     },
     {
       "key": "layer0/Fig",
-      "x": 482.0,
+      "x": 431.0,
       "y": 299.0,
-      "w": 62.0,
+      "w": 55.0,
       "h": 140.0,
       "color": "#eeca3b"
     },
     {
       "key": "layer0/Grape",
-      "x": 560.0,
+      "x": 500.0,
       "y": 47.0,
-      "w": 63.0,
+      "w": 55.0,
       "h": 392.0,
       "color": "#b279a2"
     },
     {
       "key": "layer0/Honeydew",
-      "x": 639.0,
+      "x": 569.0,
       "y": 374.0,
-      "w": 63.0,
+      "w": 54.0,
       "h": 65.0,
       "color": "#ff9da6"
     },
     {
       "key": "layer0/Kiwi",
-      "x": 717.0,
+      "x": 637.0,
       "y": 271.0,
-      "w": 63.0,
+      "w": 55.0,
       "h": 168.0,
       "color": "#4c78a8"
     }
@@ -86,7 +86,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 439.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -95,7 +95,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 392.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -104,7 +104,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 346.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -113,7 +113,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 299.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -122,7 +122,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 252.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -131,7 +131,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 206.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -140,7 +140,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 159.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -149,7 +149,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 112.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -158,7 +158,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 66.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -167,7 +167,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 81.0,
       "y": 19.0,
-      "w": 707.0,
+      "w": 618.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -176,14 +176,14 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "kind": "axis",
       "x": 80.0,
       "y": 439.0,
-      "w": 708.0,
+      "w": 619.0,
       "h": 1.0,
       "color": "#6e7781"
     },
     {
       "key": "axis:x/tick:Apple",
       "kind": "tick",
-      "x": 120.0,
+      "x": 115.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -192,7 +192,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Banana",
       "kind": "tick",
-      "x": 199.0,
+      "x": 184.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -201,7 +201,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Cherry",
       "kind": "tick",
-      "x": 277.0,
+      "x": 253.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -210,7 +210,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Date",
       "kind": "tick",
-      "x": 356.0,
+      "x": 321.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -219,7 +219,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Elderberry",
       "kind": "tick",
-      "x": 434.0,
+      "x": 390.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -228,7 +228,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Fig",
       "kind": "tick",
-      "x": 513.0,
+      "x": 459.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -237,7 +237,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Grape",
       "kind": "tick",
-      "x": 592.0,
+      "x": 527.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -246,7 +246,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Honeydew",
       "kind": "tick",
-      "x": 670.0,
+      "x": 596.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -255,7 +255,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Kiwi",
       "kind": "tick",
-      "x": 749.0,
+      "x": 665.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -359,23 +359,94 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "w": 6.0,
       "h": 1.0,
       "color": "#6e7781"
+    },
+    {
+      "key": "legend/swatch:Apple",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 15.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Banana",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 36.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "legend/swatch:Cherry",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 57.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "legend/swatch:Date",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 78.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#72b7b2"
+    },
+    {
+      "key": "legend/swatch:Elderberry",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 99.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#54a24b"
+    },
+    {
+      "key": "legend/swatch:Fig",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 120.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#eeca3b"
+    },
+    {
+      "key": "legend/swatch:Grape",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 141.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#b279a2"
+    },
+    {
+      "key": "legend/swatch:Honeydew",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 162.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#ff9da6"
+    },
+    {
+      "key": "legend/swatch:Kiwi",
+      "kind": "swatch",
+      "x": 711.0,
+      "y": 183.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#4c78a8"
     }
   ],
   "texts": [
     {
       "key": "axis:x/label:Apple",
       "text": "Apple",
-      "x": 120.0,
-      "y": 462.0,
-      "size_px": 12.0,
-      "color": "#57606a",
-      "anchor": "middle",
-      "rotation": "none"
-    },
-    {
-      "key": "axis:x/label:Banana",
-      "text": "Banana",
-      "x": 199.0,
+      "x": 115.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -385,17 +456,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Cherry",
       "text": "Cherry",
-      "x": 277.0,
-      "y": 462.0,
-      "size_px": 12.0,
-      "color": "#57606a",
-      "anchor": "middle",
-      "rotation": "none"
-    },
-    {
-      "key": "axis:x/label:Date",
-      "text": "Date",
-      "x": 356.0,
+      "x": 253.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -405,17 +466,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Elderberry",
       "text": "Elderberry",
-      "x": 434.0,
-      "y": 462.0,
-      "size_px": 12.0,
-      "color": "#57606a",
-      "anchor": "middle",
-      "rotation": "none"
-    },
-    {
-      "key": "axis:x/label:Fig",
-      "text": "Fig",
-      "x": 513.0,
+      "x": 390.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -425,17 +476,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Grape",
       "text": "Grape",
-      "x": 592.0,
-      "y": 462.0,
-      "size_px": 12.0,
-      "color": "#57606a",
-      "anchor": "middle",
-      "rotation": "none"
-    },
-    {
-      "key": "axis:x/label:Honeydew",
-      "text": "Honeydew",
-      "x": 670.0,
+      "x": 527.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -445,7 +486,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Kiwi",
       "text": "Kiwi",
-      "x": 749.0,
+      "x": 665.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -455,7 +496,7 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
     {
       "key": "axis:x/title",
       "text": "Fruit",
-      "x": 435.0,
+      "x": 390.0,
       "y": 485.0,
       "size_px": 13.0,
       "color": "#1f2328",
@@ -571,6 +612,96 @@ expression: "scene_for(\"bar-colored\", (800, 500), 1.0)"
       "color": "#1f2328",
       "anchor": "middle",
       "rotation": "minus90"
+    },
+    {
+      "key": "legend/label:Apple",
+      "text": "Apple",
+      "x": 727.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Banana",
+      "text": "Banana",
+      "x": 727.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Cherry",
+      "text": "Cherry",
+      "x": 727.0,
+      "y": 66.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Date",
+      "text": "Date",
+      "x": 727.0,
+      "y": 87.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Elderberry",
+      "text": "Elderberry",
+      "x": 727.0,
+      "y": 108.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Fig",
+      "text": "Fig",
+      "x": 727.0,
+      "y": 129.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Grape",
+      "text": "Grape",
+      "x": 727.0,
+      "y": 150.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Honeydew",
+      "text": "Honeydew",
+      "x": 727.0,
+      "y": 171.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Kiwi",
+      "text": "Kiwi",
+      "x": 727.0,
+      "y": 192.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
     }
   ]
 }

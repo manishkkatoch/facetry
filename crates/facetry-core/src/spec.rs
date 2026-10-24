@@ -42,6 +42,12 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub layers: Vec<LayerSpec>,
+    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "..." }`, `true`
+    /// for the defaults, or `false` for none. Absent: a legend on the right when any layer
+    /// colours by a field, none otherwise.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub legend: Option<LegendSpec>,
     /// Where the viewer starts in a 3D chart. Rejected in 2D.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
@@ -63,6 +69,41 @@ impl ChartSpec {
                 .and_then(|i| i.orbit)
                 .unwrap_or(true)
     }
+}
+
+/// `legend`: `false`, `true` or a configuration.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(untagged)]
+pub enum LegendSpec {
+    /// `false` hides the legend; `true` is the same as leaving the option out.
+    Shown(bool),
+    Config(LegendConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct LegendConfig {
+    /// Which side of the chart the legend is on. Default: `"right"`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub orient: Option<LegendOrient>,
+    /// A heading above (right/left) or before (top/bottom) the entries.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[serde(rename_all = "lowercase")]
+pub enum LegendOrient {
+    #[default]
+    Right,
+    Bottom,
+    Top,
+    Left,
 }
 
 /// The starting camera of a 3D chart. Every field is optional; the renderer fills in

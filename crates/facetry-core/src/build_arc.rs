@@ -167,8 +167,16 @@ pub(crate) fn build_pie(
     let desc = f64::from(measure.descent(label_size));
     let gap = VALUE_LABEL_GAP * s;
     let leader = LEADER * s;
-    let (room_w, room_h) = ((w - 2.0 * pad).max(1.0), (h - 2.0 * pad).max(1.0));
-    let centre = [w / 2.0, h / 2.0];
+    // The legend takes a band of the canvas; the pie is centred in the rest.
+    let legend = crate::legend::layout(spec, theme, (w, h), s, pad, measure);
+    let (ax0, ay0, ax1, ay1) = legend.as_ref().map_or((0.0, 0.0, w, h), |l| {
+        (l.left, l.top, w - l.right, h - l.bottom)
+    });
+    let (room_w, room_h) = (
+        (ax1 - ax0 - 2.0 * pad).max(1.0),
+        (ay1 - ay0 - 2.0 * pad).max(1.0),
+    );
+    let centre = [(ax0 + ax1) / 2.0, (ay0 + ay1) / 2.0];
     let boxes: Vec<Option<TextBox>> = slices
         .iter()
         .map(|sl| {
@@ -241,6 +249,11 @@ pub(crate) fn build_pie(
             row: cell.row,
             sum: cell.sum(),
         });
+    }
+
+    if let Some(l) = legend {
+        scene.rules.extend(l.rules);
+        scene.texts.extend(l.texts);
     }
 
     // Labels. Inside ones are centred in the slice; outside ones sit past a leader line (only

@@ -5,6 +5,132 @@ expression: "scene3d_for(\"pie3d\")"
 {
   "width": 800,
   "height": 500,
+  "plot": [
+    0.0,
+    0.0,
+    727.16,
+    500.0
+  ],
+  "overlay": {
+    "rules": [
+      {
+        "key": "legend/swatch:Search",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 15.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#4c78a8"
+      },
+      {
+        "key": "legend/swatch:Social",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 36.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#f58518"
+      },
+      {
+        "key": "legend/swatch:Direct",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 57.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#e45756"
+      },
+      {
+        "key": "legend/swatch:Email",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 78.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#72b7b2"
+      },
+      {
+        "key": "legend/swatch:Referral",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 99.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#54a24b"
+      },
+      {
+        "key": "legend/swatch:Other",
+        "kind": "swatch",
+        "x": 727.0,
+        "y": 120.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#eeca3b"
+      }
+    ],
+    "texts": [
+      {
+        "key": "legend/label:Search",
+        "text": "Search",
+        "x": 743.0,
+        "y": 24.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Social",
+        "text": "Social",
+        "x": 743.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Direct",
+        "text": "Direct",
+        "x": 743.0,
+        "y": 66.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Email",
+        "text": "Email",
+        "x": 743.0,
+        "y": 87.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Referral",
+        "text": "Referral",
+        "x": 743.0,
+        "y": 108.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Other",
+        "text": "Other",
+        "x": 743.0,
+        "y": 129.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      }
+    ]
+  },
   "background": "#ffffff",
   "size": [
     1.3,

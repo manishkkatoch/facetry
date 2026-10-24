@@ -9,6 +9,7 @@ use facetry_font::FontMetrics;
 fn spec(position: &str, rows: &str) -> String {
     format!(
         r#"{{
+  "legend": false,
   "data": {{ "t": {rows} }},
   "axes": [ {{ "id": "x", "orient": "bottom" }}, {{ "id": "y", "orient": "left" }} ],
   "layers": [ {{ "mark": "bar", "data": "t", "position": "{position}",

@@ -5,6 +5,56 @@ expression: "scene3d_for(\"bar3d-negative\")"
 {
   "width": 800,
   "height": 500,
+  "plot": [
+    0.0,
+    0.0,
+    715.74,
+    500.0
+  ],
+  "overlay": {
+    "rules": [
+      {
+        "key": "legend/swatch:Product A",
+        "kind": "swatch",
+        "x": 716.0,
+        "y": 15.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#4c78a8"
+      },
+      {
+        "key": "legend/swatch:Product B",
+        "kind": "swatch",
+        "x": 716.0,
+        "y": 36.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#f58518"
+      }
+    ],
+    "texts": [
+      {
+        "key": "legend/label:Product A",
+        "text": "Product A",
+        "x": 732.0,
+        "y": 24.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Product B",
+        "text": "Product B",
+        "x": 732.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      }
+    ]
+  },
   "background": "#ffffff",
   "size": [
     0.9,

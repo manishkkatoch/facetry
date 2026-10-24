@@ -253,6 +253,32 @@ fn is_true(v: &bool) -> bool {
     *v
 }
 
+/// A 2D layer on top of the 3D picture.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Overlay {
+    pub rules: Vec<crate::scene::Rule>,
+    pub texts: Vec<crate::scene::Text>,
+}
+
+impl Overlay {
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty() && self.texts.is_empty()
+    }
+}
+
+fn plot_rect<S: Serializer>(v: &Option<[f32; 4]>, s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 100.0).round() / 100.0;
+    v.map(|v| (r(v[0]), r(v[1]), r(v[2]), r(v[3]))).serialize(s)
+}
+
+impl Scene3d {
+    /// The part of the canvas the plot is drawn in: `[x, y, width, height]`.
+    pub fn plot_rect(&self) -> [f32; 4] {
+        self.plot
+            .unwrap_or([0.0, 0.0, self.width as f32, self.height as f32])
+    }
+}
+
 /// The value label of a bar (`boxes[mark]`); see [`crate::scene::MarkLabel`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MarkLabel3 {
@@ -266,6 +292,15 @@ pub struct MarkLabel3 {
 pub struct Scene3d {
     pub width: u32,
     pub height: u32,
+    /// The part of the canvas the 3D plot is drawn in, `[x, y, width, height]` in device
+    /// pixels: `None` means all of it. A legend takes a band of one side, and the plot box is
+    /// framed in what is left so it never sits under the legend.
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "plot_rect")]
+    pub plot: Option<[f32; 4]>,
+    /// Screen-space items drawn over the finished 3D picture with the 2D pipelines: the
+    /// legend. Positions are canvas pixels, independent of the camera.
+    #[serde(skip_serializing_if = "Overlay::is_empty")]
+    pub overlay: Overlay,
     pub background: Color,
     /// The plot box's extent: `[x, 1, z]`; it starts at the origin.
     #[serde(serialize_with = "w4_3")]

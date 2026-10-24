@@ -214,6 +214,8 @@ pub enum RuleKind {
     Grid,
     Axis,
     Tick,
+    /// A legend swatch (a square, or a short line for line layers).
+    Swatch,
 }
 
 /// A line. In M1 all lines are axis-aligned, so they are thin boxes (drawn like rects).

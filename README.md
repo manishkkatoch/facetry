@@ -3,14 +3,16 @@
 GPU-accelerated charts for JS/TS apps, written in Rust and compiled to WebAssembly.
 Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, WebGL2 otherwise.
 
-**Status: M1 (2D bar chart) plus M4 (3D bars), built ahead of stacking, lines and pies to get
-feedback on the riskiest part first.** A `Chart` draws a bar chart from a declarative JSON spec:
-validation, band and linear scales with "nice" ticks, layout, axes (lines, ticks, gridlines,
-labels, titles), MSDF text and instanced rectangles; with `dimension: "3d"` the bars are
-lit, depth-tested boxes you can orbit (see [3D charts](#3d-charts)). Bars can carry value labels,
-report hover and click, and the current view can be saved as a PNG (see [Value labels, hover and
-click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Lines, arcs, stacking,
-legends and animation come in later milestones.
+**Status: M1 (2D bar chart), M4 (3D bars) and M2 (more chart types).** A `Chart` draws from a
+declarative JSON spec: validation, band and linear scales with "nice" ticks, layout, axes (lines,
+ticks, gridlines, labels, titles), MSDF text and GPU rendering. Marks: **bars** (overlaid,
+stacked, normalised or grouped), **lines** (categorical or numeric x, markers, gaps; composites
+with bars on two y axes) and **pies and donuts**; in 2D and, for bars and pies, in 3D as lit,
+depth-tested solids you can orbit (see [3D charts](#3d-charts)). Charts that colour by a field
+get a [legend](#legend). Marks can carry value labels and report hover and click, and the
+current view can be saved as a PNG (see [Value labels, hover and
+click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Animation and
+click-to-toggle legends come later.
 
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
@@ -66,13 +68,17 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
 - `data`: named, columnar tables. A column is an array of numbers (`null` = missing) or an array
   of strings (categorical). All columns of a table must be the same length.
 - `axes`: `{ id, orient: "bottom" | "left" | "right", title?, scale? }`. `scale` (numeric axes
-  only) takes `{ domain: [min, max], nice, zero }`. At most one axis per side. A layer binds a
+  only: left, right, and a bottom axis that shows numbers) takes `{ domain: [min, max], nice,
+  zero }`. At most one axis per side. Pies and donuts have no axes. A layer binds a
   channel to an axis by `id`, so a layer can use a `right` axis that has its own domain.
-- `layers[]`: `{ mark: "bar" | "line" | "arc", data, encoding, position?, point?, style?, label? }`. `x` must be a categorical field (band scale),
-  `y` a numeric field (linear scale, includes zero by default). `color` is `{ value: "#hex" }` or
-  `{ field }` (categorical field mapped onto the theme palette). `key` is optional; the default
-  key of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay.
-- `label` (optional, per layer): value labels on the bars, see
+- `layers[]`: `{ mark: "bar" | "line" | "arc", data, encoding, position?, point?, style?, label? }`.
+  For bars `x` is a categorical field (band scale) and `y` a numeric field (linear scale, includes
+  zero by default); lines also take a numeric `x`; arcs take `theta` and `color` instead (see
+  below). `color` is `{ value: "#hex" }` or `{ field }` (a categorical field mapped onto the theme
+  palette; also the series of stacked/grouped bars and lines). `key` is optional; the default key
+  of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay. A missing `x` or `y`
+  on a bar or line layer is a validation issue at `/layers/<n>/encoding/x`.
+- `label` (optional, per layer): value labels on the marks, see
   [below](#value-labels-hover-and-click).
 - Unknown fields are errors, so typos are caught. Empty data is valid: the axes are drawn (numeric
   domain `[0, 1]`, no categories) and there are no bars.
@@ -222,6 +228,33 @@ column), so the three non-default positions need it.
   every bar, which cannot express curved walls. `mesh3d.wgsl` has the same Lambert lighting as
   `box.wgsl` and takes ready-made vertices (position, normal, colour, hover flag) from
   `facetry-render/src/arc.rs`.
+
+### Legend
+
+```jsonc
+{ "legend": { "orient": "bottom", "title": "Product" } }   // "right" (default) | "bottom" | "top" | "left"
+{ "legend": false }                                       // no legend
+```
+
+- **Default:** a legend on the right whenever any layer has `encoding.color.field`; none
+  otherwise (fixed colours have nothing to explain). `legend: true` is the same as leaving it out.
+- One entry per colour category, **deduplicated across layers by value**: a category several
+  layers share is listed once, with the swatch of the first layer that has it (a short line for
+  a line layer, a square for bars and slices). Colours come from the same shared scale as the
+  marks. Entries are in the order the categories first appear.
+- Layout: the legend reserves a band of the canvas on its side *before* the plot or pie is laid
+  out (it reuses the margin system: the plot's area is simply smaller). Right and left legends
+  are a column that **wraps into more columns** when the chart is too short; top and bottom ones
+  are rows that **wrap into more rows** when it is too narrow. Labels longer than 150 CSS px (240
+  in a row) are **truncated with `...`** (the bundled font is ASCII only). The optional `title`
+  is a heading above the entries (before the first entry in a top or bottom legend).
+- In 3D the legend is a screen-space overlay drawn with the 2D rectangle and text pipelines
+  **after** the 3D pass (a second render pass), and the 3D viewport is shrunk to what the legend
+  leaves, so the plot box never sits under it. Picking and `markPosition` account for that
+  offset. Snapshots include the legend.
+- Not yet: clicking an entry to hide its series (a follow-up); the legend is not interactive.
+- Because the default depends on `color.field`, specs that colour by field (for example
+  `bar-colored` and `bar3d-grid`) now show a legend; set `legend: false` to keep the old look.
 
 ### 3D charts
 
@@ -383,12 +416,15 @@ real WebGPU device.
 ## Layout
 
 ```
-crates/facetry-core     pure Rust: spec + validation, scales, layout, Scene and Scene3d
+crates/facetry-core     pure Rust: spec + validation, scales, layout (2D, pie, 3D, 3D pie, legend),
+                        data transforms (stack/normalize/aggregate), Scene and Scene3d
                         (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
-crates/facetry-render   wgpu Renderer: rect + MSDF text pipelines (2D); box, line and world-text
-                        pipelines plus the glam orbit camera (3D); 4x MSAA (native + wasm32);
-                        3D label placement (labels.rs), picking (pick.rs), PNG read-back
+crates/facetry-render   wgpu Renderer: rect, triangle-mesh and MSDF text pipelines (2D); box, lit
+                        mesh, line and world-text pipelines plus the glam orbit camera (3D); 4x
+                        MSAA (native + wasm32); CPU line tessellation (stroke.rs) and pie
+                        geometry (arc.rs); 3D label placement (labels.rs), picking (pick.rs),
+                        PNG read-back
 crates/facetry-wasm     wasm-bindgen glue: the `Chart` class and typed errors; features `webgpu`
                         (default) and `webgl` choose the backend, built once per module
 tools/font-atlas        offline tool that generates the MSDF atlas (not part of the build)
@@ -402,12 +438,13 @@ scripts/                build-wasm.sh, wasm-size.sh
 ```
 
 How a frame is made: `spec` -> `validate` -> `build_scene(spec, viewport, dpr, font metrics)` ->
-`Scene` (flat lists of keyed rects, rules and texts in device pixels) -> `Renderer::set_scene`
-(instance buffers) -> one render pass: gridlines, bars, axis rules, then text. Resizing rebuilds
+`Scene` (flat lists of keyed rects, rules, texts, polylines, points and arcs in device pixels) ->
+`Renderer::set_scene` (instance and vertex buffers) -> one render pass: gridlines and bars, pie
+slices, lines, markers, axis rules and legend swatches, hover marker, then text. Resizing rebuilds
 the scene, because margins, tick counts and label thinning depend on the size. A 3D frame is
 `build_scene_3d` -> `Scene3d` -> `Renderer::set_scene_3d`; each render pass clears colour and
-depth, draws bars (depth-tested, culled back faces, Lambert lighting), then lines (tested against
-the bars), then text.
+depth, draws bars (depth-tested, culled back faces, Lambert lighting), then pie slices (a lit mesh), then lines
+(tested against the bars), then text; a legend adds a second pass with the 2D pipelines.
 
 ## Prerequisites
 
@@ -433,15 +470,18 @@ pnpm --filter playground exec playwright install chromium   # once
 pnpm test:e2e              # Playwright against `vite preview` (run `pnpm -r build` first)
 ```
 
-Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromium.
+Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromium (headless
+Chromium has no WebGPU, so the tests run on the WebGL2 module; WebGPU is covered by the shared Rust
+layout, geometry and shader-validation tests, not by pixels).
 
 ### Playground
 
 `pnpm dev` (or `pnpm -r build && pnpm --filter playground preview`) serves a page with the chart,
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
-`?backend=webgl2` (force the fallback), `?example=bar-colored` (or `bar-labels`, `bar3d-grid`,
-`bar3d-labels`, `bar3d-row`, `bar3d-negative`), `?ui=0` (only the chart). 3D examples show the
+`?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
+`examples/specs/`: `bar-stacked`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
+`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, ...), `?ui=0` (only the chart). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
 console.
@@ -452,9 +492,10 @@ console.
   example spec. After an intentional layout change: `INSTA_UPDATE=always cargo test -p facetry-core`
   (or `cargo insta review`), then look at the diff in git before committing. CI sets
   `INSTA_UPDATE=no`, so any difference fails.
-- **Golden images** (`examples/playground/tests/__golden__/bar-basic.png`, `bar-labels.png` (value
-  labels, `always`) and `bar3d-grid.png`): Playwright screenshots the basic bar example, the
-  labelled one and the 3D grid example (default camera) in
+- **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
+  `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`): Playwright screenshots these examples (3D ones at their
+  default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
   then **look at the PNG** before committing it.
@@ -482,8 +523,12 @@ profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` pr
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 563,245 B (550 KiB) | 254,991 B (249 KiB) | 212,008 B (207 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,187,106 B (2136 KiB) | 897,869 B (877 KiB) | 711,806 B (695 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 727,543 B (710 KiB) | 324,277 B (317 KiB) | 266,299 B (260 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,342,199 B (2287 KiB) | 967,304 B (945 KiB) | 762,029 B (744 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+
+M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
+(+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
+numbers per step and where they go.
 
 History of the single combined module (both backends), for comparison:
 

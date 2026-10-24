@@ -31,13 +31,18 @@ export interface CameraState {
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
 
-/** A bar, as hover and click events report it. */
+/** A mark (a bar, a line's data point or a pie slice), as hover and click events report it. */
 export interface MarkInfo {
-    /** The mark's key (`layer0/Q3`, or whatever `encoding.key` made of it). */
+    /** The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it). */
     key: string;
     /** Index into the spec's `layers`. */
     layer: number;
-    /** The bar's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`). */
+    /**
+     * The mark's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`).
+     * A mark that stands for several rows that were summed (stacked, normalised and grouped
+     * bars, pie slices) reports the first of them with the summed value in place of its y (or
+     * theta) value.
+     */
     datum: Record<string, number | string | null>;
 }
 

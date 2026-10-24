@@ -13,7 +13,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 439.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -22,7 +22,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 379.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -31,7 +31,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 319.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -40,7 +40,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 259.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -49,7 +49,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 199.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -58,7 +58,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 139.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -67,7 +67,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 79.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -76,7 +76,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "grid",
       "x": 62.0,
       "y": 19.0,
-      "w": 726.0,
+      "w": 664.0,
       "h": 1.0,
       "color": "#e1e4e8"
     },
@@ -85,14 +85,14 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "kind": "axis",
       "x": 61.0,
       "y": 439.0,
-      "w": 727.0,
+      "w": 665.0,
       "h": 1.0,
       "color": "#6e7781"
     },
     {
       "key": "axis:x/tick:Jan",
       "kind": "tick",
-      "x": 123.0,
+      "x": 117.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -101,7 +101,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Feb",
       "kind": "tick",
-      "x": 244.0,
+      "x": 228.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -110,7 +110,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Mar",
       "kind": "tick",
-      "x": 365.0,
+      "x": 339.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -119,7 +119,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Apr",
       "kind": "tick",
-      "x": 486.0,
+      "x": 449.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -128,7 +128,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:May",
       "kind": "tick",
-      "x": 607.0,
+      "x": 560.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -137,7 +137,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/tick:Jun",
       "kind": "tick",
-      "x": 728.0,
+      "x": 671.0,
       "y": 440.0,
       "w": 1.0,
       "h": 6.0,
@@ -223,13 +223,31 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "w": 6.0,
       "h": 1.0,
       "color": "#6e7781"
+    },
+    {
+      "key": "legend/swatch:Free",
+      "kind": "swatch",
+      "x": 738.0,
+      "y": 19.0,
+      "w": 18.0,
+      "h": 2.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Pro",
+      "kind": "swatch",
+      "x": 738.0,
+      "y": 40.0,
+      "w": 18.0,
+      "h": 2.0,
+      "color": "#f58518"
     }
   ],
   "texts": [
     {
       "key": "axis:x/label:Jan",
       "text": "Jan",
-      "x": 123.0,
+      "x": 117.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -239,7 +257,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Feb",
       "text": "Feb",
-      "x": 244.0,
+      "x": 228.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -249,7 +267,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Mar",
       "text": "Mar",
-      "x": 365.0,
+      "x": 339.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -259,7 +277,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Apr",
       "text": "Apr",
-      "x": 486.0,
+      "x": 449.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -269,7 +287,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:May",
       "text": "May",
-      "x": 607.0,
+      "x": 560.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -279,7 +297,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/label:Jun",
       "text": "Jun",
-      "x": 728.0,
+      "x": 671.0,
       "y": 462.0,
       "size_px": 12.0,
       "color": "#57606a",
@@ -289,7 +307,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     {
       "key": "axis:x/title",
       "text": "Month",
-      "x": 425.0,
+      "x": 394.0,
       "y": 485.0,
       "size_px": 13.0,
       "color": "#1f2328",
@@ -385,6 +403,26 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "color": "#1f2328",
       "anchor": "middle",
       "rotation": "minus90"
+    },
+    {
+      "key": "legend/label:Free",
+      "text": "Free",
+      "x": 762.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Pro",
+      "text": "Pro",
+      "x": 762.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
     }
   ],
   "polylines": [
@@ -395,27 +433,27 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "runs": [
         [
           [
-            122.5,
+            117.33,
             295.0
           ],
           [
-            243.5,
+            228.0,
             223.0
           ],
           [
-            364.5,
+            338.67,
             259.0
           ],
           [
-            485.5,
+            449.33,
             151.0
           ],
           [
-            606.5,
+            560.0,
             103.0
           ],
           [
-            727.5,
+            670.67,
             19.0
           ]
         ]
@@ -428,27 +466,27 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
       "runs": [
         [
           [
-            122.5,
+            117.33,
             199.0
           ],
           [
-            243.5,
+            228.0,
             247.0
           ],
           [
-            364.5,
+            338.67,
             175.0
           ],
           [
-            485.5,
+            449.33,
             211.0
           ],
           [
-            606.5,
+            560.0,
             127.0
           ],
           [
-            727.5,
+            670.67,
             151.0
           ]
         ]
@@ -458,7 +496,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
   "points": [
     {
       "key": "layer0/Jan/Free",
-      "x": 122.5,
+      "x": 117.33,
       "y": 295.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -466,7 +504,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Feb/Free",
-      "x": 243.5,
+      "x": 228.0,
       "y": 223.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -474,7 +512,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Mar/Free",
-      "x": 364.5,
+      "x": 338.67,
       "y": 259.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -482,7 +520,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Apr/Free",
-      "x": 485.5,
+      "x": 449.33,
       "y": 151.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -490,7 +528,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/May/Free",
-      "x": 606.5,
+      "x": 560.0,
       "y": 103.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -498,7 +536,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Jun/Free",
-      "x": 727.5,
+      "x": 670.67,
       "y": 19.0,
       "color": "#4c78a8",
       "size": 8.0,
@@ -506,7 +544,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Jan/Pro",
-      "x": 122.5,
+      "x": 117.33,
       "y": 199.0,
       "color": "#f58518",
       "size": 8.0,
@@ -514,7 +552,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Feb/Pro",
-      "x": 243.5,
+      "x": 228.0,
       "y": 247.0,
       "color": "#f58518",
       "size": 8.0,
@@ -522,7 +560,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Mar/Pro",
-      "x": 364.5,
+      "x": 338.67,
       "y": 175.0,
       "color": "#f58518",
       "size": 8.0,
@@ -530,7 +568,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Apr/Pro",
-      "x": 485.5,
+      "x": 449.33,
       "y": 211.0,
       "color": "#f58518",
       "size": 8.0,
@@ -538,7 +576,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/May/Pro",
-      "x": 606.5,
+      "x": 560.0,
       "y": 127.0,
       "color": "#f58518",
       "size": 8.0,
@@ -546,7 +584,7 @@ expression: "scene_for(\"line-basic\", (800, 500), 1.0)"
     },
     {
       "key": "layer0/Jun/Pro",
-      "x": 727.5,
+      "x": 670.67,
       "y": 151.0,
       "color": "#f58518",
       "size": 8.0,

@@ -12,6 +12,7 @@ fn pie_json(dimension: &str, table: &str, extra: &str, label: &str) -> String {
     format!(
         r#"{{
   "dimension": "{dimension}",
+  "legend": false,
   "data": {{ "t": {table} }},
   "layers": [ {{ "mark": "arc", "data": "t" {extra} {label},
     "encoding": {{ "theta": {{ "field": "v" }}, "color": {{ "field": "c" }} }} }} ]

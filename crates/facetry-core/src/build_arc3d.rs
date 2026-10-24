@@ -43,6 +43,18 @@ pub(crate) fn build_pie_3d(
     let s = f64::from(dpr).clamp(0.25, 16.0);
     let layer = &spec.layers[arc.index];
     let style = arc_style(layer);
+    let legend = crate::legend::layout(
+        spec,
+        theme,
+        (f64::from(viewport_px.0), f64::from(viewport_px.1)),
+        s,
+        crate::build::PADDING * s,
+        measure,
+    );
+    let plot = legend
+        .as_ref()
+        .map(|l| crate::build3d::plot_area(viewport_px, l));
+    let plot_h = plot.map_or(viewport_px.1 as f32, |p| p[3]);
     let label = layer.label.as_ref();
     let percent = label
         .and_then(|l| l.format.as_ref())
@@ -57,6 +69,8 @@ pub(crate) fn build_pie_3d(
     let mut scene = Scene3d {
         width: viewport_px.0,
         height: viewport_px.1,
+        plot,
+        overlay: legend.map(crate::build3d::overlay).unwrap_or_default(),
         background: theme.background,
         size,
         halo_px: s.round().max(1.0) as f32,
@@ -116,8 +130,8 @@ pub(crate) fn build_pie_3d(
         .unwrap_or(DEFAULT_DISTANCE)
         .clamp(0.5, 20.0);
     let half_fov = (FOV_Y_DEGREES / 2.0).to_radians().tan();
-    let px_per_unit = f64::from(viewport_px.1.max(1))
-        / (2.0 * distance * f64::from(framing_radius(size)) * half_fov);
+    let px_per_unit =
+        f64::from(plot_h.max(1.0)) / (2.0 * distance * f64::from(framing_radius(size)) * half_fov);
     let label_size = (LABEL_SIZE * s) as f32;
     let cap = f64::from(measure.cap_height(label_size));
     let gap = VALUE_LABEL_GAP * s;

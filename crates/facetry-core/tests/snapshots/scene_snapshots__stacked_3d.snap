@@ -5,6 +5,75 @@ expression: "scene3d_for(\"bar3d-stacked\")"
 {
   "width": 800,
   "height": 500,
+  "plot": [
+    0.0,
+    0.0,
+    716.41,
+    500.0
+  ],
+  "overlay": {
+    "rules": [
+      {
+        "key": "legend/swatch:Hardware",
+        "kind": "swatch",
+        "x": 716.0,
+        "y": 15.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#4c78a8"
+      },
+      {
+        "key": "legend/swatch:Software",
+        "kind": "swatch",
+        "x": 716.0,
+        "y": 36.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#f58518"
+      },
+      {
+        "key": "legend/swatch:Services",
+        "kind": "swatch",
+        "x": 716.0,
+        "y": 57.0,
+        "w": 10.0,
+        "h": 10.0,
+        "color": "#e45756"
+      }
+    ],
+    "texts": [
+      {
+        "key": "legend/label:Hardware",
+        "text": "Hardware",
+        "x": 732.0,
+        "y": 24.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Software",
+        "text": "Software",
+        "x": 732.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:Services",
+        "text": "Services",
+        "x": 732.0,
+        "y": 66.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      }
+    ]
+  },
   "background": "#ffffff",
   "size": [
     1.2,

@@ -29,6 +29,7 @@ fn issues(json: &str) -> Vec<(String, String)> {
 fn categorical(table: &str, extra: &str) -> String {
     format!(
         r#"{{
+  "legend": false,
   "data": {{ "t": {table} }},
   "axes": [ {{ "id": "x", "orient": "bottom" }}, {{ "id": "y", "orient": "left" }} ],
   "layers": [ {{ "mark": "line", "data": "t" {extra},

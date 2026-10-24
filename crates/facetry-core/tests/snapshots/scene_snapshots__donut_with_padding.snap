@@ -7,8 +7,86 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
   "height": 500,
   "background": "#ffffff",
   "rects": [],
-  "rules": [],
-  "texts": [],
+  "rules": [
+    {
+      "key": "legend/swatch:Free",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 15.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#4c78a8"
+    },
+    {
+      "key": "legend/swatch:Pro",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 36.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#f58518"
+    },
+    {
+      "key": "legend/swatch:Team",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 57.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#e45756"
+    },
+    {
+      "key": "legend/swatch:Enterprise",
+      "kind": "swatch",
+      "x": 714.0,
+      "y": 78.0,
+      "w": 10.0,
+      "h": 10.0,
+      "color": "#72b7b2"
+    }
+  ],
+  "texts": [
+    {
+      "key": "legend/label:Free",
+      "text": "Free",
+      "x": 730.0,
+      "y": 24.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Pro",
+      "text": "Pro",
+      "x": 730.0,
+      "y": 45.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Team",
+      "text": "Team",
+      "x": 730.0,
+      "y": 66.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    },
+    {
+      "key": "legend/label:Enterprise",
+      "text": "Enterprise",
+      "x": 730.0,
+      "y": 87.0,
+      "size_px": 12.0,
+      "color": "#1f2328",
+      "anchor": "start",
+      "rotation": "none"
+    }
+  ],
   "labels": [
     {
       "mark": 0,
@@ -16,7 +94,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "text": {
         "key": "layer0/Free/label",
         "text": "520",
-        "x": 584.0,
+        "x": 541.0,
         "y": 269.0,
         "size_px": 12.0,
         "color": "#ffffff",
@@ -30,7 +108,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "text": {
         "key": "layer0/Pro/label",
         "text": "310",
-        "x": 232.0,
+        "x": 189.0,
         "y": 331.0,
         "size_px": 12.0,
         "color": "#1f2328",
@@ -44,7 +122,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "text": {
         "key": "layer0/Team/label",
         "text": "120",
-        "x": 291.0,
+        "x": 248.0,
         "y": 106.0,
         "size_px": 12.0,
         "color": "#1f2328",
@@ -58,7 +136,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "text": {
         "key": "layer0/Enterprise/label",
         "text": "40",
-        "x": 377.0,
+        "x": 334.0,
         "y": 71.0,
         "size_px": 12.0,
         "color": "#1f2328",
@@ -72,7 +150,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "key": "layer0/Free",
       "color": "#4c78a8",
       "center": [
-        400.0,
+        357.08,
         250.0
       ],
       "inner": 130.9,
@@ -85,7 +163,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "key": "layer0/Pro",
       "color": "#f58518",
       "center": [
-        400.0,
+        357.08,
         250.0
       ],
       "inner": 130.9,
@@ -98,7 +176,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "key": "layer0/Team",
       "color": "#e45756",
       "center": [
-        400.0,
+        357.08,
         250.0
       ],
       "inner": 130.9,
@@ -111,7 +189,7 @@ expression: "scene_for(\"donut\", (800, 500), 1.0)"
       "key": "layer0/Enterprise",
       "color": "#72b7b2",
       "center": [
-        400.0,
+        357.08,
         250.0
       ],
       "inner": 130.9,
