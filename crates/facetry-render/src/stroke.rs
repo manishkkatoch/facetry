@@ -157,6 +157,12 @@ fn set_corners(
     }
 }
 
+thread_local! {
+    /// The corners of the last unit circle built (its segment count first): markers are mostly
+    /// all one size, so a chart of a thousand of them computes the sines and cosines once.
+    static UNIT_CIRCLE: std::cell::RefCell<(usize, Vec<Vec2>)> = const { std::cell::RefCell::new((0, Vec::new())) };
+}
+
 /// Appends a filled circle as a fan of triangles around `center`.
 pub fn disc(center: [f32; 2], radius: f32, out: &mut Vec<[f32; 2]>) {
     if radius <= 0.0 || !radius.is_finite() {
@@ -164,13 +170,23 @@ pub fn disc(center: [f32; 2], radius: f32, out: &mut Vec<[f32; 2]>) {
     }
     let n = disc_segments(radius);
     let c = Vec2::from(center);
-    let at = |k: usize| {
-        let a = k as f32 / n as f32 * std::f32::consts::TAU;
-        c + Vec2::new(a.cos(), a.sin()) * radius
-    };
-    for k in 0..n {
-        out.extend([c.to_array(), at(k).to_array(), at(k + 1).to_array()]);
-    }
+    UNIT_CIRCLE.with_borrow_mut(|(have, corners)| {
+        if *have != n {
+            *have = n;
+            corners.clear();
+            corners.extend((0..=n).map(|k| {
+                let a = k as f32 / n as f32 * std::f32::consts::TAU;
+                Vec2::new(a.cos(), a.sin())
+            }));
+        }
+        for k in 0..n {
+            out.extend([
+                c.to_array(),
+                (c + corners[k] * radius).to_array(),
+                (c + corners[k + 1] * radius).to_array(),
+            ]);
+        }
+    });
 }
 
 /// Segments of a circle of `radius` pixels: enough that the polygon is within about a tenth

@@ -43,6 +43,11 @@ pub struct ChartSpec {
     /// How the viewer may move the camera (3D only; ignored in 2D).
     #[serde(default)]
     pub interaction: Option<InteractionSpec>,
+    /// Added for M5 (animated transitions), after the freeze: `false | true | { ... }`. It is
+    /// a hand-written `Deserialize` rather than `untagged` so that a bad `easing` is reported
+    /// at `/transition/easing`, as the reader does; the other types here keep their derives.
+    #[serde(default)]
+    pub transition: Option<TransitionSpec>,
     /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
     /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
     /// spec's starting state without editing the user's spec. Not part of the JSON.
@@ -84,6 +89,54 @@ impl ChartSpec {
                 .and_then(|i| i.orbit)
                 .unwrap_or(true)
     }
+}
+
+/// `transition`: `false`, `true` or a configuration (added for M5).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransitionSpec {
+    Enabled(bool),
+    Config(TransitionConfig),
+}
+
+impl<'de> Deserialize<'de> for TransitionSpec {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = TransitionSpec;
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a boolean or a transition object")
+            }
+            fn visit_bool<E>(self, v: bool) -> Result<TransitionSpec, E> {
+                Ok(TransitionSpec::Enabled(v))
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<TransitionSpec, A::Error> {
+                TransitionConfig::deserialize(de::value::MapAccessDeserializer::new(map))
+                    .map(TransitionSpec::Config)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransitionConfig {
+    #[serde(default)]
+    pub duration: Option<f64>,
+    #[serde(default)]
+    pub easing: Option<Easing>,
+    #[serde(default)]
+    pub stagger: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Easing {
+    Linear,
+    #[default]
+    CubicInOut,
+    CubicOut,
+    BackOut,
 }
 
 /// `legend`: `false`, `true` or a configuration.

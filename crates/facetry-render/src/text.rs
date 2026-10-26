@@ -6,13 +6,18 @@ use facetry_core::scene3d::{Text3, VAlign};
 use facetry_font::FontMetrics;
 
 use crate::Error;
-use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, show_range};
+use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, show_range, with_ease};
 use crate::rect::uniform_entry;
 use crate::solid::{PipelineDesc, pipeline};
 
 /// One glyph quad. The quad's corners are `origin`, `origin + axis_x`, `origin + axis_y` and
 /// both: two edge vectors instead of a width and height, so rotated text is just different
 /// vectors. `uv` is the atlas rect as `[u0, v0, u1, v1]`.
+///
+/// While text animates, `origin` and `color` are where the glyph ends and `from_origin` and
+/// `from_color` where it starts (text keeps its size and rotation, so the edge vectors are the
+/// same at both ends); `delay` is how long after the transition begins it starts. At rest
+/// `from == to`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct GlyphInstance {
@@ -21,6 +26,32 @@ pub struct GlyphInstance {
     pub axis_y: [f32; 2],
     pub uv: [f32; 4],
     pub color: [f32; 4],
+    pub from_origin: [f32; 2],
+    pub from_color: [f32; 4],
+    pub delay: f32,
+}
+
+/// Appends the glyphs of a text that moves from `from` to `to` (colours already encoded),
+/// starting `delay_ms` into the transition. If the two lay out to a different number of
+/// glyphs (they should not: a changed string is cross-faded as two texts) the text just
+/// appears at its end state.
+pub fn layout_glyph_pair(
+    from: (&Text, [f32; 4]),
+    to: (&Text, [f32; 4]),
+    delay_ms: f32,
+    font: &FontMetrics,
+    out: &mut Vec<GlyphInstance>,
+) {
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    layout_glyphs(from.0, from.1, font, &mut a);
+    layout_glyphs(to.0, to.1, font, &mut b);
+    let same = a.len() == b.len();
+    out.extend(b.iter().enumerate().map(|(i, end)| GlyphInstance {
+        from_origin: if same { a[i].origin } else { end.origin },
+        from_color: if same { a[i].color } else { end.color },
+        delay: delay_ms,
+        ..*end
+    }));
 }
 
 /// Appends one instance per visible glyph of `text`.
@@ -62,8 +93,9 @@ pub fn layout_glyphs(
             // Plane y points up from the baseline; local y points down, hence the flip.
             let (x0, x1) = (pen + l * size, pen + r * size);
             let (y0, y1) = (-t * size, -b * size);
+            let origin = to_screen(x0, y0);
             out.push(GlyphInstance {
-                origin: to_screen(x0, y0),
+                origin,
                 axis_x: [dir_x[0] * (x1 - x0), dir_x[1] * (x1 - x0)],
                 axis_y: [dir_y[0] * (y1 - y0), dir_y[1] * (y1 - y0)],
                 uv: [
@@ -73,6 +105,9 @@ pub fn layout_glyphs(
                     (ay + ah) as f32 / atlas.height as f32,
                 ],
                 color,
+                from_origin: origin,
+                from_color: color,
+                delay: 0.0,
             });
         }
         pen += glyph.advance * size;
@@ -231,11 +266,12 @@ impl TextPipeline {
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("text shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(with_ease(include_str!("shaders/text.wgsl")).into()),
         });
         let (pipeline_layout, bind_group) = atlas.bind(device, "text", globals, None);
         let instance_attrs = wgpu::vertex_attr_array![
-            1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
+            1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4,
+            6 => Float32x2, 7 => Float32x4, 8 => Float32
         ];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("text pipeline"),
@@ -337,6 +373,12 @@ pub struct Glyph3Instance {
     pub color: [f32; 4],
     pub show: [f32; 2],
     pub slot: f32,
+    /// Where the glyph starts while it animates (`anchor`, `origin`, `color` are where it
+    /// ends) and how long after the transition begins it starts moving. At rest from == to.
+    pub from_anchor: [f32; 3],
+    pub from_origin: [f32; 2],
+    pub from_color: [f32; 4],
+    pub delay: f32,
 }
 
 /// The `slot` of a label that is not managed per frame.
@@ -368,6 +410,7 @@ pub fn layout_glyphs_3d(
         color: text.color,
         anchor: text.align,
         rotation: Rotation::None,
+        tick: None,
     };
     let show = show_range(text.azimuths);
     let mut glyphs = Vec::new();
@@ -381,6 +424,34 @@ pub fn layout_glyphs_3d(
         color: g.color,
         show,
         slot,
+        from_anchor: text.anchor,
+        from_origin: g.origin,
+        from_color: g.color,
+        delay: 0.0,
+    }));
+}
+
+/// Appends the glyphs of a world label that moves from `from` to `to` (colours already
+/// encoded), starting `delay_ms` into the transition. If the two lay out to a different number
+/// of glyphs the label just appears at its end state.
+pub fn layout_glyph3_pair(
+    from: (&Text3, [f32; 4]),
+    to: (&Text3, [f32; 4]),
+    slot: f32,
+    delay_ms: f32,
+    font: &FontMetrics,
+    out: &mut Vec<Glyph3Instance>,
+) {
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    layout_glyphs_3d(from.0, from.1, slot, font, &mut a);
+    layout_glyphs_3d(to.0, to.1, slot, font, &mut b);
+    let same = a.len() == b.len();
+    out.extend(b.iter().enumerate().map(|(i, end)| Glyph3Instance {
+        from_anchor: if same { a[i].anchor } else { end.anchor },
+        from_origin: if same { a[i].origin } else { end.origin },
+        from_color: if same { a[i].color } else { end.color },
+        delay: delay_ms,
+        ..*end
     }));
 }
 
@@ -405,9 +476,13 @@ pub fn halo_instances(
     let mut out = Vec::with_capacity(glyphs.len() * DIRECTIONS.len());
     for g in glyphs {
         for d in DIRECTIONS {
+            // The copy follows the glyph (its start state too) and fades with it.
+            let shift = |o: [f32; 2]| [o[0] + d[0] * radius, o[1] + d[1] * radius];
             out.push(Glyph3Instance {
-                origin: [g.origin[0] + d[0] * radius, g.origin[1] + d[1] * radius],
-                color,
+                origin: shift(g.origin),
+                color: [color[0], color[1], color[2], color[3] * g.color[3]],
+                from_origin: shift(g.from_origin),
+                from_color: [color[0], color[1], color[2], color[3] * g.from_color[3]],
                 ..*g
             });
         }
@@ -435,12 +510,13 @@ impl Text3dPipeline {
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("text3d shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text3d.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(with_ease(include_str!("shaders/text3d.wgsl")).into()),
         });
         let (layout, bind_group) = atlas.bind(device, "text3d", globals, Some(label_states));
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x3, 2 => Float32x2, 3 => Float32x2, 4 => Float32x2, 5 => Float32x4,
-            6 => Float32x4, 7 => Float32x2, 8 => Float32
+            6 => Float32x4, 7 => Float32x2, 8 => Float32,
+            9 => Float32x3, 10 => Float32x2, 11 => Float32x4, 12 => Float32
         ];
         let pipeline = pipeline(
             device,
@@ -528,6 +604,7 @@ mod tests {
             color: Color::linear(0.0, 0.0, 0.0, 1.0),
             anchor,
             rotation,
+            tick: None,
         }
     }
 
@@ -610,12 +687,19 @@ mod tests {
             azimuths: None,
             role: Default::default(),
             halo: true,
+            tick: None,
         }
     }
 
     fn glyphs3(t: &Text3) -> Vec<Glyph3Instance> {
         let mut out = Vec::new();
-        layout_glyphs_3d(t, [0.0; 4], NO_SLOT, FontMetrics::inter(), &mut out);
+        layout_glyphs_3d(
+            t,
+            [0.0, 0.0, 0.0, 1.0],
+            NO_SLOT,
+            FontMetrics::inter(),
+            &mut out,
+        );
         out
     }
 
@@ -652,6 +736,29 @@ mod tests {
                 .sqrt();
             assert!(d > 0.0 && d <= 2.0 + 1e-3, "{d}");
             assert_eq!((h.anchor, h.axis_x, h.uv), (src.anchor, src.axis_x, src.uv));
+        }
+    }
+
+    #[test]
+    fn halos_follow_a_fading_glyph_from_start_to_end() {
+        let mut g = glyphs3(&text3(VAlign::Middle, Anchor::Middle));
+        for glyph in &mut g {
+            glyph.from_color[3] = 0.0; // fades in
+            glyph.from_origin = [glyph.origin[0] + 10.0, glyph.origin[1]];
+            glyph.delay = 7.0;
+        }
+        let halo = halo_instances(&g, [1.0; 4], 2.0);
+        for (i, h) in halo.iter().enumerate() {
+            let src = g[i / 8];
+            assert_eq!((h.color[3], h.from_color[3]), (1.0, 0.0));
+            assert_eq!(h.delay, 7.0);
+            // The start position is shifted by the same offset as the end one.
+            let end = [h.origin[0] - src.origin[0], h.origin[1] - src.origin[1]];
+            let start = [
+                h.from_origin[0] - src.from_origin[0],
+                h.from_origin[1] - src.from_origin[1],
+            ];
+            assert!((end[0] - start[0]).abs() < 1e-4 && (end[1] - start[1]).abs() < 1e-4);
         }
     }
 

@@ -80,6 +80,7 @@ pub(crate) fn build_pie_3d(
         polylines: Vec::new(),
         points: Vec::new(),
         pick_radius: 0.0,
+        axes: Vec::new(),
         texts: Vec::new(),
         labels: Vec::new(),
     };
@@ -172,6 +173,7 @@ pub(crate) fn build_pie_3d(
             azimuths: None,
             role: LabelRole::Fixed,
             halo,
+            tick: None,
         };
         let top = height as f32;
         let t3 = if fits {
@@ -206,6 +208,7 @@ pub(crate) fn build_pie_3d(
                     width_px: hair,
                     color: theme.axis,
                     azimuths: None,
+                    tick: None,
                 });
             }
             make(anchor, theme.text, true)

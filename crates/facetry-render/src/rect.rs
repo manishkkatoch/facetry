@@ -1,18 +1,54 @@
 //! Instanced rectangles: bars, gridlines, axis lines and ticks.
 
 use bytemuck::{Pod, Zeroable};
-use facetry_core::scene::Scene;
+use facetry_core::scene::{RuleKind, Scene};
+use facetry_core::transition::Plan;
 
-use crate::gpu::{InstanceBuffer, QUAD_LAYOUT};
+use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, with_ease};
 
 /// One rectangle: `[x, y, width, height]` in device pixels, an RGBA colour, and a hover flag
 /// (1 brightens the rectangle; it is rewritten alone when the pointer moves between bars).
+///
+/// For animation it also carries where it starts (`from_*`) and how long after the transition
+/// begins it starts moving; the vertex shader mixes `from` into `rect`/`color` by the eased
+/// progress. A rectangle at rest has `from == to`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct RectInstance {
     pub rect: [f32; 4],
     pub color: [f32; 4],
     pub hover: f32,
+    pub from_rect: [f32; 4],
+    pub from_color: [f32; 4],
+    pub delay: f32,
+}
+
+impl RectInstance {
+    /// A rectangle that stays where it is.
+    pub fn still(b: facetry_core::scene::Bounds, color: [f32; 4]) -> Self {
+        let rect = [b.x, b.y, b.w, b.h];
+        Self {
+            rect,
+            color,
+            hover: 0.0,
+            from_rect: rect,
+            from_color: color,
+            delay: 0.0,
+        }
+    }
+
+    /// A rectangle that moves from `from` to `to`, starting `delay_ms` into the transition.
+    pub fn moving(
+        from: (facetry_core::scene::Bounds, [f32; 4]),
+        to: (facetry_core::scene::Bounds, [f32; 4]),
+        delay_ms: f32,
+    ) -> Self {
+        let mut r = Self::still(to.0, to.1);
+        r.from_rect = [from.0.x, from.0.y, from.0.w, from.0.h];
+        r.from_color = from.1;
+        r.delay = delay_ms;
+        r
+    }
 }
 
 /// Byte offset of [`RectInstance::hover`] inside an instance.
@@ -33,12 +69,40 @@ pub fn from_boxes(
     encode: impl Fn(facetry_core::Color) -> [f32; 4],
 ) -> Vec<RectInstance> {
     boxes
-        .map(|(b, color)| RectInstance {
-            rect: [b.x, b.y, b.w, b.h],
-            color: encode(color),
-            hover: 0.0,
-        })
+        .map(|(b, color)| RectInstance::still(b, encode(color)))
         .collect()
+}
+
+/// The rectangles of a transition, back to front like [`instances`]: gridlines, bars (in the
+/// plan's order, where bar `i` of the target is `plan.rect_slot[i]`), then the other rules.
+///
+/// Returns the instances and the number of gridlines and of bars among them.
+pub fn pair_instances(
+    plan: &Plan,
+    encode: impl Fn(facetry_core::Color) -> [f32; 4],
+) -> (Vec<RectInstance>, usize, usize) {
+    let rule = |p: &facetry_core::transition::Pair<facetry_core::scene::Rule>| {
+        RectInstance::moving(
+            (p.from.bounds, encode(p.from.color)),
+            (p.to.bounds, encode(p.to.color)),
+            p.delay_ms,
+        )
+    };
+    let grid = |p: &&facetry_core::transition::Pair<facetry_core::scene::Rule>| {
+        p.to.kind == RuleKind::Grid
+    };
+    let mut out: Vec<RectInstance> = plan.rules.iter().filter(grid).map(rule).collect();
+    let grids = out.len();
+    out.extend(plan.rects.iter().map(|p| {
+        RectInstance::moving(
+            (p.from.bounds, encode(p.from.color)),
+            (p.to.bounds, encode(p.to.color)),
+            p.delay_ms,
+        )
+    }));
+    let bars = plan.rects.len();
+    out.extend(plan.rules.iter().filter(|p| !grid(p)).map(rule));
+    (out, grids, bars)
 }
 
 #[derive(Debug)]
@@ -57,7 +121,7 @@ impl RectPipeline {
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("rect shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rect.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(with_ease(include_str!("shaders/rect.wgsl")).into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("rect bind group layout"),
@@ -76,7 +140,9 @@ impl RectPipeline {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let instance_attrs = wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4, 3 => Float32];
+        let instance_attrs = wgpu::vertex_attr_array![
+            1 => Float32x4, 2 => Float32x4, 3 => Float32, 4 => Float32x4, 5 => Float32x4, 6 => Float32
+        ];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("rect pipeline"),
             layout: Some(&pipeline_layout),

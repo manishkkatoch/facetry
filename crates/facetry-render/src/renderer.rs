@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use facetry_core::scene::{ArcMark, PointMark, Scene, Text};
 use facetry_core::scene3d::{Scene3d, Text3};
 use facetry_core::spec::LabelShow;
+use facetry_core::transition::{Phase, Plan};
+use facetry_core::transition3d::Plan3;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
 use glam::Vec3;
@@ -11,7 +13,7 @@ use wgpu::util::DeviceExt as _;
 
 use crate::Error;
 use crate::camera::Camera;
-use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
+use crate::gpu::{self, ANIM_IDLE, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
 use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
@@ -166,6 +168,15 @@ pub struct Renderer {
     bar_offset: usize,
     /// 2D: how many of the marks are bars; then come the line points, then the pie slices.
     bar_count: usize,
+    /// 2D: where bar `i` of the scene is among the bars' rect instances (`bar_offset + slot`),
+    /// during a transition, when leaving bars sit between the others. Empty: bar `i` is at `i`.
+    bar_slots: Vec<usize>,
+    /// 2D: the rect instance after the last bar, where the 2D pass splits the rectangles
+    /// (`bar_offset + bar_count`, plus the bars that are leaving during a transition).
+    bar_end: usize,
+    /// The animation clock the shaders read: elapsed ms, duration ms, easing number. Idle
+    /// (progress exactly 1) unless a transition is on screen.
+    anim: [f32; 4],
     /// 2D: the line points and pie slices, kept for what is drawn over them while hovered.
     point_marks: Vec<PointMark>,
     arc_marks: Vec<ArcMark>,
@@ -297,6 +308,7 @@ impl Renderer {
                 atlas: [font.atlas.width as f32, font.atlas.height as f32],
                 px_range: font.atlas.px_range,
                 _pad: [0.0; 3],
+                anim: ANIM_IDLE,
             }),
         );
         let quad = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -330,6 +342,9 @@ impl Renderer {
             mark_count: 0,
             bar_offset: 0,
             bar_count: 0,
+            bar_slots: Vec::new(),
+            bar_end: 0,
+            anim: ANIM_IDLE,
             point_marks: Vec::new(),
             arc_marks: Vec::new(),
             box_count: 0,
@@ -438,24 +453,73 @@ impl Renderer {
     }
 
     /// Uploads a scene: the next `render` draws it. Cheap enough to call on every resize or
-    /// data change (one buffer write per list). Clears any hover.
+    /// data change (one buffer write per list). Clears any hover and any transition.
     pub fn set_scene(&mut self, scene: &Scene) {
+        self.anim = ANIM_IDLE;
+        self.load_scene(scene, None);
+    }
+
+    /// Uploads a transition: the next `render` draws it at time 0 (the old scene) and
+    /// [`set_time`](Self::set_time) moves it along. The bars, gridlines, axes, legend and text
+    /// are drawn by the GPU mixing each item's start and end state; what is tessellated on the
+    /// CPU (lines, markers, pie slices) is redone by [`set_marks`](Self::set_marks) each frame.
+    /// Clears any hover.
+    pub fn begin_transition(&mut self, plan: &Plan) {
+        self.anim = [
+            0.0,
+            plan.timing.duration_ms,
+            plan.timing.easing.id() as f32,
+            0.0,
+        ];
+        self.load_scene(&plan.target, Some(plan));
+    }
+
+    /// Moves the transition started by [`begin_transition`](Self::begin_transition) to
+    /// `elapsed_ms`. Only a uniform changes.
+    pub fn set_time(&mut self, elapsed_ms: f32) {
+        self.anim[0] = elapsed_ms;
+    }
+
+    /// Re-tessellates the lines, point markers and pie slices of `marks` (a scene or
+    /// [`Plan::marks_at`]): what the CPU draws while a transition runs. Everything else of the
+    /// scene on screen is left alone.
+    pub fn set_marks(&mut self, marks: &Scene) {
+        let arcs = mesh::arc_mesh(marks, |c| self.encode_color(c));
+        self.arcs.set(&self.device, &self.queue, &arcs);
+        let lines = mesh::line_mesh(marks, |c| self.encode_color(c));
+        self.lines.set(&self.device, &self.queue, &lines);
+        let markers = mesh::point_mesh(
+            marks,
+            |c| self.encode_color(c),
+            self.encode_color(marks.background),
+        );
+        self.markers.set(&self.device, &self.queue, &markers);
+    }
+
+    fn load_scene(&mut self, scene: &Scene, plan: Option<&Plan>) {
         if self.box_size.take().is_some() {
             self.rebuild_targets(); // drops the depth buffer
         }
         self.background = scene.background;
-        let rects = rect::instances(scene, |c| self.encode_color(c));
+        let (rects, grids, bars) = match plan {
+            Some(plan) => rect::pair_instances(plan, |c| self.encode_color(c)),
+            None => {
+                let rects = rect::instances(scene, |c| self.encode_color(c));
+                let grids = scene
+                    .rules
+                    .iter()
+                    .filter(|r| r.kind == facetry_core::scene::RuleKind::Grid)
+                    .count();
+                (rects, grids, scene.rects.len())
+            }
+        };
         self.rects.set_instances(&self.device, &self.queue, &rects);
-        let arcs = mesh::arc_mesh(scene, |c| self.encode_color(c));
-        self.arcs.set(&self.device, &self.queue, &arcs);
-        let lines = mesh::line_mesh(scene, |c| self.encode_color(c));
-        self.lines.set(&self.device, &self.queue, &lines);
-        let markers = mesh::point_mesh(
-            scene,
-            |c| self.encode_color(c),
-            self.encode_color(scene.background),
-        );
-        self.markers.set(&self.device, &self.queue, &markers);
+        // Lines, markers and slices are tessellated here, so a transition starts them from
+        // where they are at time 0 and `set_marks` redoes them every frame.
+        match plan {
+            Some(plan) => self.set_marks(&plan.marks_at(0.0)),
+            None => self.set_marks(scene),
+        }
         self.hover_marker
             .set(&self.device, &self.queue, &MeshData::default());
         self.point_marks.clone_from(&scene.points);
@@ -465,20 +529,60 @@ impl Renderer {
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
-        for t in &scene.texts {
-            text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
-        }
         // Value labels: `always` ones are ordinary text, `hover` ones wait for their bar.
         self.hover_labels.clear();
-        for label in &scene.labels {
-            let color = self.encode_color(label.text.color);
-            match label.show {
-                LabelShow::Always => text::layout_glyphs(&label.text, color, font, &mut glyphs),
-                LabelShow::Hover => self.hover_labels.push(HoverLabel {
-                    mark: label.mark,
-                    text: label.text.clone(),
-                    color,
-                }),
+        match plan {
+            Some(plan) => {
+                let format = self.config.format;
+                let enc = move |t: &Text| encode_color(format, t.color);
+                for p in &plan.texts {
+                    text::layout_glyph_pair(
+                        (&p.from, enc(&p.from)),
+                        (&p.to, enc(&p.to)),
+                        p.delay_ms,
+                        font,
+                        &mut glyphs,
+                    );
+                }
+                for p in &plan.labels {
+                    let (from, to) = (&p.from.text, &p.to.text);
+                    match p.to.show {
+                        LabelShow::Always => text::layout_glyph_pair(
+                            (from, enc(from)),
+                            (to, enc(to)),
+                            p.delay_ms,
+                            font,
+                            &mut glyphs,
+                        ),
+                        // Hover labels are not animated; one shows at its mark's end state.
+                        LabelShow::Hover if p.phase != facetry_core::transition::Phase::Exit => {
+                            self.hover_labels.push(HoverLabel {
+                                mark: p.to.mark,
+                                text: to.clone(),
+                                color: enc(to),
+                            });
+                        }
+                        LabelShow::Hover => {}
+                    }
+                }
+            }
+            None => {
+                for t in &scene.texts {
+                    text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
+                }
+                for label in &scene.labels {
+                    let color = self.encode_color(label.text.color);
+                    match label.show {
+                        LabelShow::Always => {
+                            text::layout_glyphs(&label.text, color, font, &mut glyphs);
+                        }
+                        LabelShow::Hover => self.hover_labels.push(HoverLabel {
+                            mark: label.mark,
+                            text: label.text.clone(),
+                            color,
+                        }),
+                    }
+                }
             }
         }
         self.text.set_instances(&self.device, &self.queue, &glyphs);
@@ -487,16 +591,88 @@ impl Renderer {
         self.hover = None;
         self.mark_count = scene.mark_count();
         self.bar_count = scene.rects.len();
-        self.bar_offset = scene
-            .rules
-            .iter()
-            .filter(|r| r.kind == facetry_core::scene::RuleKind::Grid)
-            .count();
+        self.bar_offset = grids;
+        self.bar_end = grids + bars;
+        self.bar_slots = plan.map_or_else(Vec::new, |p| p.rect_slot.clone());
     }
 
     /// Uploads a 3D scene: the next `render` draws it from the current camera. Orbiting does
-    /// not call this; only a new spec or a resize does. Clears any hover.
+    /// not call this; only a new spec or a resize does. Clears any hover and any transition.
     pub fn set_scene_3d(&mut self, scene: &Scene3d) {
+        self.anim = ANIM_IDLE;
+        self.load_scene_3d(scene, None);
+    }
+
+    /// Uploads a 3D transition: the next `render` draws it at time 0 (the old scene).
+    /// [`set_time`](Self::set_time) moves the clock the GPU mixes boxes and text by;
+    /// [`set_marks_3d`](Self::set_marks_3d) and [`set_view_3d`](Self::set_view_3d) are what the
+    /// caller does each frame for everything else. Which axis labels show is decided from the
+    /// labels of the *target* scene throughout. Clears any hover.
+    pub fn begin_transition_3d(&mut self, plan: &Plan3) {
+        self.anim = [
+            0.0,
+            plan.timing.duration_ms,
+            plan.timing.easing.id() as f32,
+            0.0,
+        ];
+        self.load_scene_3d(&plan.target, Some(plan));
+    }
+
+    /// Frames the plot box of size `size` in the part `plot` of the canvas (`None`: all of it):
+    /// what changes each frame while a transition resizes the box. Only uniforms change.
+    pub fn set_view_3d(&mut self, size: [f32; 3], plot: Option<[f32; 4]>) {
+        if self.box_size.is_some() {
+            self.box_size = Some(size);
+            self.plot_rect = plot;
+            self.label_key = None;
+        }
+    }
+
+    /// Re-tessellates what the CPU draws in 3D (grid and axis lines, pie slices, data lines,
+    /// curtains, markers) from `marks` (a scene or [`Plan3::marks_at`]), keeping the hover.
+    pub fn set_marks_3d(&mut self, marks: &Scene3d) {
+        let format = self.config.format;
+        let encode = move |c| encode_color(format, c);
+        let Some(solid) = &mut self.solid else { return };
+        solid.slices.set(&self.device, &self.queue, marks, encode);
+        solid.lines.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::line_instances(marks, encode),
+        );
+        solid.data_lines.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::polyline_instances(marks, encode),
+        );
+        solid.curtains.set(
+            &self.device,
+            &self.queue,
+            &solid::curtain_vertices(marks, encode),
+        );
+        solid.points.set(
+            &self.device,
+            &self.queue,
+            &solid::join_instances(marks, encode),
+            &solid::marker_instances(marks, encode, encode(marks.background)),
+        );
+        // The meshes were rebuilt without the hover: light the hovered mark again.
+        if let Some(m) = self.hover {
+            light_3d(
+                solid,
+                &self.queue,
+                (
+                    self.box_count,
+                    self.slice_count,
+                    self.point_sizes.as_slice(),
+                ),
+                m,
+                true,
+            );
+        }
+    }
+
+    fn load_scene_3d(&mut self, scene: &Scene3d, plan: Option<&Plan3>) {
         self.background = scene.background;
         let (device, format, samples) = (&self.device, self.config.format, self.samples);
         let atlas = &self.atlas;
@@ -526,68 +702,120 @@ impl Renderer {
             }
         });
         let encode = |c| encode_color(self.config.format, c);
-        solid.boxes.set_instances(
-            &self.device,
-            &self.queue,
-            &solid::box_instances(scene, encode),
-        );
-        solid.slices.set(&self.device, &self.queue, scene, encode);
-        solid.lines.set_instances(
-            &self.device,
-            &self.queue,
-            &solid::line_instances(scene, encode),
-        );
-        solid.data_lines.set_instances(
-            &self.device,
-            &self.queue,
-            &solid::polyline_instances(scene, encode),
-        );
-        solid.curtains.set(
-            &self.device,
-            &self.queue,
-            &solid::curtain_vertices(scene, encode),
-        );
-        solid.points.set(
-            &self.device,
-            &self.queue,
-            &solid::join_instances(scene, encode),
-            &solid::marker_instances(scene, encode, encode(scene.background)),
-        );
+        let boxes = match plan {
+            Some(plan) => solid::box_pair_instances(plan, encode),
+            None => solid::box_instances(scene, encode),
+        };
+        solid.boxes.set_instances(&self.device, &self.queue, &boxes);
         self.point_sizes = scene
             .points
             .iter()
             .map(|p| (p.size_px, p.visible))
             .collect();
         let font = FontMetrics::inter();
-        let (plan, slots) = LabelPlan::new(scene, font);
+        // Which labels show is decided from the target's labels (see `begin_transition_3d`).
+        let (label_plan, slots) = LabelPlan::new(scene, font);
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
         // The glyphs that get an outline (labels printed on a bar or slice do not).
         let mut outlined: Vec<Glyph3Instance> = Vec::new();
-        for (t, &slot) in scene.texts.iter().zip(&slots) {
-            let from = glyphs.len();
-            text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
-            if t.halo {
-                outlined.extend_from_slice(&glyphs[from..]);
-            }
-        }
         self.hover_labels.clear();
         self.hover_labels_3d.clear();
-        for (index, label) in scene.labels.iter().enumerate() {
-            let color = encode(label.text.color);
-            match label.show {
-                LabelShow::Always => {
+        match plan {
+            Some(plan) => {
+                let by_key =
+                    |texts: &[&Text3], slots: &[f32]| -> std::collections::HashMap<String, f32> {
+                        texts
+                            .iter()
+                            .zip(slots)
+                            .map(|(t, &s)| (t.key.clone(), s))
+                            .collect()
+                    };
+                let texts: Vec<&Text3> = scene.texts.iter().collect();
+                let text_slots = by_key(&texts, &slots);
+                let labels: Vec<&Text3> = scene.labels.iter().map(|l| &l.text).collect();
+                let label_slots = by_key(&labels, label_plan.label_slots());
+                let format = self.config.format;
+                let enc = move |t: &Text3| encode_color(format, t.color);
+                for p in &plan.texts {
+                    let slot = match p.phase {
+                        Phase::Exit => NO_SLOT,
+                        _ => text_slots.get(&p.to.key).copied().unwrap_or(NO_SLOT),
+                    };
                     let from = glyphs.len();
-                    let slot = plan.label_slots().get(index).copied().unwrap_or(NO_SLOT);
-                    text::layout_glyphs_3d(&label.text, color, slot, font, &mut glyphs);
-                    if label.text.halo {
+                    text::layout_glyph3_pair(
+                        (&p.from, enc(&p.from)),
+                        (&p.to, enc(&p.to)),
+                        slot,
+                        p.delay_ms,
+                        font,
+                        &mut glyphs,
+                    );
+                    if p.to.halo {
                         outlined.extend_from_slice(&glyphs[from..]);
                     }
                 }
-                LabelShow::Hover => self.hover_labels_3d.push(HoverLabel3 {
-                    mark: label.mark,
-                    text: label.text.clone(),
-                    color,
-                }),
+                for p in &plan.labels {
+                    let (a, b) = (&p.from.text, &p.to.text);
+                    match p.to.show {
+                        LabelShow::Always => {
+                            let slot = match p.phase {
+                                Phase::Exit => NO_SLOT,
+                                _ => label_slots.get(&b.key).copied().unwrap_or(NO_SLOT),
+                            };
+                            let from = glyphs.len();
+                            text::layout_glyph3_pair(
+                                (a, enc(a)),
+                                (b, enc(b)),
+                                slot,
+                                p.delay_ms,
+                                font,
+                                &mut glyphs,
+                            );
+                            if b.halo {
+                                outlined.extend_from_slice(&glyphs[from..]);
+                            }
+                        }
+                        LabelShow::Hover if p.phase != Phase::Exit => {
+                            self.hover_labels_3d.push(HoverLabel3 {
+                                mark: p.to.mark,
+                                text: b.clone(),
+                                color: enc(b),
+                            });
+                        }
+                        LabelShow::Hover => {}
+                    }
+                }
+            }
+            None => {
+                for (t, &slot) in scene.texts.iter().zip(&slots) {
+                    let from = glyphs.len();
+                    text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
+                    if t.halo {
+                        outlined.extend_from_slice(&glyphs[from..]);
+                    }
+                }
+                for (index, label) in scene.labels.iter().enumerate() {
+                    let color = encode(label.text.color);
+                    match label.show {
+                        LabelShow::Always => {
+                            let from = glyphs.len();
+                            let slot = label_plan
+                                .label_slots()
+                                .get(index)
+                                .copied()
+                                .unwrap_or(NO_SLOT);
+                            text::layout_glyphs_3d(&label.text, color, slot, font, &mut glyphs);
+                            if label.text.halo {
+                                outlined.extend_from_slice(&glyphs[from..]);
+                            }
+                        }
+                        LabelShow::Hover => self.hover_labels_3d.push(HoverLabel3 {
+                            mark: label.mark,
+                            text: label.text.clone(),
+                            color,
+                        }),
+                    }
+                }
             }
         }
         // Outlines first (every label's, so no outline covers another label's letters), then
@@ -595,37 +823,64 @@ impl Renderer {
         self.halo = (encode(scene.background), scene.halo_px);
         let mut instances = text::halo_instances(&outlined, self.halo.0, self.halo.1);
         instances.extend(glyphs);
+        let Some(solid) = &mut self.solid else { return };
         solid
             .text
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
         // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
         // buffers a 3D chart does not otherwise use).
-        let swatches = rect::from_boxes(
-            scene.overlay.rules.iter().map(|r| (r.bounds, r.color)),
-            encode,
-        );
-        self.rects
-            .set_instances(&self.device, &self.queue, &swatches);
         let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
-        for t in &scene.overlay.texts {
-            text::layout_glyphs(t, encode(t.color), font, &mut legend_glyphs);
+        match plan {
+            Some(plan) => {
+                let (rects, _, _) = rect::pair_instances(&plan.overlay, encode);
+                self.rects.set_instances(&self.device, &self.queue, &rects);
+                for p in &plan.overlay.texts {
+                    text::layout_glyph_pair(
+                        (&p.from, encode(p.from.color)),
+                        (&p.to, encode(p.to.color)),
+                        p.delay_ms,
+                        font,
+                        &mut legend_glyphs,
+                    );
+                }
+                self.has_overlay =
+                    !(plan.overlay.rules.is_empty() && plan.overlay.texts.is_empty());
+            }
+            None => {
+                let swatches = rect::from_boxes(
+                    scene.overlay.rules.iter().map(|r| (r.bounds, r.color)),
+                    encode,
+                );
+                self.rects
+                    .set_instances(&self.device, &self.queue, &swatches);
+                for t in &scene.overlay.texts {
+                    text::layout_glyphs(t, encode(t.color), font, &mut legend_glyphs);
+                }
+                self.has_overlay = !scene.overlay.is_empty();
+            }
         }
         self.text
             .set_instances(&self.device, &self.queue, &legend_glyphs);
         self.text.set_overlay(&self.device, &self.queue, &[]);
-        self.has_overlay = !scene.overlay.is_empty();
-        self.plot_rect = scene.plot;
+        self.plot_rect = plan.map_or(scene.plot, |p| p.plot_at(0.0));
         self.bar_offset = 0;
         self.bar_count = 0;
-        self.label_plan = Some(plan);
+        self.bar_end = 0;
+        self.bar_slots.clear();
+        self.label_plan = Some(label_plan);
         self.label_key = None;
         self.hover = None;
         self.mark_count = scene.mark_count();
         self.box_count = scene.boxes.len();
         self.slice_count = scene.slices.len();
         let entering = self.box_size.is_none();
-        self.box_size = Some(scene.size);
+        self.box_size = Some(plan.map_or(scene.size, |p| p.size_at(0.0)));
+        // Everything the CPU tessellates: the plan's start, or the scene itself.
+        match plan {
+            Some(plan) => self.set_marks_3d(&plan.marks_at(0.0)),
+            None => self.set_marks_3d(scene),
+        }
         if entering {
             self.rebuild_targets(); // creates the depth buffer
         }
@@ -648,21 +903,13 @@ impl Renderer {
         let font = FontMetrics::inter();
         if let (Some(solid), Some(_)) = (&mut self.solid, self.box_size) {
             // Marks 0..box_count are boxes, then come the pie slices, then the line points.
-            let (boxes, slices) = (self.box_count, self.slice_count);
+            let counts = (
+                self.box_count,
+                self.slice_count,
+                self.point_sizes.as_slice(),
+            );
             let light = |solid: &mut Solid, mark: usize, on: bool| {
-                if mark < boxes {
-                    solid.boxes.set_hover(&self.queue, mark, on);
-                } else if mark < boxes + slices {
-                    solid.slices.set_hover(&self.queue, mark - boxes, on);
-                } else if let Some(&(size_px, visible)) =
-                    self.point_sizes.get(mark - boxes - slices)
-                {
-                    // A point's marker grows (and appears, if it was not drawn).
-                    let (size, inner) = solid::marker_sizes(size_px, visible, on);
-                    solid
-                        .points
-                        .set_marker(&self.queue, mark - boxes - slices, size, inner);
-                }
+                light_3d(solid, &self.queue, counts, mark, on);
             };
             if let Some(p) = previous {
                 light(solid, p, false);
@@ -686,14 +933,15 @@ impl Renderer {
             // points and the pie slices, which get something drawn over them instead.
             if let Some(p) = previous.filter(|&p| p < self.bar_count) {
                 self.rects
-                    .set_hover(&self.queue, self.bar_offset + p, false);
+                    .set_hover(&self.queue, self.bar_instance(p), false);
             }
             let mut glyphs = Vec::new();
             let mut marker = MeshData::default();
             if let Some(m) = mark {
                 let points = self.bar_count + self.point_marks.len();
                 if m < self.bar_count {
-                    self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                    self.rects
+                        .set_hover(&self.queue, self.bar_instance(m), true);
                 } else if m < points {
                     let p = &self.point_marks[m - self.bar_count];
                     let background = self.encode_color(self.background);
@@ -720,6 +968,11 @@ impl Renderer {
             self.hover_marker.set(&self.device, &self.queue, &marker);
             self.text.set_overlay(&self.device, &self.queue, &glyphs);
         }
+    }
+
+    /// The rect instance of bar `i` of the scene.
+    fn bar_instance(&self, i: usize) -> usize {
+        self.bar_offset + self.bar_slots.get(i).copied().unwrap_or(i)
     }
 
     /// The mark of `scene` (a bar, or a pie slice after the bars) under pixel `(x, y)` of the
@@ -771,6 +1024,7 @@ impl Renderer {
             atlas: [font.atlas.width as f32, font.atlas.height as f32],
             px_range: font.atlas.px_range,
             _pad: [0.0; 3],
+            anim: self.anim,
         }
     }
 
@@ -809,6 +1063,7 @@ impl Renderer {
                 atlas: [font.atlas.width as f32, font.atlas.height as f32],
                 px_range: font.atlas.px_range,
                 _pad: [0.0; 3],
+                anim: self.anim,
             }),
         );
     }
@@ -890,7 +1145,7 @@ impl Renderer {
             _ => {
                 // Back to front: gridlines and bars, then pie slices, the line layers and their markers,
                 // then axis lines and ticks, the hover marker, and text on top.
-                let split = (self.bar_offset + self.bar_count) as u32;
+                let split = self.bar_end as u32;
                 self.rects.draw_range(&mut pass, &self.quad, 0..split);
                 self.arcs.draw(&mut pass, &self.mesh);
                 self.lines.draw(&mut pass, &self.mesh);
@@ -1200,6 +1455,29 @@ impl Snapshot {
     /// Width and height in pixels.
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+}
+
+/// Lights mark `mark` of a 3D scene (a box, then a pie slice, then a line point) up or not.
+/// `(boxes, slices, points)` say how many of each kind there are and, for the points, how big
+/// each marker is and whether it is drawn at rest.
+fn light_3d(
+    solid: &mut Solid,
+    queue: &wgpu::Queue,
+    (boxes, slices, points): (usize, usize, &[(f32, bool)]),
+    mark: usize,
+    on: bool,
+) {
+    if mark < boxes {
+        solid.boxes.set_hover(queue, mark, on);
+    } else if mark < boxes + slices {
+        solid.slices.set_hover(queue, mark - boxes, on);
+    } else if let Some(&(size_px, visible)) = points.get(mark - boxes - slices) {
+        // A point's marker grows (and appears, if it was not drawn).
+        let (size, inner) = solid::marker_sizes(size_px, visible, on);
+        solid
+            .points
+            .set_marker(queue, mark - boxes - slices, size, inner);
     }
 }
 

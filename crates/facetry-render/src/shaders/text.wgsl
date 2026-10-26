@@ -11,6 +11,8 @@ struct Globals {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
+    // Animation clock, see ease.wgsl.
+    anim: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -25,6 +27,11 @@ struct Vertex {
     @location(3) axis_y: vec2<f32>,  // pixel vector along the glyph's height, pointing down
     @location(4) uv: vec4<f32>,      // atlas rect: top-left u, v, bottom-right u, v
     @location(5) color: vec4<f32>,
+    // Where the glyph starts when it is animating (`origin` and `color` are where it ends),
+    // and its start delay in milliseconds. At rest from == to.
+    @location(6) from_origin: vec2<f32>,
+    @location(7) from_color: vec4<f32>,
+    @location(8) delay: f32,
 }
 
 struct Varying {
@@ -35,13 +42,16 @@ struct Varying {
 
 @vertex
 fn vs_main(v: Vertex) -> Varying {
-    let px = v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
+    let t = anim_t(v.delay);
+    let origin = v.from_origin * (1.0 - t) + v.origin * t;
+    let color = clamp(v.from_color * (1.0 - t) + v.color * t, vec4<f32>(0.0), vec4<f32>(1.0));
+    let px = origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
     let clip = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,
     );
     let uv = mix(v.uv.xy, v.uv.zw, v.corner);
-    return Varying(vec4<f32>(clip, 0.0, 1.0), uv, v.color);
+    return Varying(vec4<f32>(clip, 0.0, 1.0), uv, color);
 }
 
 fn median(r: f32, g: f32, b: f32) -> f32 {

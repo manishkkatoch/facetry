@@ -30,6 +30,8 @@ mod shader_tests {
     //! runs anywhere: if these pass, the shaders parse, validate, and translate to GLSL ES.
 
     use naga::back::glsl;
+
+    use crate::gpu;
     use naga::valid::{Capabilities, ValidationFlags, Validator};
 
     fn check(name: &str, source: &str, globals_size: u32) {
@@ -85,47 +87,63 @@ mod shader_tests {
 
     #[test]
     fn rect_shader_is_valid_and_webgl2_translatable() {
-        check("rect", include_str!("shaders/rect.wgsl"), 32);
+        check(
+            "rect",
+            &gpu::with_ease(include_str!("shaders/rect.wgsl")),
+            48,
+        );
     }
 
     #[test]
     fn mesh2d_shader_is_valid_and_webgl2_translatable() {
-        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 32);
+        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 48);
     }
 
     #[test]
     fn text_shader_is_valid_and_webgl2_translatable() {
-        check("text", include_str!("shaders/text.wgsl"), 32);
+        check(
+            "text",
+            &gpu::with_ease(include_str!("shaders/text.wgsl")),
+            48,
+        );
     }
 
-    // The 3D shaders share one 144-byte `Globals` (see `gpu::Globals3`).
+    // The 3D shaders share one 160-byte `Globals` (see `gpu::Globals3`).
     #[test]
     fn box_shader_is_valid_and_webgl2_translatable() {
-        check("box", include_str!("shaders/box.wgsl"), 144);
+        check(
+            "box",
+            &gpu::with_ease(include_str!("shaders/box.wgsl")),
+            160,
+        );
     }
 
     #[test]
     fn mesh3d_shader_is_valid_and_webgl2_translatable() {
-        check("mesh3d", include_str!("shaders/mesh3d.wgsl"), 144);
+        check("mesh3d", include_str!("shaders/mesh3d.wgsl"), 160);
     }
 
     #[test]
     fn line3d_shader_is_valid_and_webgl2_translatable() {
-        check("line3d", include_str!("shaders/line3d.wgsl"), 144);
+        check("line3d", include_str!("shaders/line3d.wgsl"), 160);
     }
 
     #[test]
     fn point3d_shader_is_valid_and_webgl2_translatable() {
-        check("point3d", include_str!("shaders/point3d.wgsl"), 144);
+        check("point3d", include_str!("shaders/point3d.wgsl"), 160);
     }
 
     #[test]
     fn curtain3d_shader_is_valid_and_webgl2_translatable() {
-        check("curtain3d", include_str!("shaders/curtain3d.wgsl"), 144);
+        check("curtain3d", include_str!("shaders/curtain3d.wgsl"), 160);
     }
 
     #[test]
     fn text3d_shader_is_valid_and_webgl2_translatable() {
-        check("text3d", include_str!("shaders/text3d.wgsl"), 144);
+        check(
+            "text3d",
+            &gpu::with_ease(include_str!("shaders/text3d.wgsl")),
+            160,
+        );
     }
 }

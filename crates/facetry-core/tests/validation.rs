@@ -455,3 +455,98 @@ fn label_problems_in_the_second_layer_point_at_it() {
     }"#;
     assert_eq!(paths(json), ["/layers/1/label/format/decimals"]);
 }
+
+// --- transitions -------------------------------------------------------------------------------
+
+fn with_transition(t: &str) -> String {
+    let mut json = GOOD.to_owned();
+    json.insert_str(json.rfind('}').unwrap(), &format!(r#", "transition": {t}"#));
+    json
+}
+
+#[test]
+fn good_transitions_have_no_issues() {
+    for t in [
+        "false",
+        "true",
+        r#"{}"#,
+        r#"{ "duration": 0 }"#,
+        r#"{ "duration": 250, "easing": "linear", "stagger": 100 }"#,
+        r#"{ "easing": "backOut" }"#,
+        r#"{ "easing": "cubicOut", "duration": 1e3 }"#,
+    ] {
+        assert_eq!(issues(&with_transition(t)), vec![], "{t}");
+    }
+}
+
+#[test]
+fn transition_problems_point_at_the_field() {
+    assert_eq!(
+        paths(&with_transition(r#"{ "duration": -1 }"#)),
+        ["/transition/duration"]
+    );
+    assert_eq!(
+        paths(&with_transition(r#"{ "stagger": -0.5 }"#)),
+        ["/transition/stagger"]
+    );
+    // Both at once: every problem is reported.
+    assert_eq!(
+        paths(&with_transition(r#"{ "duration": -1, "stagger": -2 }"#)),
+        ["/transition/duration", "/transition/stagger"]
+    );
+    let got = issues(&with_transition(r#"{ "duration": -400 }"#));
+    assert!(
+        got[0].message.contains("must not be negative"),
+        "{}",
+        got[0].message
+    );
+}
+
+#[test]
+fn an_unknown_easing_or_field_is_a_shape_error_at_its_own_path() {
+    let got = issues(&with_transition(r#"{ "easing": "bounce" }"#));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/transition/easing");
+    assert!(
+        got[0].message.contains("unknown variant `bounce`"),
+        "{}",
+        got[0].message
+    );
+    assert!(
+        got[0].message.contains("`linear`") && got[0].message.contains("`backOut`"),
+        "{}",
+        got[0].message
+    );
+    assert_eq!(
+        paths(&with_transition(r#"{ "speed": 3 }"#)),
+        ["/transition/speed"]
+    );
+    assert_eq!(paths(&with_transition("5")), ["/transition"]);
+    assert_eq!(
+        paths(&with_transition(r#"{ "duration": "slow" }"#)),
+        ["/transition/duration"]
+    );
+}
+
+#[test]
+fn transitions_resolve_to_timings() {
+    use facetry_core::spec::{DEFAULT_DURATION_MS, Easing, resolve_transition};
+    let timing = |t: &str| {
+        let spec = parse_spec_json(&with_transition(t)).unwrap();
+        resolve_transition(spec.transition.as_ref())
+    };
+    // Absent: the defaults.
+    let none = resolve_transition(parse_spec_json(GOOD).unwrap().transition.as_ref()).unwrap();
+    assert_eq!(none.duration_ms, DEFAULT_DURATION_MS as f32);
+    assert_eq!(none.easing, Easing::CubicInOut);
+    assert_eq!(none.stagger_ms, 0.0);
+    assert_eq!(timing("true"), Some(none));
+    assert_eq!(timing("{}"), Some(none));
+    assert_eq!(timing("false"), None);
+    assert_eq!(timing(r#"{ "duration": 0 }"#), None);
+    let t = timing(r#"{ "duration": 250, "easing": "backOut", "stagger": 90 }"#).unwrap();
+    assert_eq!(
+        (t.duration_ms, t.easing, t.stagger_ms),
+        (250.0, Easing::BackOut, 90.0)
+    );
+}

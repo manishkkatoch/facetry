@@ -280,6 +280,7 @@ pub(crate) fn build_pie(
             color,
             anchor,
             rotation: Rotation::None,
+            tick: None,
         };
         let text = match place {
             Place::Inside => {
@@ -327,6 +328,8 @@ pub(crate) fn build_pie(
                         width: line as f32,
                         runs: vec![vec![[x0 as f32, y0 as f32], [x1 as f32, y1 as f32]]],
                         layer: arc.index,
+                        reveal: 1.0,
+                        keys: Vec::new(),
                     });
                 }
                 put(tx, ty, theme.text, anchor)

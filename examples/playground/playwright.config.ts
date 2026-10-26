@@ -19,6 +19,14 @@ export default defineConfig({
   },
   use: {
     baseURL: "http://localhost:4173",
+    // Updates animate by default. Most tests are about what the chart looks like after an
+    // update, not how it gets there, so they run as a viewer who asked for reduced motion
+    // (every transition is then a jump, exactly as before animation existed). The animation
+    // tests (transition*.spec.ts) opt back in with `test.use({ reducedMotion: "no-preference" })`.
+    reducedMotion: "reduce",
+    // Kept only for failing tests, and uploaded by CI with test-results/.
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     launchOptions: {
       // CI installs the matching browser; locally set CHROMIUM_PATH to reuse another one.
       executablePath: process.env.CHROMIUM_PATH || undefined,

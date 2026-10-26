@@ -3,7 +3,7 @@
 
 use bytemuck::{Pod, Zeroable};
 
-/// Uniforms shared by both shaders (matches `Globals` in the WGSL). 32 bytes: uniform
+/// Uniforms shared by the 2D shaders (matches `Globals` in the WGSL). 48 bytes: uniform
 /// blocks must be a multiple of 16.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -14,10 +14,24 @@ pub struct Globals {
     pub atlas: [f32; 2],
     pub px_range: f32,
     pub _pad: [f32; 3],
+    /// The animation clock the shaders mix `from` and `to` states by: elapsed milliseconds,
+    /// the duration, the easing's number (see `Easing::id`) and a spare. A mark's own start
+    /// delay is an instance attribute. See `shaders/ease.wgsl`.
+    pub anim: [f32; 4],
+}
+
+/// The clock of a scene that is not animating: every mark's progress is exactly 1, so what
+/// the shader draws is the `to` state to the last bit.
+pub const ANIM_IDLE: [f32; 4] = [1.0, 1.0, 0.0, 0.0];
+
+/// The easing and clock functions the animated shaders share (WGSL has no `#include`, so they
+/// are prepended). They read `globals.anim`, which each shader's `Globals` declares.
+pub fn with_ease(shader: &str) -> String {
+    format!("{}\n{shader}", include_str!("shaders/ease.wgsl"))
 }
 
 /// Uniforms shared by the 3D shaders (matches `Globals` in `box.wgsl`, `line3d.wgsl` and
-/// `text3d.wgsl`). 144 bytes, a multiple of 16 as WebGL2 needs. Rewritten every frame from
+/// `text3d.wgsl`). 160 bytes, a multiple of 16 as WebGL2 needs. Rewritten every frame from
 /// the camera, which is all that changes when the user orbits.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -36,6 +50,8 @@ pub struct Globals3 {
     pub atlas: [f32; 2],
     pub px_range: f32,
     pub _pad: [f32; 3],
+    /// The animation clock, as in [`Globals`].
+    pub anim: [f32; 4],
 }
 
 /// Depth buffer format: 24 bits is plenty for one chart and is supported everywhere,
@@ -121,8 +137,8 @@ mod tests {
 
     #[test]
     fn globals_match_the_wgsl_block_size() {
-        assert_eq!(std::mem::size_of::<Globals>(), 32);
-        assert_eq!(std::mem::size_of::<Globals3>(), 144);
+        assert_eq!(std::mem::size_of::<Globals>(), 48);
+        assert_eq!(std::mem::size_of::<Globals3>(), 160);
     }
 
     #[test]
