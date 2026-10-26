@@ -188,7 +188,7 @@ mod tests {
     use facetry_font::FontMetrics;
 
     use super::*;
-    use crate::camera::Camera;
+    use crate::camera::{Camera, Projection};
 
     fn mark(key: &str, min: [f32; 3], max: [f32; 3]) -> BoxMark {
         BoxMark {
@@ -362,6 +362,41 @@ mod tests {
         // The middle of the hole, at the height of the top face.
         let hole = project(vp, viewport, Vec3::new(s.center[0], s.height, s.center[1])).unwrap();
         assert_eq!(pick_scene(&scene, vp, viewport, hole), None);
+    }
+
+    /// Diagram nodes are picked on their top face, in the index space after the boxes and
+    /// slices, from every camera, and the floor between them picks nothing.
+    #[test]
+    fn diagram_nodes_are_picked_on_their_top_face() {
+        let scene = scene_of("diagram-basic");
+        let viewport = (800.0, 500.0);
+        assert_eq!(scene.prisms.len(), 4);
+        for kind in [Projection::Orthographic, Projection::Perspective] {
+            for elevation in [20.0, 50.0, 80.0] {
+                for step in 0..8 {
+                    let mut c = Camera {
+                        projection: kind,
+                        ..Camera::default()
+                    };
+                    c.set(Some(step as f32 * 45.0), Some(elevation), Some(2.0));
+                    let vp = c.plot_view_proj(scene.size, viewport);
+                    for (i, p) in scene.prisms.iter().enumerate() {
+                        let [x, z] = p.centre();
+                        let px = project(vp, viewport, Vec3::new(x, p.top, z)).unwrap();
+                        assert_eq!(
+                            pick_scene(&scene, vp, viewport, px),
+                            Some(i),
+                            "node {i} at azimuth {} elevation {elevation} {kind:?}",
+                            step * 45
+                        );
+                    }
+                }
+            }
+        }
+        // The corner of the floor, between nodes: nothing.
+        let vp = Camera::default().plot_view_proj(scene.size, viewport);
+        let corner = project(vp, viewport, Vec3::new(0.01, 0.0, 0.01)).unwrap();
+        assert_eq!(pick_scene(&scene, vp, viewport, corner), None);
     }
 
     fn scene_of(name: &str) -> Scene3d {

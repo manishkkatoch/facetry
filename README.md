@@ -15,6 +15,11 @@ current view can be saved as a PNG (see [Value labels, hover and
 click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Clicking a legend entry
 hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)). Animation comes later.
 
+**Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
+small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
+extruded nodes with edges and labels (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
+the design in [docs/diagrams-3d.md](docs/diagrams-3d.md)).
+
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
 
@@ -452,6 +457,84 @@ The TypeScript types are generated from the Rust definitions, so they cannot dri
 Example specs live in `examples/specs/` and are shared by the Rust snapshot tests, the
 playground and the golden-image test.
 
+## Diagrams from Mermaid
+
+`facetry/diagrams` turns Mermaid text into a chart spec; `Chart` draws it in 3D like any other
+spec (hover, click, orbit and PNG snapshots included):
+
+```ts
+import { Chart, FacetryError } from "facetry";
+import { diagram } from "facetry/diagrams";
+
+try {
+  const spec = await diagram.fromMermaid(`flowchart TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great!]
+    B -->|No| D[Debug] --> B`);
+  const chart = await Chart.create(canvas, spec);
+  chart.on("click", (mark) => console.log(mark?.key)); // a node's id, e.g. "C"
+} catch (e) {
+  const err = FacetryError.from(e);
+  if (err.code === "invalid-diagram") {
+    for (const { line, column, message } of err.diagramIssues) console.log(`${line}:${column} ${message}`);
+  }
+}
+```
+
+The add-on is a separate wasm module of about 80 KB gzip (the parser and the layout, no GPU
+code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
+it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
+that can be stored and drawn later without the add-on.
+
+**Supported Mermaid (`flowchart`, also written `graph`):**
+
+- directions `TB`/`TD`, `BT`, `LR`, `RL`; statements on lines or separated by `;`; `%%` comments;
+- node shapes `[rect]`, `(rounded)`, `([stadium])`, `[(cylinder)]`, `((circle))`, `{diamond}`,
+  `{{hexagon}}`, `[/parallelogram/]`, `[\alt\]`, `[/trapezoid\]`, `[\alt/]`, with quoted labels,
+  `<br>` line breaks and the `#quot;`-style entities;
+- links `-->`, `---`, `-.->`, `-.-`, `==>`, `===`, circle and cross heads (`--o`, `--x`), two-headed
+  links (`<-->`, `o--o`, `x--x`), longer links (`--->` spans an extra rank), and labels
+  (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
+- chains (`a --> b --> c`) and groups (`a & b --> c & d`).
+
+Everything else is an `invalid-diagram` error naming the feature and its line and column
+(subgraphs, `style`/`classDef`/`class`/`:::`, `click`, `linkStyle`, invisible `~~~` links, the
+`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, the `@{ shape: ... }` syntax,
+markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
+never drawn with parts silently missing. Sequence and architecture diagrams are planned
+(milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
+covers printable ASCII; other characters draw as `?`.
+
+**Layout** is layered, like Mermaid's (dagre): cycles are broken depth-first in the order the
+text declares them, ranks are assigned by network simplex (shortest edges), every edge gets a rank
+of its own for its label, nodes are ordered within ranks by barycenter sweeps plus transposition to
+avoid crossings, and Brandes-Köpf assigns coordinates (long edges straight, parents centred over
+children). Edges leave and enter through the real node outline and are smoothed with the same
+B-spline Mermaid uses. Spacing follows Mermaid's defaults (50 between nodes and between ranks). The
+same text always gives the same layout.
+
+**Drawing.** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
+run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
+it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
+orthographic camera looking square on and 50 degrees down, at a distance that fits the diagram
+to the canvas but never draws a layout unit (about a CSS pixel) at more than 1.15 pixels, so a
+small diagram is not blown up; labels are sized for that starting view. A spec `camera` overrides
+any of this, and orbit, zoom and `setCamera` work as for charts. Hover lightens a node; `hover`
+and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
+
+**Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
+`nodes: [{ id, label?, shape?, x, y, width, height, color? }]` (centre and size in layout units,
+y down the page) and `edges: [{ from, to, points: [[x, y], ...], label?, labelPosition?, stroke?:
+"solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" | "cross", tail? }]`, plus
+`fontSize` (default 14). Validation reports problems at their JSON pointer
+(`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
+
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (25 flowcharts in the
+style of real documentation) is laid out by `crates/facetry-diagrams/tests/corpus.rs`, which
+checks that nodes never overlap and output is deterministic and valid, and snapshots per-diagram
+metrics: edge crossings, edges through nodes, label overlaps, bends, total edge length and size.
+Any change to the layout shows in that snapshot's diff, diagram by diagram.
+
 ## Value labels, hover and click
 
 A layer can write each bar's value on it:
@@ -573,13 +656,13 @@ tested against the bars, none writing depth), then text; a legend adds a second 
 
 ```sh
 pnpm install
-pnpm build:wasm            # both modules: wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints sizes
+pnpm build:wasm            # all three modules: wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints sizes
 pnpm -r build              # tsc for the package, tsc + vite build for the playground
 pnpm dev                   # playground dev server; add ?backend=webgl2 to force the fallback
 
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p facetry-core -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+cargo clippy -p facetry-core -p facetry-font -p facetry-render -p facetry-wasm -p facetry-diagrams -p facetry-diagrams-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
 cargo clippy -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl -- -D warnings
 cargo test --workspace     # unit, property (proptest) and snapshot (insta) tests
 
@@ -598,7 +681,11 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
 `?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
-`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...), `?ui=0` (only the chart). 3D examples show the
+`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
+and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
+`mermaid/01-decision`), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
+(anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
+their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
 console.
@@ -611,7 +698,8 @@ console.
   `INSTA_UPDATE=no`, so any difference fails.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
-  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`): Playwright screenshots these examples (3D ones at their
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
+  the diagrams `diagram-01-decision` and `diagram-02-ci-pipeline` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -637,13 +725,21 @@ the glyph widths.
 
 ## Bundle size
 
-The package ships two wasm modules built from the same source (`scripts/build-wasm.sh`, release
-profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` prints these numbers:
+The package ships two chart wasm modules built from the same source, plus the diagrams add-on
+(`scripts/build-wasm.sh`, release profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`);
+`scripts/wasm-size.sh` prints these numbers:
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 669,204 B (654 KiB) | 302,702 B (296 KiB) | 251,204 B (245 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,284,087 B (2231 KiB) | 944,713 B (923 KiB) | 747,655 B (730 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 710,604 B (694 KiB) | 319,196 B (312 KiB) | 264,169 B (258 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,320,338 B (2266 KiB) | 961,769 B (939 KiB) | 760,309 B (742 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 176,872 B (173 KiB) | 79,765 B (78 KiB) | 68,749 B (67 KiB) | only when `facetry/diagrams` lays out a diagram |
+
+Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
+spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
+319,196 B gzip (+16,529, +5.5%), WebGL2 944,952 to 961,769 (+16,817, +1.8%), measured against the
+previous commit with the same toolchain (rustc 1.99). The parser and the layout live in the
+add-on only.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

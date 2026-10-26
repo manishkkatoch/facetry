@@ -272,3 +272,7 @@ fn tiny_viewports_do_not_panic_in_3d() {
         assert_eq!(scene.boxes.len(), 12);
     }
 }
+
+// A hand-laid-out diagram: prisms of four shapes, rims, edges (one dotted, so in dashes) with
+// arrowheads, node and edge labels.
+snapshot3d!(diagram_3d, "diagram-basic");

@@ -64,3 +64,15 @@ for (const name of ["line3d", "combo3d-bar-line"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`${name}.png`);
   });
 }
+
+// Diagrams from Mermaid (facetry/diagrams): a decision with a cycle and labelled edges, and a
+// left-to-right pipeline with a fan-out and a fan-in. Orthographic, square on, edges at the
+// height of the node tops with flat arrowheads.
+for (const name of ["01-decision", "02-ci-pipeline"]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}

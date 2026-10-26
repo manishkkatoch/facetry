@@ -1,6 +1,8 @@
 # 3D diagrams from Mermaid: design
 
-Status: **proposal**, nothing implemented. This describes how Facetry draws dataflow,
+Status: **D1 implemented** (flowcharts: the add-on, layered layout, the core `diagram` spec and its
+rendering); D2 to D5 are still proposals. Where D1 departed from the first draft, this text says
+what was built and why (marked *D1:*). This describes how Facetry draws dataflow,
 architecture and sequence diagrams, written in a subset of [Mermaid](https://mermaid.js.org)
 syntax, as lit 3D scenes with the existing renderer, plus optional animation.
 
@@ -44,18 +46,26 @@ shows charts. Instead the add-on does **only CPU work**:
 * New crate `crates/facetry-diagrams` (parser, layout, routing; no wgpu, no font atlas, only the
   glyph metrics from `facetry-font` for measuring labels) and a wasm-bindgen wrapper built by
   `scripts/build-wasm.sh` as `facetry_diagrams`. Target: under 120 KB gzip.
-* The core gains a `diagram` mark that draws **already laid-out** geometry: positioned nodes
+* The core gains a `diagram` that draws **already laid-out** geometry: positioned nodes
   (with shape, size, label, group), routed edges (polylines or splines with arrowheads),
   platforms for groups, sequence lifelines, activations and fragments. It does no layout, so the
   core cost is limited to the new primitives (below). Target: under 20 KB gzip on the WebGPU
   module, measured with `scripts/wasm-size.sh` like every other milestone.
-* The new mesh primitives (rounded box, cylinder, diamond, hexagon, stadium, tube, cone) are
-  generic, so bars and lines can use them later too.
+  *D1:* `diagram` is a top-level field of the spec (next to `data`, `axes`, `layers`) rather than
+  a `mark: "diagram"` layer: a diagram has no tables, encodings or axes, and nodes and edges with
+  variable-length paths are awkward as columns. A diagram spec has no `data`, `axes`, `layers`
+  or `legend`. D1 added 16.5 KB gzip to the WebGPU module (302,667 to 319,196 bytes).
+* The new mesh primitive is one generic **prism**: any convex outline extruded upward, lit like
+  the bars, with smooth normals for curved outlines. Every node shape is a prism of its outline
+  (*D1:* all eleven shapes, including those planned for D2). *D1:* edges are the existing thick
+  screen-space 3D polylines (crisp at any zoom), not tubes, and arrowheads are flat prisms, not
+  cones.
 * npm: a `facetry/diagrams` subpath export that loads the add-on lazily.
 
 ```ts
 import { Chart, FacetryError } from "facetry";
 import { diagram } from "facetry/diagrams"; // fetches facetry_diagrams.wasm on first use
+// *D1:* the add-on is 79.8 KB gzip.
 
 try {
   const spec = await diagram.fromMermaid(source, { theme: "default" }); // parse + layout
@@ -147,7 +157,11 @@ front. Time runs downwards, as in Mermaid.
 ### Measuring layout quality
 
 A golden corpus in `examples/diagrams/`: about 50 real-world diagrams per type, taken from public
-docs. For every layout a test computes edge crossings, bends, total edge length, bounding area,
+docs. *D1:* 25 flowcharts written in the style of public documentation (CI pipelines, login
+flows, ETL, incident handling, service maps, ...) plus stress cases (cycles, self-loops, fan-out,
+dense graphs, every shape and link type); the comparison with Mermaid's own layout is not
+automated yet (it needs Mermaid in a browser to measure its text), so the metrics are compared
+with the previous layout, diagram by diagram, in the snapshot's diff. For every layout a test computes edge crossings, bends, total edge length, bounding area,
 aspect ratio and label overlaps, records them with `insta`, and fails on regressions; a script
 prints the same metrics for Mermaid's own layout of the corpus for comparison. Rendered results
 go through the existing golden-image test.
@@ -157,12 +171,23 @@ go through the existing golden-image test.
 * **Camera:** orthographic by default, azimuth about 30, elevation about 35 (close to
   isometric): no perspective distortion, which is what documentation wants. Orbit, zoom and
   reset work as in 3D charts; `camera` in the spec overrides.
+  *D1:* azimuth 0 and elevation 50. Turned by any azimuth, the ranks of a layered diagram tilt
+  and stop reading as rows, which costs more legibility than the turn adds depth; the front walls
+  of the nodes give the 3D look. The starting distance fits the diagram to the canvas, but never
+  closer than 1.15 pixels per layout unit, so a small diagram is drawn at about its natural size.
+* *D1:* **edges run at the height of the node tops**, not on the floor. On the floor, an edge
+  arriving at the far side of a node ends hidden behind the node's own height (in a top-to-bottom
+  flowchart, almost every arrowhead); at the top they are visible from any camera above.
 * **Contact shadows:** each node and platform gets a soft blurred shadow quad on the
   surface below it. Cheap, and what most of the "solid" look comes from.
 * **Shapes:** bevelled, rounded, low-poly instanced meshes, the same lighting as 3D bars.
 * **Labels:** node labels on the top face or as camera-facing labels anchored at the node
   (decided by measuring legibility at the default camera); edge labels at the path midpoint,
   lower priority in the existing label-collision pass.
+  *D1:* camera-facing labels anchored at the middle of the top face, sized for the starting
+  camera (labels keep their pixel size while zooming, so they fit their nodes at the start);
+  edge labels at the label rank the layout reserved, with an outline in the background colour.
+  Labels that follow the zoom are a D2 polish item.
 * **Themes:** presets matching Mermaid's `default`, `neutral`, `dark` and `forest`.
 * **Hover and click** report `{ kind: "node" | "edge" | "group" | "message", id }`; hovering a
   dataflow node dims everything outside its upstream and downstream paths.
@@ -188,8 +213,8 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
-| **D1** | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` mark with rounded box, cylinder, diamond, tube and cone; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus |
-| **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, remaining shapes, themes, `diagram.run()` |
+| **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
+| **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, labels that follow the zoom, themes, `diagram.run()` |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
 | **D5** | Animation controller, sequence playback, build-in, flow along edges |

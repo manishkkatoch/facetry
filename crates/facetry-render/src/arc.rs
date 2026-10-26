@@ -400,4 +400,69 @@ mod tests {
         assert_eq!(std::mem::size_of::<Vertex3>(), 44);
         assert_eq!(std::mem::offset_of!(Vertex3, hover), 40);
     }
+
+    fn prism(outline: &[[f32; 2]], smooth: bool) -> PrismMark {
+        PrismMark {
+            key: "p".into(),
+            color: Color::linear(1.0, 0.0, 0.0, 1.0),
+            outline: outline.to_vec(),
+            base: 0.0,
+            top: 0.5,
+            smooth,
+            node: 0,
+        }
+    }
+
+    #[test]
+    fn a_prism_has_a_top_and_a_wall_per_side_facing_out() {
+        // A square, wound both ways.
+        let square = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        for outline in [square.to_vec(), square.iter().rev().copied().collect()] {
+            let mut v = Vec::new();
+            super::prism(&prism(&outline, false), [1.0; 4], &mut v);
+            // 2 top triangles + 4 walls of 2.
+            assert_eq!(v.len(), (2 + 4 * 2) * 3);
+            for t in v.chunks_exact(3) {
+                let n = t[0].normal;
+                if n[1] > 0.5 {
+                    assert!(t.iter().all(|v| v.pos[1] == 0.5), "top at the top");
+                    continue;
+                }
+                // A wall's normal points away from the centre (0.5, 0.5).
+                let mid = t.iter().fold([0.0f32; 2], |m, v| {
+                    [m[0] + v.pos[0] / 3.0, m[1] + v.pos[2] / 3.0]
+                });
+                assert!(n[0] * (mid[0] - 0.5) + n[2] * (mid[1] - 0.5) > 0.0, "{n:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_smooth_prism_blends_its_normals() {
+        let n = 24;
+        let circle: Vec<[f32; 2]> = (0..n)
+            .map(|k| {
+                let a = TAU * k as f32 / n as f32;
+                [a.cos(), a.sin()]
+            })
+            .collect();
+        let mut v = Vec::new();
+        super::prism(&prism(&circle, true), [1.0; 4], &mut v);
+        // On a circle the blended normal at a corner is the radial direction itself.
+        for vert in v.iter().filter(|v| v.normal[1] == 0.0) {
+            let r = [vert.pos[0], vert.pos[2]];
+            let dot = r[0] * vert.normal[0] + r[1] * vert.normal[2];
+            assert!(dot > 0.999, "{vert:?}");
+        }
+    }
+
+    #[test]
+    fn degenerate_prisms_draw_nothing() {
+        let mut v = Vec::new();
+        super::prism(&prism(&[[0.0, 0.0], [1.0, 0.0]], false), [1.0; 4], &mut v);
+        let mut flat = prism(&[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], false);
+        flat.top = 0.0;
+        super::prism(&flat, [1.0; 4], &mut v);
+        assert!(v.is_empty());
+    }
 }
