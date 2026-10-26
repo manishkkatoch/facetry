@@ -17,7 +17,9 @@ use crate::labels::{LabelPlan, SLOTS};
 use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
 use crate::pick;
 use crate::rect::{self, RectPipeline};
-use crate::solid::{self, BoxPipeline, LinePipeline, SlicePipeline};
+use crate::solid::{
+    self, BoxPipeline, CurtainPipeline, LinePipeline, PointPipeline, SlicePipeline,
+};
 use crate::text::{
     self, Atlas, Glyph3Instance, GlyphInstance, NO_SLOT, Text3dPipeline, TextPipeline,
 };
@@ -31,8 +33,7 @@ struct PassSpec {
     size: (u32, u32),
 }
 
-/// How much larger than its normal marker a hovered line point is drawn.
-const HOVER_MARKER_SCALE: f32 = 1.5;
+use crate::solid::HOVER_MARKER_SCALE;
 
 /// Antialiasing quality we ask for; dropped to 1 if the device cannot do it.
 const MSAA_SAMPLES: u32 = 4;
@@ -102,7 +103,13 @@ struct Solid {
     label_states: wgpu::Buffer,
     boxes: BoxPipeline,
     slices: SlicePipeline,
+    /// Gridlines, axis edges and ticks.
     lines: LinePipeline,
+    /// Line layers' series (flat-ended segments; the joins are in `points`), the translucent
+    /// curtains under them, and their round joins and point markers.
+    data_lines: LinePipeline,
+    curtains: CurtainPipeline,
+    points: PointPipeline,
     text: Text3dPipeline,
 }
 
@@ -162,8 +169,12 @@ pub struct Renderer {
     /// 2D: the line points and pie slices, kept for what is drawn over them while hovered.
     point_marks: Vec<PointMark>,
     arc_marks: Vec<ArcMark>,
-    /// 3D: how many of the marks are boxes; the rest are pie slices.
+    /// 3D: how many of the marks are boxes; then come the pie slices, then the line points.
     box_count: usize,
+    slice_count: usize,
+    /// 3D: each line point's marker diameter and whether it is drawn at rest, to resize it
+    /// when hovered.
+    point_sizes: Vec<(f32, bool)>,
     /// 3D: the part of the canvas the plot is drawn in (`[x, y, w, h]`, device pixels; `None`
     /// is all of it: a legend takes a band), and whether a 2D overlay (the legend) is drawn
     /// over the finished picture in a second pass.
@@ -322,6 +333,8 @@ impl Renderer {
             point_marks: Vec::new(),
             arc_marks: Vec::new(),
             box_count: 0,
+            slice_count: 0,
+            point_sizes: Vec::new(),
             plot_rect: None,
             has_overlay: false,
             mesh,
@@ -504,6 +517,9 @@ impl Renderer {
                 boxes: BoxPipeline::new(device, format, samples, &globals),
                 slices: SlicePipeline::new(device, format, samples, &globals),
                 lines: LinePipeline::new(device, format, samples, &globals),
+                data_lines: LinePipeline::new(device, format, samples, &globals),
+                curtains: CurtainPipeline::new(device, format, samples, &globals),
+                points: PointPipeline::new(device, format, samples, &globals),
                 text: Text3dPipeline::new(device, atlas, format, samples, &globals, &label_states),
                 globals,
                 label_states,
@@ -521,6 +537,27 @@ impl Renderer {
             &self.queue,
             &solid::line_instances(scene, encode),
         );
+        solid.data_lines.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::polyline_instances(scene, encode),
+        );
+        solid.curtains.set(
+            &self.device,
+            &self.queue,
+            &solid::curtain_vertices(scene, encode),
+        );
+        solid.points.set(
+            &self.device,
+            &self.queue,
+            &solid::join_instances(scene, encode),
+            &solid::marker_instances(scene, encode, encode(scene.background)),
+        );
+        self.point_sizes = scene
+            .points
+            .iter()
+            .map(|p| (p.size_px, p.visible))
+            .collect();
         let font = FontMetrics::inter();
         let (plan, slots) = LabelPlan::new(scene, font);
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
@@ -584,8 +621,9 @@ impl Renderer {
         self.label_plan = Some(plan);
         self.label_key = None;
         self.hover = None;
-        self.mark_count = scene.boxes.len() + scene.slices.len();
+        self.mark_count = scene.mark_count();
         self.box_count = scene.boxes.len();
+        self.slice_count = scene.slices.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -609,25 +647,29 @@ impl Renderer {
         let previous = std::mem::replace(&mut self.hover, mark);
         let font = FontMetrics::inter();
         if let (Some(solid), Some(_)) = (&mut self.solid, self.box_size) {
-            // Marks 0..box_count are boxes; the rest are pie slices.
-            if let Some(p) = previous {
-                if p < self.box_count {
-                    solid.boxes.set_hover(&self.queue, p, false);
-                } else {
+            // Marks 0..box_count are boxes, then come the pie slices, then the line points.
+            let (boxes, slices) = (self.box_count, self.slice_count);
+            let light = |solid: &mut Solid, mark: usize, on: bool| {
+                if mark < boxes {
+                    solid.boxes.set_hover(&self.queue, mark, on);
+                } else if mark < boxes + slices {
+                    solid.slices.set_hover(&self.queue, mark - boxes, on);
+                } else if let Some(&(size_px, visible)) =
+                    self.point_sizes.get(mark - boxes - slices)
+                {
+                    // A point's marker grows (and appears, if it was not drawn).
+                    let (size, inner) = solid::marker_sizes(size_px, visible, on);
                     solid
-                        .slices
-                        .set_hover(&self.queue, p - self.box_count, false);
+                        .points
+                        .set_marker(&self.queue, mark - boxes - slices, size, inner);
                 }
+            };
+            if let Some(p) = previous {
+                light(solid, p, false);
             }
             let mut instances = Vec::new();
             if let Some(m) = mark {
-                if m < self.box_count {
-                    solid.boxes.set_hover(&self.queue, m, true);
-                } else {
-                    solid
-                        .slices
-                        .set_hover(&self.queue, m - self.box_count, true);
-                }
+                light(solid, m, true);
                 if let Some(l) = self.hover_labels_3d.iter().find(|l| l.mark == m) {
                     text::layout_glyphs_3d(&l.text, l.color, NO_SLOT, font, &mut instances);
                     if l.text.halo {
@@ -835,6 +877,11 @@ impl Renderer {
                 solid.boxes.draw(&mut pass);
                 solid.slices.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
+                // Line layers: the curtains first (translucent, under everything of the
+                // line), then the segments, then the round joins and the markers on top.
+                solid.curtains.draw(&mut pass);
+                solid.data_lines.draw(&mut pass, &self.quad);
+                solid.points.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,
                 // and a label hidden behind a bar is worse than one drawn over it.
                 solid.text.draw(&mut pass, &self.quad, overlay);

@@ -131,6 +131,8 @@ snapshot3d!(negative_values_3d, "bar3d-negative");
 snapshot3d!(value_labels_hover_3d, "bar3d-labels");
 snapshot3d!(stacked_3d, "bar3d-stacked");
 snapshot3d!(pie_3d, "pie3d");
+snapshot3d!(lines_3d, "line3d");
+snapshot3d!(combo_bars_and_lines_3d, "combo3d-bar-line");
 
 #[test]
 fn grid_bars_are_square_boxes_in_the_right_cells() {

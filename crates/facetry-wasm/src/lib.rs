@@ -407,7 +407,7 @@ impl Chart {
         hit.map_or(-1, |i| i as i32)
     }
 
-    /// Highlights bar `mark` (an index from `pick`; `-1` for none) and shows its value label
+    /// Highlights mark `mark` (an index from `pick`; `-1` for none) and shows its value label
     /// if the layer's `label.show` is `"hover"`. Call `render` afterwards.
     #[wasm_bindgen(js_name = setHover)]
     pub fn set_hover(&mut self, mark: i32) {
@@ -423,6 +423,7 @@ impl Chart {
         };
         let (key, layer, row, sum) = match &self.scene {
             SceneKind::TwoD(s) => s.mark(mark).map(|m| (m.key, m.layer, m.row, m.sum)),
+            // Boxes, then pie slices, then line points.
             SceneKind::ThreeD(s) => s
                 .boxes
                 .get(mark)
@@ -432,6 +433,12 @@ impl Chart {
                     s.slices
                         .get(i)
                         .map(|p| (p.key.as_str(), p.layer, p.row, p.sum))
+                        .or_else(|| {
+                            let i = i.checked_sub(s.slices.len())?;
+                            s.points
+                                .get(i)
+                                .map(|p| (p.key.as_str(), p.layer, p.row, None))
+                        })
                 }),
         }
         .map_or((None, 0, 0, None), |(k, l, r, s)| (Some(k), l, r, s));
@@ -468,7 +475,9 @@ impl Chart {
                         let p = s.slices.iter().find(|p| p.key == key)?;
                         let (a0, a1) = p.span();
                         Some(p.point((a0 + a1) / 2.0, (p.inner + p.outer) / 2.0, p.height))
-                    });
+                    })
+                    // A line's data point.
+                    .or_else(|| s.points.iter().find(|p| p.key == key).map(|p| p.pos));
                 centre.and_then(|c| self.renderer.project_3d(c))
             }
         };

@@ -30,8 +30,10 @@ pub const BOX_HOVER_OFFSET: usize = std::mem::offset_of!(BoxInstance, hover);
 pub struct LineInstance {
     pub a: [f32; 3],
     pub width_px: f32,
+    /// `1.0`: the ends stick out half a width (square caps), so grid lines that meet at a
+    /// corner leave no notch. `0.0`: flat ends, for data lines whose joins are round discs.
     pub b: [f32; 3],
-    pub _pad: f32,
+    pub cap: f32,
     pub color: [f32; 4],
     pub show: [f32; 2],
 }
@@ -59,11 +61,156 @@ pub fn line_instances(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Ve
             a: l.a,
             width_px: l.width_px,
             b: l.b,
-            _pad: 0.0,
+            cap: 1.0,
             color: encode(l.color),
             show: show_range(l.azimuths),
         })
         .collect()
+}
+
+/// Every segment of every run of every 3D polyline (a line layer's series), with flat ends:
+/// the joins are the discs of [`join_instances`], which round every corner and end alike.
+pub fn polyline_instances(
+    scene: &Scene3d,
+    encode: impl Fn(Color) -> [f32; 4],
+) -> Vec<LineInstance> {
+    let mut out = Vec::new();
+    for line in &scene.polylines {
+        let color = encode(line.color);
+        for run in &line.runs {
+            for pair in run.windows(2) {
+                out.push(LineInstance {
+                    a: pair[0],
+                    width_px: line.width_px,
+                    b: pair[1],
+                    cap: 0.0,
+                    color,
+                    show: show_range(None),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// One billboard disc as wide as the line at every vertex of every run. Two thick segments
+/// that meet at an angle leave a wedge-shaped gap on the outside of the bend (square caps only
+/// fill it exactly at 90 degrees); a disc of the line's own width centred on the vertex covers
+/// that wedge at any angle, in screen space like the segments, and also gives the line round
+/// ends and a run of one point its dot. Same opaque colour, so overlaps do not show.
+pub fn join_instances(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec<PointInstance> {
+    let mut out = Vec::new();
+    for line in &scene.polylines {
+        let color = encode(line.color);
+        for p in line.runs.iter().flatten() {
+            out.push(PointInstance::solid(*p, line.width_px, color));
+        }
+    }
+    out
+}
+
+/// How much larger than its normal marker a hovered line point is drawn (the 2D value).
+pub const HOVER_MARKER_SCALE: f32 = 1.5;
+
+/// A marker's fill diameter inside its rim of background colour, for a marker `size` pixels
+/// across: the rim is a fifth of the radius (at least a pixel) thick, as in 2D.
+fn marker_inner(size: f32) -> f32 {
+    let radius = size / 2.0;
+    let ring = (radius * 0.22).max(1.0);
+    2.0 * (radius - ring).max(radius * 0.4)
+}
+
+/// A disc at `size` (0 hides it) for a hovered or resting marker.
+pub fn marker_sizes(size_px: f32, visible: bool, hovered: bool) -> (f32, f32) {
+    let size = match (hovered, visible) {
+        (true, _) => size_px * HOVER_MARKER_SCALE,
+        (false, true) => size_px,
+        (false, false) => 0.0,
+    };
+    (size, marker_inner(size))
+}
+
+/// One marker per data point, in the scene's order (so a mark index maps to an instance). A
+/// point whose layer has no `point` markers has size 0 until it is hovered.
+pub fn marker_instances(
+    scene: &Scene3d,
+    encode: impl Fn(Color) -> [f32; 4],
+    rim: [f32; 4],
+) -> Vec<PointInstance> {
+    scene
+        .points
+        .iter()
+        .map(|p| {
+            let (size, inner) = marker_sizes(p.size_px, p.visible, false);
+            PointInstance {
+                pos: p.pos,
+                size,
+                color: encode(p.color),
+                rim,
+                inner,
+            }
+        })
+        .collect()
+}
+
+/// A disc facing the viewer, anchored at a world point: position, diameter in pixels, the
+/// colour of the fill (inside `inner` pixels across) and of the rim (outside it).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct PointInstance {
+    pub pos: [f32; 3],
+    pub size: f32,
+    pub color: [f32; 4],
+    pub rim: [f32; 4],
+    pub inner: f32,
+}
+
+/// Byte offsets of [`PointInstance::size`] and [`PointInstance::inner`], for hover patches.
+pub const POINT_SIZE_OFFSET: usize = std::mem::offset_of!(PointInstance, size);
+pub const POINT_INNER_OFFSET: usize = std::mem::offset_of!(PointInstance, inner);
+
+impl PointInstance {
+    /// A plain disc with no rim.
+    fn solid(pos: [f32; 3], size: f32, color: [f32; 4]) -> Self {
+        Self {
+            pos,
+            size,
+            color,
+            rim: color,
+            inner: size,
+        }
+    }
+}
+
+/// A vertex of a curtain: a world position and a colour with its opacity.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct CurtainVertex {
+    pub pos: [f32; 3],
+    pub color: [f32; 4],
+}
+
+/// The curtains (`style.area`) of the polylines that have one: for every segment, a vertical
+/// quad from the line down to its baseline (two triangles), translucent. Later series are
+/// emitted first, so with the first series on the front row the farther curtains are blended
+/// first and the nearer ones over them (right for the default camera).
+pub fn curtain_vertices(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec<CurtainVertex> {
+    let mut out = Vec::new();
+    for line in scene.polylines.iter().rev() {
+        let Some(base) = line.area else { continue };
+        let mut color = encode(line.color);
+        color[3] *= facetry_core::scene3d::AREA_ALPHA;
+        for run in &line.runs {
+            for pair in run.windows(2) {
+                let (p, q) = (pair[0], pair[1]);
+                let (pb, qb) = ([p[0], base, p[2]], [q[0], base, q[2]]);
+                for pos in [p, q, qb, p, qb, pb] {
+                    out.push(CurtainVertex { pos, color });
+                }
+            }
+        }
+    }
+    out
 }
 
 /// A vertex of the shared unit cube.
@@ -482,6 +629,170 @@ impl LinePipeline {
     }
 }
 
+/// Discs that face the viewer, anchored in the world: the round joins of 3D lines and their
+/// point markers. Two buffers drawn in order (joins, then markers) so markers always sit on
+/// top. Depth-tested against the bars but not written, like the lines.
+#[derive(Debug)]
+pub struct PointPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    joins: InstanceBuffer,
+    markers: InstanceBuffer,
+}
+
+impl PointPipeline {
+    pub fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        samples: u32,
+        globals: &wgpu::Buffer,
+    ) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("point3d shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/point3d.wgsl").into()),
+        });
+        let (layout, bind_group) = globals_only(device, "point3d", globals);
+        let instance_attrs = wgpu::vertex_attr_array![
+            1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32
+        ];
+        let pipeline = pipeline(
+            device,
+            &PipelineDesc {
+                label: "point3d pipeline",
+                module: &module,
+                layout: &layout,
+                buffers: &[
+                    Some(QUAD_LAYOUT),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<PointInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attrs,
+                    }),
+                ],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                cull_mode: None,
+                depth_write: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                blend: wgpu::BlendState::ALPHA_BLENDING,
+            },
+            format,
+            samples,
+        );
+        Self {
+            pipeline,
+            bind_group,
+            joins: InstanceBuffer::new("line joins"),
+            markers: InstanceBuffer::new("point markers 3d"),
+        }
+    }
+
+    pub fn set(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        joins: &[PointInstance],
+        markers: &[PointInstance],
+    ) {
+        self.joins.set(device, queue, joins);
+        self.markers.set(device, queue, markers);
+    }
+
+    /// Resizes marker `index` (an index into the slice given to `set`) to a hovered or
+    /// resting look: a diameter and the diameter of its fill.
+    pub fn set_marker(&self, queue: &wgpu::Queue, index: usize, size: f32, inner: f32) {
+        let base = index * std::mem::size_of::<PointInstance>();
+        self.markers.patch(
+            queue,
+            (base + POINT_SIZE_OFFSET) as u64,
+            bytemuck::bytes_of(&size),
+        );
+        self.markers.patch(
+            queue,
+            (base + POINT_INNER_OFFSET) as u64,
+            bytemuck::bytes_of(&inner),
+        );
+    }
+
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
+        for buffer in [&self.joins, &self.markers] {
+            let Some((buffer, count)) = buffer.bound() else {
+                continue;
+            };
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_vertex_buffer(0, quad.slice(..));
+            pass.set_vertex_buffer(1, buffer.slice(..));
+            pass.draw(0..4, 0..count);
+        }
+    }
+}
+
+/// The translucent curtains under 3D lines (`style.area`): plain coloured triangles in world
+/// space, blended over what is already drawn, tested against the bars but not written (so
+/// curtains never hide the lines and bars behind them, only tint them).
+#[derive(Debug)]
+pub struct CurtainPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    vertices: InstanceBuffer,
+}
+
+impl CurtainPipeline {
+    pub fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        samples: u32,
+        globals: &wgpu::Buffer,
+    ) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("curtain3d shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/curtain3d.wgsl").into()),
+        });
+        let (layout, bind_group) = globals_only(device, "curtain3d", globals);
+        let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4];
+        let pipeline = pipeline(
+            device,
+            &PipelineDesc {
+                label: "curtain3d pipeline",
+                module: &module,
+                layout: &layout,
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<CurtainVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attrs,
+                })],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                // Seen from either side.
+                cull_mode: None,
+                depth_write: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                blend: wgpu::BlendState::ALPHA_BLENDING,
+            },
+            format,
+            samples,
+        );
+        Self {
+            pipeline,
+            bind_group,
+            vertices: InstanceBuffer::new("curtain vertices"),
+        }
+    }
+
+    pub fn set(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, vertices: &[CurtainVertex]) {
+        self.vertices.set(device, queue, vertices);
+    }
+
+    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        let Some((buffer, count)) = self.vertices.bound() else {
+            return;
+        };
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, buffer.slice(..));
+        pass.draw(0..count, 0..1);
+    }
+}
+
 /// A bind group layout with just the globals uniform, and the group built from it.
 pub fn globals_only(
     device: &wgpu::Device,
@@ -549,10 +860,98 @@ mod tests {
         }
     }
 
+    fn lines_scene(area: bool) -> Scene3d {
+        let json = include_str!("../../../examples/specs/line3d.json").replace(
+            r#""strokeWidth": 3"#,
+            if area {
+                r#""strokeWidth": 3, "area": true"#
+            } else {
+                r#""strokeWidth": 3"#
+            },
+        );
+        facetry_core::build_scene_3d(
+            &facetry_core::parse_spec_json(&json).unwrap(),
+            (800, 500),
+            1.0,
+            facetry_font::FontMetrics::inter(),
+        )
+    }
+
+    fn identity(c: Color) -> [f32; 4] {
+        c.to_array()
+    }
+
+    #[test]
+    fn a_polyline_is_flat_ended_segments_with_a_round_disc_at_every_vertex() {
+        let scene = lines_scene(false);
+        // Three series of six points: five segments each, six discs each.
+        let segments = polyline_instances(&scene, identity);
+        assert_eq!(segments.len(), 15);
+        assert!(segments.iter().all(|l| l.cap == 0.0 && l.width_px == 3.0));
+        assert!(segments.iter().all(|l| l.show == [0.0, 360.0]));
+        let joins = join_instances(&scene, identity);
+        assert_eq!(joins.len(), 18);
+        // As wide as the line, solid (no rim), at the run's own vertices.
+        assert!(
+            joins
+                .iter()
+                .all(|j| j.size == 3.0 && j.inner == 3.0 && j.rim == j.color)
+        );
+        assert_eq!(joins[0].pos, scene.polylines[0].runs[0][0]);
+        // Grid lines keep their square caps.
+        assert!(
+            line_instances(&scene, identity)
+                .iter()
+                .all(|l| l.cap == 1.0)
+        );
+    }
+
+    #[test]
+    fn markers_follow_the_points_and_grow_when_hovered() {
+        let scene = lines_scene(false);
+        let rim = [1.0; 4];
+        let markers = marker_instances(&scene, identity, rim);
+        assert_eq!(markers.len(), scene.points.len());
+        assert!(markers.iter().all(|m| m.size == 8.0 && m.rim == rim));
+        assert!(markers.iter().all(|m| m.inner < m.size && m.inner > 0.0));
+        let (rest, _) = marker_sizes(8.0, true, false);
+        let (hover, inner) = marker_sizes(8.0, true, true);
+        assert_eq!((rest, hover), (8.0, 12.0));
+        assert!(inner < hover);
+        // A point without a marker is not drawn until it is hovered.
+        assert_eq!(marker_sizes(8.0, false, false).0, 0.0);
+        assert_eq!(marker_sizes(8.0, false, true).0, 12.0);
+    }
+
+    #[test]
+    fn curtains_are_translucent_quads_from_the_line_to_its_baseline_far_rows_first() {
+        assert!(curtain_vertices(&lines_scene(false), identity).is_empty());
+        let scene = lines_scene(true);
+        let vertices = curtain_vertices(&scene, identity);
+        // 15 segments, two triangles each.
+        assert_eq!(vertices.len(), 15 * 6);
+        assert!(
+            vertices
+                .iter()
+                .all(|v| v.color[3] < 0.5 && v.color[3] > 0.0)
+        );
+        // Every quad's bottom vertices are on the baseline, its top ones on the line.
+        for quad in vertices.chunks(6) {
+            let on_base = quad.iter().filter(|v| v.pos[1] == 0.0).count();
+            assert_eq!(on_base, 3, "{quad:?}");
+        }
+        // The last series (the farthest row) is drawn first.
+        let last = scene.polylines.last().unwrap();
+        assert_eq!(vertices[0].pos, last.runs[0][0]);
+    }
+
     #[test]
     fn instance_structs_match_their_vertex_layouts() {
         assert_eq!(std::mem::size_of::<BoxInstance>(), 44);
         assert_eq!(BOX_HOVER_OFFSET, 40);
         assert_eq!(std::mem::size_of::<LineInstance>(), 56);
+        assert_eq!(std::mem::size_of::<PointInstance>(), 52);
+        assert_eq!((POINT_SIZE_OFFSET, POINT_INNER_OFFSET), (12, 48));
+        assert_eq!(std::mem::size_of::<CurtainVertex>(), 28);
     }
 }

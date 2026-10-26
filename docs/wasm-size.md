@@ -491,3 +491,27 @@ the mesh and slice pipelines, ray tests for picking and label occlusion, and the
 
 Not done, in order of expected gain: a hand-written spec reader; sharing the key/label code of
 the bar and line builders; and dropping `serde_path_to_error` for a cheaper error path.
+
+
+## Legend toggle and lines in 3D
+
+Same pipeline (`scripts/build-wasm.sh`), one measurement per feature of the
+`legend-toggle-3d-lines` branch:
+
+| Phase | WebGPU raw | WebGPU gzip | Δ gzip | WebGL2 gzip | Δ gzip |
+|---|---:|---:|---:|---:|---:|
+| before (end of M2) | 727,543 | 324,277 | | 967,304 | |
+| 1 click a legend entry to hide a series (hit rectangles, hidden set, `setSeriesVisible`) | 739,038 | 329,662 | +5,385 | 971,651 | +4,347 |
+| 2 lines in 3D (polylines and points in `Scene3d`, numeric 3D x axis, disc and curtain pipelines, picking and label rules) | 769,096 | 339,694 | +10,032 | 982,766 | +11,115 |
+
+Total: +15,417 B gzip for the WebGPU module (+4.8%), +15,462 for the WebGL2 one (+1.6%). Brotli:
+266,299 to 279,010 (WebGPU), 762,029 to 774,598 (WebGL2). Nothing new in the dependency tree.
+
+Where it goes: the hiding feature is mostly the `Cow`-masked columns and per-layer category
+filtering in `resolve_layer`/`resolve_arc` (plain code, no new generics worth mentioning), the
+legend's hit rectangles, and four small wasm-bindgen exports (`setSeriesVisible`, `hiddenSeries`,
+`legendPick`, `legendPosition`). The 3D lines are the larger part: the 3D builder grew a line
+branch and a numeric x axis (it now matches the 2D builder's two x kinds), the renderer two more
+pipelines (billboard discs and the curtain, each with a ~40-line WGSL shader that on the WebGL2
+module also pays for naga's translation of it) and the label planner an overlap rule. The shader
+count is why the WebGL2 delta of the second phase is a little above the WebGPU one.

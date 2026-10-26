@@ -54,3 +54,13 @@ test("3D pie matches its golden image (webgl2)", async ({ page }) => {
   await page.mouse.move(790, 495);
   await expect(page.locator("#chart")).toHaveScreenshot("pie3d.png");
 });
+
+// Lines in 3D: three series on three depth rows with markers, and bars with a line per row.
+for (const name of ["line3d", "combo3d-bar-line"]) {
+  test(`3D ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&example=${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`${name}.png`);
+  });
+}

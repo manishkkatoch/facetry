@@ -373,7 +373,8 @@ pub struct ScaleSpec {
 pub enum Mark {
     /// Rectangles from a baseline (see [`Position`] for how they share an x category).
     Bar,
-    /// One polyline per series (2D only).
+    /// One polyline per series, flat in 2D and in world space in 3D (where `encoding.z` puts a
+    /// series on a depth row).
     Line,
     /// Pie and donut slices (`encoding.theta`), flat in 2D and extruded in 3D. No axes.
     Arc,
@@ -411,7 +412,7 @@ pub struct LayerSpec {
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub position: Position,
     /// Line layers: markers on the data points, `true` or `{ "size": px }`. Default: none
-    /// (the points still react to hover).
+    /// (the points still react to hover). In 3D the markers are discs that face the viewer.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub point: Option<PointSpec>,
@@ -472,6 +473,11 @@ pub struct StyleSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub stroke_width: Option<f64>,
+    /// Lines in 3D: a translucent vertical "curtain" from the line down to the baseline, which
+    /// helps read depth. 3D line layers only.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub area: Option<bool>,
     /// Arcs: the hole's radius as a fraction of the outer radius, `0` (a pie, the default) up
     /// to but not including `1`. Above 0 it is a donut.
     #[serde(default)]

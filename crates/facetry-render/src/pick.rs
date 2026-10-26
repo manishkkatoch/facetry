@@ -94,8 +94,43 @@ pub fn ray_plane_y(ray: &Ray, height: f32) -> Option<f32> {
     (t >= 0.0).then_some(t)
 }
 
+/// The line point to pick at pixel `px`, as `(index into scene.points, distance)`: every point
+/// whose projection is within `scene.pick_radius` pixels of the pointer and that no box hides
+/// is a candidate, and **the one nearest the camera wins** (so when points overlap on screen
+/// the front one is picked, even if a back one is a pixel or two closer to the pointer).
+///
+/// A point is hidden when its pixel ray enters a box before reaching the point (with the same
+/// slack the labels use): hovering a bar in front of a point must not pick the point behind it.
+pub fn pick_point(
+    scene: &Scene3d,
+    view_proj: Mat4,
+    viewport: (f32, f32),
+    px: (f32, f32),
+) -> Option<(usize, f32)> {
+    let radius2 = scene.pick_radius * scene.pick_radius;
+    scene
+        .points
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let pos = Vec3::from(p.pos);
+            let (x, y) = project(view_proj, viewport, pos)?;
+            if (x - px.0).powi(2) + (y - px.1).powi(2) > radius2 {
+                return None;
+            }
+            // Looking at the point itself, is a box in the way?
+            let ray = ray_through_pixel(view_proj, viewport, (x, y))?;
+            let distance = (pos - ray.origin).dot(ray.dir);
+            let hidden = nearest_hit(&scene.boxes, &ray)
+                .is_some_and(|(_, t)| t < distance - crate::labels::POINT_SLACK);
+            (!hidden).then_some((i, distance))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
 /// The mark under pixel `px` of a 3D scene, in the scene's mark index space: the bars first,
-/// then the pie slices. Bars are hit anywhere on their box; a slice is hit **on its top
+/// then the pie slices, then the line points. A visible line point within reach of the pointer
+/// wins over what is behind it, as in 2D (see [`pick_point`]). Bars are hit anywhere on their box; a slice is hit **on its top
 /// face** only (the ray meets the plane of the top and the point lies on the slice's
 /// footprint), so the sides of an extruded pie are not pickable: from the elevations the
 /// camera allows, the top is nearly always what the pointer is over. The nearest hit wins.
@@ -105,6 +140,9 @@ pub fn pick_scene(
     viewport: (f32, f32),
     px: (f32, f32),
 ) -> Option<usize> {
+    if let Some((i, _)) = pick_point(scene, view_proj, viewport, px) {
+        return Some(scene.boxes.len() + scene.slices.len() + i);
+    }
     let ray = ray_through_pixel(view_proj, viewport, px)?;
     let bar = nearest_hit(&scene.boxes, &ray);
     let slice = scene
@@ -317,6 +355,152 @@ mod tests {
         // The middle of the hole, at the height of the top face.
         let hole = project(vp, viewport, Vec3::new(s.center[0], s.height, s.center[1])).unwrap();
         assert_eq!(pick_scene(&scene, vp, viewport, hole), None);
+    }
+
+    fn scene_of(name: &str) -> Scene3d {
+        let json = std::fs::read_to_string(format!(
+            "{}/../../examples/specs/{name}.json",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        build_scene_3d(
+            &parse_spec_json(&json).unwrap(),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        )
+    }
+
+    /// A line point is found at its own projection from every side; where several points
+    /// overlap on screen the one picked is the one nearest the camera.
+    #[test]
+    fn line_points_are_picked_where_they_are_drawn_after_orbiting() {
+        let scene = scene_of("line3d");
+        let viewport = (800.0, 500.0);
+        let first_point = scene.boxes.len() + scene.slices.len();
+        for elevation in [10.0, 30.0, 60.0, 80.0] {
+            for step in 0..12 {
+                let mut c = Camera::default();
+                c.set(Some(step as f32 * 30.0), Some(elevation), None);
+                let vp = c.plot_view_proj(scene.size, viewport);
+                let eye = c.eye(
+                    Camera::plot_frame(scene.size).0,
+                    Camera::plot_frame(scene.size).1,
+                );
+                for (i, p) in scene.points.iter().enumerate() {
+                    let px = project(vp, viewport, Vec3::from(p.pos)).unwrap();
+                    let got = pick_scene(&scene, vp, viewport, px)
+                        .unwrap_or_else(|| panic!("nothing at point {i}"));
+                    let j = got.checked_sub(first_point).expect("a point, not a bar");
+                    // Either this point, or another within reach that is nearer the camera.
+                    let (a, b) = (Vec3::from(p.pos), Vec3::from(scene.points[j].pos));
+                    let (qx, qy) = project(vp, viewport, b).unwrap();
+                    assert!(
+                        (qx - px.0).hypot(qy - px.1) <= scene.pick_radius + 1e-3,
+                        "az {} el {elevation}: point {i} picked {j}",
+                        step * 30
+                    );
+                    assert!(b.distance(eye) <= a.distance(eye) + 1e-3);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_point_nearest_the_camera_wins_even_if_another_is_closer_to_the_pointer() {
+        let mut scene = scene_of("line3d");
+        scene.points.truncate(1);
+        let viewport = (800.0, 500.0);
+        let c = Camera::default();
+        let vp = c.plot_view_proj(scene.size, viewport);
+        let far = Vec3::from(scene.points[0].pos);
+        let px = project(vp, viewport, far).unwrap();
+        // A second point on the same ray, nearer the camera, drawn 6 px to the side.
+        let ray = ray_through_pixel(vp, viewport, (px.0 + 6.0, px.1)).unwrap();
+        let near = ray.origin + ray.dir * ((far - ray.origin).dot(ray.dir) - 0.2);
+        let mut second = scene.points[0].clone();
+        second.pos = near.to_array();
+        scene.points.push(second);
+        let near_px = project(vp, viewport, near).unwrap();
+        assert!((near_px.0 - px.0).abs() > 1.0 && (near_px.0 - px.0).abs() < scene.pick_radius);
+        // Pointer exactly on the far point: the near one (within reach) is picked.
+        assert_eq!(pick_scene(&scene, vp, viewport, px), Some(1));
+        // Pointer beyond reach of the near point but on the far one: the far one.
+        let off = (px.0 - scene.pick_radius + 0.5, px.1);
+        assert!(
+            (project(vp, viewport, near).unwrap().0 - off.0).abs() > scene.pick_radius,
+            "the near point is out of reach from here"
+        );
+        assert_eq!(pick_scene(&scene, vp, viewport, off), Some(0));
+        // Nothing near any point: nothing.
+        assert_eq!(pick_scene(&scene, vp, viewport, (5.0, 5.0)), None);
+    }
+
+    /// A point inside a bar, or behind one, is not hoverable: what the viewer sees is the bar.
+    #[test]
+    fn a_point_hidden_by_a_bar_is_not_picked_but_the_bar_is() {
+        let json = std::fs::read_to_string(format!(
+            "{}/../../examples/specs/combo3d-bar-line.json",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        // Targets far below the bars: every point is inside the bar of its own cell.
+        let open = json.find("\"target\": [").unwrap() + "\"target\": [".len();
+        let close = open + json[open..].find(']').unwrap();
+        let low = format!(
+            "{}{}{}",
+            &json[..open],
+            ["5"; 12].join(", "),
+            &json[close..]
+        );
+        let scene = build_scene_3d(
+            &parse_spec_json(&low).unwrap(),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        );
+        assert_eq!((scene.boxes.len(), scene.points.len()), (12, 12));
+        let viewport = (800.0, 500.0);
+        for (az, el) in [(0.0, 20.0), (35.0, 30.0), (200.0, 40.0)] {
+            let mut c = Camera::default();
+            c.set(Some(az), Some(el), None);
+            let vp = c.plot_view_proj(scene.size, viewport);
+            for p in &scene.points {
+                let px = project(vp, viewport, Vec3::from(p.pos)).unwrap();
+                // Either the bar it is inside of, or nothing: never the point.
+                if let Some(i) = pick_scene(&scene, vp, viewport, px) {
+                    assert!(i < scene.boxes.len(), "{}: picked mark {i}", p.key);
+                }
+            }
+        }
+        // Raise the line above the bars and every point is hoverable again.
+        let scene = scene_of("combo3d-bar-line");
+        let mut c = Camera::default();
+        c.set(Some(30.0), Some(30.0), None);
+        let vp = c.plot_view_proj(scene.size, viewport);
+        for (k, p) in scene.points.iter().enumerate() {
+            let px = project(vp, viewport, Vec3::from(p.pos)).unwrap();
+            let got = pick_scene(&scene, vp, viewport, px).expect("a point");
+            assert!(
+                got >= scene.boxes.len(),
+                "point {k} ({}) picked mark {got}",
+                p.key
+            );
+        }
+    }
+
+    #[test]
+    fn a_point_wins_over_the_bar_behind_it_within_reach() {
+        let scene = scene_of("combo3d-bar-line");
+        let viewport = (800.0, 500.0);
+        let mut c = Camera::default();
+        c.set(Some(30.0), Some(30.0), None);
+        let vp = c.plot_view_proj(scene.size, viewport);
+        let p = &scene.points[0];
+        let px = project(vp, viewport, Vec3::from(p.pos)).unwrap();
+        // 8 px from the point: still the point.
+        let got = pick_scene(&scene, vp, viewport, (px.0 + 8.0, px.1));
+        assert!(got.is_some_and(|i| i >= scene.boxes.len()));
     }
 
     #[test]

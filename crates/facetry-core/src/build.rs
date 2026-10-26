@@ -47,7 +47,7 @@ const BAND_PADDING_OUTER: f64 = 0.1;
 /// Roughly one numeric x tick per this much plot width.
 const X_TICK_SPACING: f64 = 80.0;
 /// How near (CSS px) the pointer must be to a line's data point to hover it.
-const POINT_PICK_RADIUS: f64 = 12.0;
+pub(crate) const POINT_PICK_RADIUS: f64 = 12.0;
 /// Space between the bars of a `group` layer, as a fraction of one bar's slot.
 const GROUP_PADDING_INNER: f64 = 0.1;
 /// Between a bar's end and its value label.

@@ -7,8 +7,9 @@ Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, 
 declarative JSON spec: validation, band and linear scales with "nice" ticks, layout, axes (lines,
 ticks, gridlines, labels, titles), MSDF text and GPU rendering. Marks: **bars** (overlaid,
 stacked, normalised or grouped), **lines** (categorical or numeric x, markers, gaps; composites
-with bars on two y axes) and **pies and donuts**; in 2D and, for bars and pies, in 3D as lit,
-depth-tested solids you can orbit (see [3D charts](#3d-charts)). Charts that colour by a field
+with bars on two y axes) and **pies and donuts**; in 2D and, in 3D, as lit,
+depth-tested solids and thick lines you can orbit (see [3D charts](#3d-charts) and
+[Lines in 3D](#lines-in-3d)). Charts that colour by a field
 get a [legend](#legend). Marks can carry value labels and report hover and click, and the
 current view can be saved as a PNG (see [Value labels, hover and
 click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Clicking a legend entry
@@ -172,8 +173,7 @@ column), so the three non-default positions need it.
   the hovered point's. Hover and click: the point nearest the pointer **within 12 CSS px** wins
   (even where a bar is behind it), otherwise the bar under the pointer. The hovered point gets
   a larger marker. Keys are `layer1/<x>` (`layer1/<x>/<series>` with a colour field).
-- 3D has no lines yet: `mark: "line"` with `dimension: "3d"` is a validation error
-  (`line charts are 2D only for now`).
+- 3D lines: see [Lines in 3D](#lines-in-3d).
 - How the strokes are drawn: the CPU turns each polyline into triangles in device pixels
   (`facetry-render/src/stroke.rs`), with miter joins that become bevels beyond a miter limit of 4
   line widths (so a zigzag does not grow spikes), butt caps, and neighbouring segments sharing
@@ -255,6 +255,76 @@ column), so the three non-default positions need it.
 - Entries are clickable: see [Hiding series](#hiding-series-from-the-legend).
 - Because the default depends on `color.field`, specs that colour by field (for example
   `bar-colored` and `bar3d-grid`) now show a legend; set `legend: false` to keep the old look.
+
+### Lines in 3D
+
+A `line` layer in a `dimension: "3d"` chart draws one polyline per series **and depth row** in world
+space. The typical spec puts each series on its own row by giving `color` and `z` the same field:
+
+```jsonc
+{
+  "dimension": "3d",
+  "axes": [ { "id": "x", "orient": "bottom", "title": "Month" },
+            { "id": "y", "orient": "left", "title": "Visits (k)" },
+            { "id": "z", "orient": "depth", "title": "Region" } ],
+  "layers": [{
+    "mark": "line", "data": "traffic",
+    "point": true,                              // markers: true | { size } (CSS px, default 8)
+    "style": { "strokeWidth": 3, "area": true },   // width in CSS px (default 2); area: curtain under the line
+    "label": { "show": "hover" },               // value labels, "always" | "hover"
+    "encoding": { "x": { "field": "month", "axis": "x" }, "y": { "field": "visits", "axis": "y" },
+                  "z": { "field": "region", "axis": "z" }, "color": { "field": "region" } }
+  }]
+}
+```
+
+(`examples/specs/line3d.json`; `combo3d-bar-line.json` has bars and a line per row in one chart.)
+
+- **Position.** `x` is a categorical field (a band: points sit at the band centres, the same
+  bands as bars, so bars and lines in one chart line up) or **numeric** (a linear axis with nice
+  ticks, whole-number ticks for whole-number data, floor gridlines at the ticks; the box is a fixed
+  1.6 wide because there are no category cells to size it by; a numeric x cannot be mixed with bars
+  on the same axis, as in 2D). `y` is the value (the same y axis as the bars, so it fits both).
+  `z` is a categorical field on the depth axis: the point sits in the middle of its row, the
+  first row is the front. **Without `z` every line sits on the front row** (one implicit row) and
+  the lines overlap: allowed. A series that spans several `z` rows (colour and z different
+  fields) is one polyline per row. A missing `y` breaks the line; a run of one point is a dot.
+- **Keys and events.** Points are keyed `layer1/<x>[/<series>][/<z>]` (the z part is left out when
+  it is the series' own name), and hover and click report `{ key, layer, datum }` with the original
+  row, like bars. `chart.markPosition(key)` finds a point on screen, after orbiting too.
+- **Drawing.** Lines reuse the thick-line pipeline of the grid: each segment is a screen-space quad
+  `style.strokeWidth` CSS px wide, so the width is the same at any distance or angle, and they are
+  depth-tested against the bars (a line passing behind a bar is hidden) without writing depth, so
+  lines never hide each other. **Joins:** two thick segments that meet at an angle leave a
+  wedge-shaped gap on the outside of the bend (square caps only close it at 90 degrees), so data
+  lines have flat-ended segments plus a **disc of the line's width at every vertex**, a billboard in
+  screen space like the segments: that closes the wedge at any angle, gives round ends, and draws
+  a lone point as a dot. (It assumes an opaque colour, as the palette gives: translucent line colours
+  would show the overlaps.) Markers (`point`) are discs that face the viewer, anchored at the point,
+  with a rim in the background colour like the 2D ones; they are pulled a hair (0.015 world units)
+  toward the camera so a marker resting on a bar's top face is not half swallowed by it.
+- **Curtain (`style.area: true`).** A translucent (28% opacity) vertical quad from every segment down
+  to the baseline (value 0, or the edge of the domain when 0 is outside it), to help read depth.
+  It is blended over what is already drawn, tested against the bars but not written, and drawn
+  before the lines so they stay on top. Several curtains are blended **far rows first** (series order
+  reversed, right for the default front view; from behind the order is not depth-sorted, so the
+  tint of overlapping curtains differs slightly). 3D line layers only (a validation issue
+  elsewhere, `/layers/0/style/area`).
+- **Value labels.** `label.show` works as for bars, hanging above each point, with the same world
+  anchor and outline as the other 3D labels. They go through the label planner (see below): a label
+  is **hidden while a box is in front of its point**, and a label that would touch one already shown
+  is dropped, the points nearest the camera first, so numbers of different series that land on the
+  same pixels do not pile up.
+- **Picking.** On the CPU, with the same matrix the GPU draws with: every point is projected and
+  those within **12 CSS px** of the pointer that no box hides (the ray through the point enters no
+  box before reaching it) are candidates; the **one nearest the camera wins** (even if another is a
+  pixel or two closer to the pointer). A visible point wins over the bar behind it, as in 2D. The
+  hovered point's marker grows by 1.5x (and appears, if the layer has no markers).
+  Mark indices in 3D are boxes, then pie slices, then line points.
+- Legend toggling works for 3D lines (a hidden series loses its line, points and, when `z` is its
+  own field, its depth row).
+- Limits: right axes are still not supported in 3D, and a line layer is not stacked or grouped
+  (`position` is for bars).
 
 ### Hiding series from the legend
 
@@ -354,7 +424,7 @@ scene is **not** rebuilt, and nothing renders until something changes. `chart.up
 keeps the orbited camera unless the spec's `camera` changed.
 
 How 3D differs under the hood: `build_scene_3d` produces a `Scene3d` in world units (boxes, lines,
-labels anchored at world points). What depends on the viewpoint (back-wall gridlines; which
+polylines and points, labels anchored at world points). What depends on the viewpoint (back-wall gridlines; which
 floor edge carries each axis; both floor axes sit on the two edges at the nearest corner, which
 form the lower outline of the picture) is emitted for each 45 degree sector of azimuth, tagged
 with its range, and the vertex shaders drop the variants the camera is not in. Labels are
@@ -407,7 +477,8 @@ A layer can write each bar's value on it:
 chart.on("hover", (mark) => { /* mark: { key, layer, datum } | null */ });
 chart.on("click", (mark) => console.log(mark.datum));   // { quarter: "Q3", revenue: 140 }
 chart.off("hover", listener);
-chart.markPosition("layer0/Q3");                        // { x, y } in CSS px, to aim at a bar
+chart.on("legendclick", ({ series, visible }) => {});    // see "Hiding series from the legend"
+chart.markPosition("layer0/Q3");                        // { x, y } in CSS px, to aim at a bar or a line point
 ```
 
 `hover` fires when the bar under the pointer changes, with `null` when the pointer leaves every
@@ -421,7 +492,7 @@ The hovered bar is lightened (a per-instance flag, rewritten alone) and a `hover
 (a handful of glyphs in a small overlay buffer); the scene is not rebuilt and nothing else is
 uploaded. **Picking is done on the CPU**, with the same matrix the GPU draws with: in 2D a
 point-in-rectangle test (`Scene::pick`), in 3D a ray from the camera through the pixel intersected
-with every bar's box by the slab test, nearest hit wins (`facetry-render/src/pick.rs`). With at
+with every bar's box by the slab test, nearest hit wins, and line points are found by projecting them (see [Lines in 3D](#lines-in-3d)) (`facetry-render/src/pick.rs`). With at
 most about a thousand bars that is microseconds, needs no GPU read-back (a colour-ID pass would
 cost a frame of latency and an async buffer map per pointer move) and is covered by unit tests.
 The maths lives in the render crate because it needs the camera and `glam`; the 2D test is in
@@ -466,7 +537,7 @@ crates/facetry-core     pure Rust: spec + validation, scales, layout (2D, pie, 3
                         (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
 crates/facetry-render   wgpu Renderer: rect, triangle-mesh and MSDF text pipelines (2D); box, lit
-                        mesh, line and world-text pipelines plus the glam orbit camera (3D); 4x
+                        mesh, line, billboard-disc, curtain and world-text pipelines plus the glam orbit camera (3D); 4x
                         MSAA (native + wasm32); CPU line tessellation (stroke.rs) and pie
                         geometry (arc.rs); 3D label placement (labels.rs), picking (pick.rs),
                         PNG read-back
@@ -488,8 +559,9 @@ How a frame is made: `spec` -> `validate` -> `build_scene(spec, viewport, dpr, f
 slices, lines, markers, axis rules and legend swatches, hover marker, then text. Resizing rebuilds
 the scene, because margins, tick counts and label thinning depend on the size. A 3D frame is
 `build_scene_3d` -> `Scene3d` -> `Renderer::set_scene_3d`; each render pass clears colour and
-depth, draws bars (depth-tested, culled back faces, Lambert lighting), then pie slices (a lit mesh), then lines
-(tested against the bars), then text; a legend adds a second pass with the 2D pipelines.
+depth, draws bars (depth-tested, culled back faces, Lambert lighting), then pie slices (a lit mesh), then grid
+lines (tested against the bars), then the line layers (curtains, thick segments, round joins and markers: all
+tested against the bars, none writing depth), then text; a legend adds a second pass with the 2D pipelines.
 
 ## Prerequisites
 
@@ -526,7 +598,7 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
 `?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
-`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, ...), `?ui=0` (only the chart). 3D examples show the
+`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...), `?ui=0` (only the chart). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
 console.
@@ -539,7 +611,7 @@ console.
   `INSTA_UPDATE=no`, so any difference fails.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
-  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`): Playwright screenshots these examples (3D ones at their
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -568,12 +640,15 @@ profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` pr
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 727,543 B (710 KiB) | 324,277 B (317 KiB) | 266,299 B (260 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,342,199 B (2287 KiB) | 967,304 B (945 KiB) | 762,029 B (744 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 769,096 B (751 KiB) | 339,694 B (332 KiB) | 279,010 B (272 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,383,259 B (2327 KiB) | 982,766 B (960 KiB) | 774,598 B (756 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
 numbers per step and where they go.
+
+The legend toggle added 5,385 B gzip to the WebGPU module (4,347 to the WebGL2 one) and lines in
+3D another 10,032 (11,115): 324,277 to 339,694 and 967,304 to 982,766 together (+4.8% and +1.6%).
 
 History of the single combined module (both backends), for comparison:
 

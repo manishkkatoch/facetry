@@ -257,19 +257,31 @@ fn hover_labels_and_always_labels_belong_to_the_points() {
 // --- validation ----------------------------------------------------------------------------
 
 #[test]
-fn lines_are_rejected_in_3d_with_a_clear_message() {
-    let json = r#"{ "dimension": "3d",
-      "data": { "t": { "c": ["a"], "v": [1] } },
-      "axes": [ { "id": "x", "orient": "bottom" }, { "id": "y", "orient": "left" } ],
-      "layers": [ { "mark": "line", "data": "t", "encoding": { "x": { "field": "c" }, "y": { "field": "v" } } } ] }"#;
-    let got = issues(json);
-    assert_eq!(got.len(), 1, "{got:?}");
-    assert_eq!(got[0].0, "/layers/0/mark");
-    assert!(
-        got[0].1.contains("line charts are 2D only for now"),
-        "{}",
-        got[0].1
+fn lines_are_valid_in_3d_and_area_is_a_3d_line_option() {
+    let json = |dimension: &str, style: &str| {
+        format!(
+            r#"{{ "dimension": "{dimension}",
+      "data": {{ "t": {{ "c": ["a"], "v": [1] }} }},
+      "axes": [ {{ "id": "x", "orient": "bottom" }}, {{ "id": "y", "orient": "left" }} ],
+      "layers": [ {{ "mark": "line", "data": "t" {style},
+        "encoding": {{ "x": {{ "field": "c" }}, "y": {{ "field": "v" }} }} }} ] }}"#
+        )
+    };
+    assert_eq!(issues(&json("3d", "")), vec![]);
+    assert_eq!(
+        issues(&json(
+            "3d",
+            r#", "style": { "area": true, "strokeWidth": 3 }"#
+        )),
+        vec![]
     );
+    let flat = issues(&json("2d", r#", "style": { "area": true }"#));
+    assert_eq!(flat.len(), 1, "{flat:?}");
+    assert_eq!(flat[0].0, "/layers/0/style/area");
+    assert!(flat[0].1.contains("3d"), "{}", flat[0].1);
+    let bar = json("3d", r#", "style": { "area": true }"#)
+        .replace(r#""mark": "line""#, r#""mark": "bar""#);
+    assert_eq!(issues(&bar)[0].0, "/layers/0/style/area");
 }
 
 #[test]

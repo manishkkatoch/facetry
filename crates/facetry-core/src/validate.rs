@@ -517,13 +517,7 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     }
 
     check_position(layer, color.as_ref(), y_values, &at(&[]), &mut issues);
-    check_style(layer, &at(&[]), &mut issues);
-    if three_d && is_line {
-        issues.push(Issue::new(
-            at(&["mark"]),
-            "line charts are 2D only for now; use `dimension: \"2d\"`",
-        ));
-    }
+    check_style(layer, three_d, &at(&[]), &mut issues);
 
     match (x_axis, y_axis, color) {
         (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => {
@@ -585,7 +579,7 @@ fn hide(hidden: &[bool], codes: &[u32], row: usize, value: f64) -> f64 {
 }
 
 /// `style` and `point` only make sense on some marks, and their numbers must be usable.
-fn check_style(layer: &LayerSpec, layer_path: &str, issues: &mut Vec<Issue>) {
+fn check_style(layer: &LayerSpec, three_d: bool, layer_path: &str, issues: &mut Vec<Issue>) {
     let line = layer.mark == Mark::Line;
     let width_ok = |w: f64| w.is_finite() && w > 0.0 && w <= MAX_STROKE_WIDTH;
     if let Some(style) = &layer.style {
@@ -601,6 +595,21 @@ fn check_style(layer: &LayerSpec, layer_path: &str, issues: &mut Vec<Issue>) {
                     format!(
                         "strokeWidth must be greater than 0 and at most {MAX_STROKE_WIDTH}, got {w}"
                     ),
+                ));
+            }
+        }
+    }
+    if let Some(style) = &layer.style {
+        if style.area.is_some() {
+            if !line {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/area"),
+                    "area applies to line layers",
+                ));
+            } else if !three_d {
+                issues.push(Issue::new(
+                    format!("{layer_path}/style/area"),
+                    "area is the curtain under a 3D line; it needs `dimension: \"3d\"`",
                 ));
             }
         }
@@ -787,7 +796,12 @@ pub(crate) fn resolve_arc(spec: &ChartSpec, i: usize) -> Result<ResolvedArc<'_>,
         }
     }
     check_position(layer, None, &[], &at(&[]), &mut issues);
-    check_style(layer, &at(&[]), &mut issues);
+    check_style(
+        layer,
+        spec.dimension == Dimension::ThreeD,
+        &at(&[]),
+        &mut issues,
+    );
     check_arc_style(layer, spec.dimension, &at(&[]), &mut issues);
 
     let Some(table) = spec.data.get(&layer.data) else {
