@@ -17,7 +17,11 @@ async function open(page: Page, example: string) {
 }
 
 let updates = 0;
-test.beforeEach(() => (updates = 0));
+let shots = 0;
+test.beforeEach(() => {
+  updates = 0;
+  shots = 0;
+});
 async function edit(page: Page, change: (spec: any) => void) {
   const spec = JSON.parse(await page.locator("#json").inputValue());
   change(spec);
@@ -35,7 +39,10 @@ async function shot(page: Page) {
     animating: (window as any).facetryChart.animating as boolean,
   }));
   expect(motion).toEqual({ reduced: true, animating: false });
-  return PNG.sync.read(await page.locator("#chart").screenshot());
+  const bytes = await page.locator("#chart").screenshot();
+  // Kept with the test's results so a failure can be compared pixel by pixel.
+  await test.info().attach(`screen-${++shots}`, { body: bytes, contentType: "image/png" });
+  return PNG.sync.read(bytes);
 }
 
 /** Pixels of `png` within `box` close to `want`. */
@@ -58,7 +65,9 @@ async function snapshotPng(page: Page, options?: object) {
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     return btoa(binary);
   }, options);
-  return PNG.sync.read(Buffer.from(base64, "base64"));
+  const bytes = Buffer.from(base64, "base64");
+  await test.info().attach(`snapshot-${++shots}`, { body: bytes, contentType: "image/png" });
+  return PNG.sync.read(bytes);
 }
 
 test("a colour field gets a legend on the right: swatches in the series colours, and the plot gives way", async ({ page }) => {
