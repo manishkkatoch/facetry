@@ -515,3 +515,107 @@ branch and a numeric x axis (it now matches the 2D builder's two x kinds), the r
 pipelines (billboard discs and the curtain, each with a ~40-line WGSL shader that on the WebGL2
 module also pays for naga's translation of it) and the label planner an overlap rule. The shader
 count is why the WebGL2 delta of the second phase is a little above the WebGPU one.
+
+## Spec reader by hand, font metrics as data
+
+Branch `spec-reader`. Same pipeline (`scripts/build-wasm.sh`); WebGPU profile from
+`PROFILE_MODULE=webgpu scripts/wasm-profile.sh`.
+
+### What serde cost, measured first
+
+Profile of the WebGPU module before any change (`target/wasm-profile-webgpu/rollup.txt`):
+
+| component | code bytes | share of code (475,687) |
+|---|---:|---:|
+| serde-derived code for facetry types (`Deserialize` impls, visitors, field identifiers, `deny_unknown_fields` errors) | 62,280 | 13.1% |
+| serde_json (the font metrics parse; `parse_spec_json` is not in the wasm) | 17,685 | 3.7% |
+| serde_path_to_error | 10,702 | 2.2% |
+| serde core / other | 6,635 | 1.4% |
+| serde-wasm-bindgen | 6,025 | 1.3% |
+| **serde total** | **103,327** | **21.7%** |
+
+Plus 21,452 B of embedded metrics JSON in the data segments. So about 125 KB of the 769 KB raw
+module was "read JSON into our types". The expected saving was the 103 KB of code and the JSON
+minus what replaces them (a hand-written reader over a plain value tree, estimated at 25 to
+35 KB raw): roughly 90 to 100 KB raw, 30 to 35 KB gzip. The stop rule asked for 10 KB gzip from
+the reader; the measurements below are well past it.
+
+### What changed
+
+1. **Font metrics are Rust data** (`crates/facetry-font/assets/inter-regular-metrics.rs`,
+   written by `tools/font-atlas`, `include!`d into a `static`). No JSON, no `OnceLock`, no
+   `serde`/`serde_json` in `facetry-font`. The numbers are the f32 values the JSON held (checked
+   token for token) and the atlas bytes did not change.
+2. **The spec is read by hand.** `facetry_core::value` has a `Value` tree (null, bool, `Int`,
+   `Uint`, `Float`, string, array, object with insertion-ordered keys) and a small JSON parser
+   for it, with `serde_json`'s error wording and line/column. `facetry_core::spec_read` turns a
+   `Value` into a `ChartSpec`: a small `object!` macro reads an object in input order and
+   reports unknown fields, duplicates and missing fields; the rest is a function per type.
+   `facetry-wasm` walks the JS object into a `Value` with `js-sys` (`value_from_js`) and builds
+   the `issues` array by hand. `parse_spec_json` (tests, tools) is `parse_json` then
+   `parse_spec_value`.
+3. The spec types lost their `Deserialize` derives and the `Column`/`Cell` visitors.
+
+### Results
+
+| Step | WebGPU raw | WebGPU gzip | Δ gzip | WebGPU brotli | WebGL2 raw | WebGL2 gzip | Δ gzip | WebGL2 brotli |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| before (`1e9eeb0`) | 769,096 | 339,694 | | 279,010 | 2,383,259 | 982,766 | | 774,598 |
+| 1 font metrics as Rust data | 714,710 | 321,248 | -18,446 | 264,148 | 2,331,150 | 964,919 | -17,847 | 760,532 |
+| 2 hand-written spec reader | 669,204 | 302,702 | -18,546 | 251,204 | 2,284,087 | 944,713 | -20,206 | 747,655 |
+
+Total: WebGPU -99,892 raw (-13.0%), -36,992 gzip (-10.9%), -27,806 brotli (-10.0%); WebGL2
+-99,172 raw, -38,053 gzip (-3.9%), -26,943 brotli. The reader alone is -18.5 KB gzip on WebGPU
+(the stop rule needed 10 KB). The font change alone clears that too, but the rule is about the
+reader and it is measured on top of the font change.
+
+Profile after (same rollup): the five serde buckets are gone and `twiggy` finds no symbol with
+`serde` in its name. Code 475,687 to 404,772 B, data 263,827 to 237,509 B. `facetry_*` code
+grew by 44 KB (the reader, the `Value` walk, and generics that used to be counted under serde),
+which is why the net is not the full 103 KB.
+
+### What is still in the dependency tree
+
+`cargo tree -p facetry-wasm --target wasm32-unknown-unknown -e normal` still lists `serde`,
+`serde_core`, `serde_derive` and `serde-wasm-bindgen`, for two reasons, neither of which puts a
+byte in the wasm:
+
+* `tsify` (the TypeScript declaration generator) depends on `serde` and `serde-wasm-bindgen`
+  for helpers we do not use. The `Tsify` derive reads `#[serde(...)]` attributes
+  (`rename_all`, `rename`, `untagged`, `skip`) to name things, and registers that attribute
+  itself, so the spec types keep those attributes under `cfg_attr(feature = "ts", ...)` but
+  derive nothing from serde. `serde_json` and `serde_path_to_error` are gone from the tree.
+* `facetry-core` still derives `Serialize` for `Scene`/`Scene3d` (insta snapshots). Nothing
+  serialises at run time, so it is dead code.
+
+The generated TypeScript (`facetry_wasm.d.ts`, `facetry_wasm_gl.d.ts` and the `_bg.wasm.d.ts`
+files) is byte-identical to before (`diff` on the `scripts/build-wasm.sh` output). tsify was kept
+rather than generating the `.d.ts` in CI because it needs no new moving part; only the
+declarations are generated, no code.
+
+### Behaviour
+
+Held by `crates/facetry-core/tests/parse_differential.rs`, which runs a frozen copy of the old
+serde parser (`tests/serde_reference`) next to the new one on every example spec, hand-written
+edge cases, mutations of the examples, damaged text and proptest-composed mutations: same
+`ChartSpec` (compared through `Debug`), same error path, equivalent message, and for malformed
+JSON `serde_json`'s own message and position. The existing validation tests, insta snapshots
+and Playwright suite pass unchanged. Deliberate differences, all listed in that test file:
+
+* A JSON **array where an object is expected** (`["x", "left"]` as an axis, `[]` as a whole
+  spec) is now an error. serde derives read it positionally; the browser path took any JS
+  array as an empty object.
+* **Unknown fields in a JS object are now rejected.** `serde-wasm-bindgen` only looks at the
+  field names it knows, so in the browser a typo like `"colour"` was silently ignored although
+  `deny_unknown_fields` rejected it in JSON text. Measured on 25,935 spec objects fed to the old
+  and new wasm in Node: no spec the old module rejected is accepted now; 472 are newly rejected
+  for an unknown field, 153 for an array in place of an object, 2 for an over-long `domain`
+  (`[1, 2, 3]`). The old module also threw a raw `TypeError` for `null` where an object was
+  expected (49 cases); that is now an `invalid-spec` issue.
+* Wording: messages lose JSON text's ` at line L column C` (syntax errors keep it); the browser
+  path's `Error: ` prefix and `unit value` become `null`; floats print as Rust does (`1e100`).
+  Enum fields given a number or `{}` say `invalid type: ..., expected a string`
+  (serde_json said `expected value`).
+* Text after the first JSON value is still ignored by `parse_spec_json`, as before.
+* Floats parse correctly rounded; `serde_json`'s default can be one ULP off for inputs with many
+  digits (the browser path never had that).
