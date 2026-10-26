@@ -370,6 +370,7 @@ pub(crate) fn layout(
             color: theme.text,
             anchor: Anchor::Start,
             rotation: Rotation::None,
+            tick: None,
         });
     }
     for (i, x, y) in at {
@@ -398,6 +399,7 @@ pub(crate) fn layout(
             kind: RuleKind::Swatch,
             bounds,
             color: fade(entry.color),
+            tick: None,
         });
         texts.push(Text {
             key: format!("legend/label:{}", entry.label),
@@ -408,6 +410,7 @@ pub(crate) fn layout(
             color: fade(theme.text),
             anchor: Anchor::Start,
             rotation: Rotation::None,
+            tick: None,
         });
         if interactive {
             // The entry's whole row cell, a little generous so it is easy to hit: the

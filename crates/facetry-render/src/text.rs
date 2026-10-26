@@ -6,13 +6,18 @@ use facetry_core::scene3d::{Text3, VAlign};
 use facetry_font::FontMetrics;
 
 use crate::Error;
-use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, show_range};
+use crate::gpu::{InstanceBuffer, QUAD_LAYOUT, show_range, with_ease};
 use crate::rect::uniform_entry;
 use crate::solid::{PipelineDesc, pipeline};
 
 /// One glyph quad. The quad's corners are `origin`, `origin + axis_x`, `origin + axis_y` and
 /// both: two edge vectors instead of a width and height, so rotated text is just different
 /// vectors. `uv` is the atlas rect as `[u0, v0, u1, v1]`.
+///
+/// While text animates, `origin` and `color` are where the glyph ends and `from_origin` and
+/// `from_color` where it starts (text keeps its size and rotation, so the edge vectors are the
+/// same at both ends); `delay` is how long after the transition begins it starts. At rest
+/// `from == to`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct GlyphInstance {
@@ -21,6 +26,32 @@ pub struct GlyphInstance {
     pub axis_y: [f32; 2],
     pub uv: [f32; 4],
     pub color: [f32; 4],
+    pub from_origin: [f32; 2],
+    pub from_color: [f32; 4],
+    pub delay: f32,
+}
+
+/// Appends the glyphs of a text that moves from `from` to `to` (colours already encoded),
+/// starting `delay_ms` into the transition. If the two lay out to a different number of
+/// glyphs (they should not: a changed string is cross-faded as two texts) the text just
+/// appears at its end state.
+pub fn layout_glyph_pair(
+    from: (&Text, [f32; 4]),
+    to: (&Text, [f32; 4]),
+    delay_ms: f32,
+    font: &FontMetrics,
+    out: &mut Vec<GlyphInstance>,
+) {
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    layout_glyphs(from.0, from.1, font, &mut a);
+    layout_glyphs(to.0, to.1, font, &mut b);
+    let same = a.len() == b.len();
+    out.extend(b.iter().enumerate().map(|(i, end)| GlyphInstance {
+        from_origin: if same { a[i].origin } else { end.origin },
+        from_color: if same { a[i].color } else { end.color },
+        delay: delay_ms,
+        ..*end
+    }));
 }
 
 /// Appends one instance per visible glyph of `text`.
@@ -62,8 +93,9 @@ pub fn layout_glyphs(
             // Plane y points up from the baseline; local y points down, hence the flip.
             let (x0, x1) = (pen + l * size, pen + r * size);
             let (y0, y1) = (-t * size, -b * size);
+            let origin = to_screen(x0, y0);
             out.push(GlyphInstance {
-                origin: to_screen(x0, y0),
+                origin,
                 axis_x: [dir_x[0] * (x1 - x0), dir_x[1] * (x1 - x0)],
                 axis_y: [dir_y[0] * (y1 - y0), dir_y[1] * (y1 - y0)],
                 uv: [
@@ -73,6 +105,9 @@ pub fn layout_glyphs(
                     (ay + ah) as f32 / atlas.height as f32,
                 ],
                 color,
+                from_origin: origin,
+                from_color: color,
+                delay: 0.0,
             });
         }
         pen += glyph.advance * size;
@@ -231,11 +266,12 @@ impl TextPipeline {
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("text shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(with_ease(include_str!("shaders/text.wgsl")).into()),
         });
         let (pipeline_layout, bind_group) = atlas.bind(device, "text", globals, None);
         let instance_attrs = wgpu::vertex_attr_array![
-            1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
+            1 => Float32x2, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4,
+            6 => Float32x2, 7 => Float32x4, 8 => Float32
         ];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("text pipeline"),
@@ -368,6 +404,7 @@ pub fn layout_glyphs_3d(
         color: text.color,
         anchor: text.align,
         rotation: Rotation::None,
+        tick: None,
     };
     let show = show_range(text.azimuths);
     let mut glyphs = Vec::new();
@@ -528,6 +565,7 @@ mod tests {
             color: Color::linear(0.0, 0.0, 0.0, 1.0),
             anchor,
             rotation,
+            tick: None,
         }
     }
 

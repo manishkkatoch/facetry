@@ -280,6 +280,7 @@ pub(crate) fn build_pie(
             color,
             anchor,
             rotation: Rotation::None,
+            tick: None,
         };
         let text = match place {
             Place::Inside => {

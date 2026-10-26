@@ -30,6 +30,8 @@ mod shader_tests {
     //! runs anywhere: if these pass, the shaders parse, validate, and translate to GLSL ES.
 
     use naga::back::glsl;
+
+    use crate::gpu;
     use naga::valid::{Capabilities, ValidationFlags, Validator};
 
     fn check(name: &str, source: &str, globals_size: u32) {
@@ -85,17 +87,25 @@ mod shader_tests {
 
     #[test]
     fn rect_shader_is_valid_and_webgl2_translatable() {
-        check("rect", include_str!("shaders/rect.wgsl"), 32);
+        check(
+            "rect",
+            &gpu::with_ease(include_str!("shaders/rect.wgsl")),
+            48,
+        );
     }
 
     #[test]
     fn mesh2d_shader_is_valid_and_webgl2_translatable() {
-        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 32);
+        check("mesh2d", include_str!("shaders/mesh2d.wgsl"), 48);
     }
 
     #[test]
     fn text_shader_is_valid_and_webgl2_translatable() {
-        check("text", include_str!("shaders/text.wgsl"), 32);
+        check(
+            "text",
+            &gpu::with_ease(include_str!("shaders/text.wgsl")),
+            48,
+        );
     }
 
     // The 3D shaders share one 144-byte `Globals` (see `gpu::Globals3`).

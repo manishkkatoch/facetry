@@ -15,6 +15,7 @@ use crate::Color;
 use crate::spec::{
     AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
     MAX_LABEL_DECIMALS, MAX_STROKE_WIDTH, Mark, Orient, Position, PositionEncoding, Table,
+    TransitionSpec,
 };
 use crate::spec_read::parse_spec_value;
 use crate::transform::{self, Cell, Row};
@@ -1093,6 +1094,30 @@ fn validate_camera(camera: &CameraSpec, issues: &mut Vec<Issue>) {
     }
 }
 
+/// Durations and staggers are milliseconds: finite and not negative.
+pub fn validate_transition(t: &TransitionSpec, base: &[&str], issues: &mut Vec<Issue>) {
+    let TransitionSpec::Config(c) = t else { return };
+    for (name, value) in [("duration", c.duration), ("stagger", c.stagger)] {
+        let Some(v) = value else { continue };
+        let path = |extra: &str| {
+            let mut parts = base.to_vec();
+            parts.push(extra);
+            pointer(&parts)
+        };
+        if !v.is_finite() {
+            issues.push(Issue::new(
+                path(name),
+                format!("{name} must be a finite number of milliseconds"),
+            ));
+        } else if v < 0.0 {
+            issues.push(Issue::new(
+                path(name),
+                format!("{name} must not be negative, got {v}"),
+            ));
+        }
+    }
+}
+
 /// Checks `spec` and returns every problem found (empty means it will draw).
 ///
 /// Empty data is **valid**: a table whose columns have no rows draws the axes (numeric
@@ -1121,6 +1146,10 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
                 ));
             }
         }
+    }
+
+    if let Some(t) = &spec.transition {
+        validate_transition(t, &["transition"], &mut issues);
     }
 
     validate_axes(&spec.axes, spec.dimension, &mut issues);

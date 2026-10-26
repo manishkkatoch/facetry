@@ -9,6 +9,8 @@ const examples = new Map(
 const params = new URLSearchParams(location.search);
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
+// ?animateIn=1 animates the first frame (the marks enter).
+const animateIn = params.get("animateIn") === "1";
 // ?example=<name> picks the starting spec; ?ui=0 hides everything but the chart.
 const initial = examples.has(params.get("example") ?? "") ? params.get("example")! : "bar-basic";
 if (params.get("ui") === "0") document.body.classList.add("embed");
@@ -80,13 +82,19 @@ show(examples.get(initial)!);
 currentSpec = examples.get(initial)!;
 let chart: Chart;
 try {
-  chart = await Chart.create(canvas, examples.get(initial)!, { backend });
+  chart = await Chart.create(canvas, examples.get(initial)!, { backend, animateIn });
   await chart.firstFrame;
   status.textContent = `backend: ${chart.backend}, ${chart.msaaSamples}x MSAA`;
   root.dataset.msaa = String(chart.msaaSamples);
   root.dataset.backend = chart.backend;
   // For poking at it from the devtools console (and the e2e tests): `facetryChart.setCamera(...)`.
-  Object.assign(window, { facetryChart: chart });
+  // `playgroundSpec()` hands out a copy of the spec on screen, for tests to modify and apply.
+  Object.assign(window, {
+    facetryChart: chart,
+    playgroundSpec: () => structuredClone(currentSpec),
+    // A copy of one of the example specs (`examples/specs/<name>.json`).
+    playgroundExample: (name: string) => structuredClone(examples.get(name)),
+  });
   showCamera(currentSpec);
   // Hover and click events: show the bar under the pointer, log clicks.
   chart.on("hover", (mark) => {

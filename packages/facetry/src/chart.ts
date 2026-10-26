@@ -4,6 +4,7 @@ import type {
   CameraUpdate,
   ChartSpec,
   MarkInfo,
+  UpdateOptions,
 } from "../wasm/facetry_wasm.js";
 import { FacetryError } from "./errors.js";
 import { loadModule, webgpuLooksUsable, type ModuleKind } from "./wasm.js";
@@ -17,6 +18,12 @@ export interface ChartOptions {
   backend?: "auto" | "webgpu" | "webgl2";
   /** Overrides the theme's background colour (`#rrggbb` or `#rrggbbaa`). */
   clearColor?: string;
+  /**
+   * Animate the first frame too: the marks enter (bars grow from their baseline, text fades in)
+   * with the spec's `transition`. Default `false`: the chart is simply there. Never animates
+   * when the viewer prefers reduced motion.
+   */
+  animateIn?: boolean;
 }
 
 /** What hover and click events report: the mark (bar, line point or pie slice), and the row of data it was drawn from. */
@@ -59,6 +66,9 @@ export interface SnapshotOptions {
   background?: "theme" | "transparent";
 }
 
+/** The CSS media query that asks for less movement. */
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
 /** Pointer movement (CSS pixels) beyond which a press is a drag, not a click. */
 const CLICK_SLOP = 4;
 /** Give up on a snapshot the GPU never finishes copying after this long. */
@@ -91,6 +101,13 @@ export class Chart {
   #dragging = false;
   /** The last queued snapshot, so the next one starts after it (the GPU copy is not reentrant). */
   #snapshotTail: Promise<void> | null = null;
+  /** `prefers-reduced-motion: reduce`, live; null where `matchMedia` does not exist. */
+  readonly #reducedMotion: MediaQueryList | null;
+  readonly #onReducedMotion: () => void;
+  /** Frames drawn so far (see {@link renderCount}). */
+  #renderCount = 0;
+  /** While not null the animation clock is held by {@link __animationClock}, at this many ms. */
+  #manualClock: number | null = null;
 
   /** Resolves after the first frame has been drawn; rejects if drawing fails first. */
   readonly firstFrame: Promise<void>;
@@ -112,6 +129,15 @@ export class Chart {
     this.firstFrame.catch(() => {});
     this.#observer = new ResizeObserver(() => this.#syncSize());
     this.#observer.observe(canvas);
+    this.#reducedMotion = typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION) : null;
+    // A viewer who asks for reduced motion in the middle of a transition gets its end at once.
+    this.#onReducedMotion = () => {
+      if (this.#reducedMotion?.matches && this.#inner.animating) {
+        this.#inner.finishTransition();
+        this.requestRender();
+      }
+    };
+    this.#reducedMotion?.addEventListener("change", this.#onReducedMotion);
     this.#removeListeners = this.#attachPointerControls();
     this.#syncInteraction();
     this.requestRender();
@@ -158,19 +184,32 @@ export class Chart {
     // The GPU surface is configured from the canvas's pixel size, so set it first.
     const { dpr } = sizeCanvas(canvas);
     // The module only contains one backend, so it must be told which; "auto" means "yours".
-    const inner = await glue.Chart.create(canvas, spec, { ...options, backend: kind }, dpr);
+    const reduced = typeof matchMedia === "function" && matchMedia(REDUCED_MOTION).matches;
+    const inner = await glue.Chart.create(
+      canvas,
+      spec,
+      { ...options, backend: kind, animateIn: (options.animateIn ?? false) && !reduced },
+      dpr,
+    );
     return new Chart(canvas, inner);
   }
 
   /**
-   * Replaces the chart's spec and redraws (no animation yet). Throws a {@link FacetryError}
-   * with code `invalid-spec` and a list of `issues` if the spec is invalid; the previous
-   * spec stays on screen.
+   * Replaces the chart's spec and moves to the new picture. Marks are matched by key: new ones
+   * enter, ones in both move and change colour, ones that are gone leave (see the README's
+   * "Animated transitions"). The movement follows the spec's `transition` (default 400 ms,
+   * `cubicInOut`), or `options.transition` for this call; `false` jumps. An update that comes
+   * while a transition is running continues from where the marks are. Reduced motion
+   * (`prefers-reduced-motion: reduce`) always jumps.
+   *
+   * Throws a {@link FacetryError} with code `invalid-spec` and a list of `issues` if the spec
+   * is invalid (the previous spec stays on screen), or `invalid-options` for a bad
+   * `options.transition`.
    */
-  update(spec: ChartSpec): void {
+  update(spec: ChartSpec, options?: UpdateOptions): void {
     if (this.#destroyed) return;
     try {
-      this.#inner.update(spec);
+      this.#inner.update(spec, this.#motion(options));
     } catch (e) {
       throw FacetryError.from(e);
     }
@@ -205,9 +244,14 @@ export class Chart {
    * series already in that state, or when hiding would leave no series visible. Does not
    * fire `legendclick` (that is for the viewer's clicks).
    */
-  setSeriesVisible(name: string, visible: boolean): boolean {
+  setSeriesVisible(name: string, visible: boolean, options?: UpdateOptions): boolean {
     if (this.#destroyed) return false;
-    const changed = this.#inner.setSeriesVisible(name, visible);
+    let changed: boolean;
+    try {
+      changed = this.#inner.setSeriesVisible(name, visible, this.#motion(options));
+    } catch (e) {
+      throw FacetryError.from(e);
+    }
     if (changed) {
       this.#resetHover();
       this.requestRender();
@@ -359,23 +403,75 @@ export class Chart {
   }
 
   /**
+   * Whether a transition is running. While it is, a frame is drawn every animation frame;
+   * when it ends the last frame is drawn and the loop stops.
+   */
+  get animating(): boolean {
+    return !this.#destroyed && this.#inner.animating;
+  }
+
+  /**
+   * How many frames this chart has drawn. An idle chart draws none, which is how tests (and
+   * the curious) can check that rendering stops after a transition.
+   */
+  get renderCount(): number {
+    return this.#renderCount;
+  }
+
+  /**
+   * Test hook: holds the animation clock still and sets the running transition to `ms` since
+   * it began, drawing that frame at once. While held, a transition that starts later also sits
+   * at its time 0 until the clock is moved again, and no animation frames are requested.
+   * `null` lets the clock run again from where it is. Not part of the supported API.
+   */
+  __animationClock(ms: number | null): void {
+    if (this.#destroyed) return;
+    if (ms === null) {
+      if (this.#manualClock !== null) {
+        this.#manualClock = null;
+        this.#inner.rebase(performance.now());
+        this.requestRender();
+      }
+      return;
+    }
+    this.#manualClock = ms;
+    this.#inner.seek(ms);
+    this.#draw();
+    this.#repick();
+  }
+
+  /**
    * Schedules a redraw on the next animation frame. Calls before that frame coalesce into
-   * one. We draw only when something changed (resize, new data later), never in a
-   * continuous loop, so an idle chart costs no CPU/GPU and no battery.
+   * one. We draw only when something changed (resize, an update, a hover), never in a
+   * continuous loop, so an idle chart costs no CPU/GPU and no battery. While a transition
+   * runs, each frame asks for the next one until it ends.
    */
   requestRender(): void {
     if (this.#destroyed || this.#raf) return;
-    this.#raf = requestAnimationFrame(() => {
+    this.#raf = requestAnimationFrame((now) => {
       this.#raf = 0;
-      try {
-        this.#inner.render();
-        this.#resolveFirstFrame();
-      } catch (e) {
-        const err = FacetryError.from(e);
-        this.#rejectFirstFrame(err);
-        console.error(err);
-      }
+      if (this.#manualClock === null) this.#inner.tick(now);
+      this.#draw();
+      if (this.#manualClock === null && this.#inner.animating) this.requestRender();
     });
+  }
+
+  /** Draws a frame now. */
+  #draw(): void {
+    try {
+      this.#inner.render();
+      this.#renderCount++;
+      this.#resolveFirstFrame();
+    } catch (e) {
+      const err = FacetryError.from(e);
+      this.#rejectFirstFrame(err);
+      console.error(err);
+    }
+  }
+
+  /** The options for the wasm call: reduced motion turns every transition into a jump. */
+  #motion(options?: UpdateOptions): UpdateOptions | undefined {
+    return this.#reducedMotion?.matches ? { transition: false } : options;
   }
 
   /** Stops observing and drawing, and frees the GPU resources. Safe to call twice. */
@@ -383,6 +479,7 @@ export class Chart {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#observer.disconnect();
+    this.#reducedMotion?.removeEventListener("change", this.#onReducedMotion);
     this.#removeListeners();
     this.#listeners.hover.clear();
     this.#listeners.click.clear();

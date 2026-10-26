@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use facetry_core::scene::{ArcMark, PointMark, Scene, Text};
 use facetry_core::scene3d::{Scene3d, Text3};
 use facetry_core::spec::LabelShow;
+use facetry_core::transition::Plan;
 use facetry_core::{Color, Theme};
 use facetry_font::FontMetrics;
 use glam::Vec3;
@@ -11,7 +12,7 @@ use wgpu::util::DeviceExt as _;
 
 use crate::Error;
 use crate::camera::Camera;
-use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
+use crate::gpu::{self, ANIM_IDLE, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
 use crate::mesh::{self, Mesh, MeshData, MeshPipeline};
@@ -166,6 +167,12 @@ pub struct Renderer {
     bar_offset: usize,
     /// 2D: how many of the marks are bars; then come the line points, then the pie slices.
     bar_count: usize,
+    /// 2D: the rect instance after the last bar, where the 2D pass splits the rectangles
+    /// (`bar_offset + bar_count`, plus the bars that are leaving during a transition).
+    bar_end: usize,
+    /// The animation clock the shaders read: elapsed ms, duration ms, easing number. Idle
+    /// (progress exactly 1) unless a transition is on screen.
+    anim: [f32; 4],
     /// 2D: the line points and pie slices, kept for what is drawn over them while hovered.
     point_marks: Vec<PointMark>,
     arc_marks: Vec<ArcMark>,
@@ -297,6 +304,7 @@ impl Renderer {
                 atlas: [font.atlas.width as f32, font.atlas.height as f32],
                 px_range: font.atlas.px_range,
                 _pad: [0.0; 3],
+                anim: ANIM_IDLE,
             }),
         );
         let quad = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -330,6 +338,8 @@ impl Renderer {
             mark_count: 0,
             bar_offset: 0,
             bar_count: 0,
+            bar_end: 0,
+            anim: ANIM_IDLE,
             point_marks: Vec::new(),
             arc_marks: Vec::new(),
             box_count: 0,
@@ -438,13 +448,49 @@ impl Renderer {
     }
 
     /// Uploads a scene: the next `render` draws it. Cheap enough to call on every resize or
-    /// data change (one buffer write per list). Clears any hover.
+    /// data change (one buffer write per list). Clears any hover and any transition.
     pub fn set_scene(&mut self, scene: &Scene) {
+        self.anim = ANIM_IDLE;
+        self.load_scene(scene, None);
+    }
+
+    /// Uploads a transition: the next `render` draws it at time 0 (the old scene) and
+    /// [`set_time`](Self::set_time) moves it along. The bars, gridlines, axes, legend and text
+    /// are drawn by the GPU mixing each item's start and end state; what is tessellated on the
+    /// CPU (lines, markers, pie slices) is the plan's target for now. Clears any hover.
+    pub fn begin_transition(&mut self, plan: &Plan) {
+        self.anim = [
+            0.0,
+            plan.timing.duration_ms,
+            plan.timing.easing.id() as f32,
+            0.0,
+        ];
+        self.load_scene(&plan.target, Some(plan));
+    }
+
+    /// Moves the transition started by [`begin_transition`](Self::begin_transition) to
+    /// `elapsed_ms`. Only a uniform changes.
+    pub fn set_time(&mut self, elapsed_ms: f32) {
+        self.anim[0] = elapsed_ms;
+    }
+
+    fn load_scene(&mut self, scene: &Scene, plan: Option<&Plan>) {
         if self.box_size.take().is_some() {
             self.rebuild_targets(); // drops the depth buffer
         }
         self.background = scene.background;
-        let rects = rect::instances(scene, |c| self.encode_color(c));
+        let (rects, grids, bars) = match plan {
+            Some(plan) => rect::pair_instances(plan, |c| self.encode_color(c)),
+            None => {
+                let rects = rect::instances(scene, |c| self.encode_color(c));
+                let grids = scene
+                    .rules
+                    .iter()
+                    .filter(|r| r.kind == facetry_core::scene::RuleKind::Grid)
+                    .count();
+                (rects, grids, scene.rects.len())
+            }
+        };
         self.rects.set_instances(&self.device, &self.queue, &rects);
         let arcs = mesh::arc_mesh(scene, |c| self.encode_color(c));
         self.arcs.set(&self.device, &self.queue, &arcs);
@@ -465,20 +511,60 @@ impl Renderer {
 
         let font = FontMetrics::inter();
         let mut glyphs: Vec<GlyphInstance> = Vec::new();
-        for t in &scene.texts {
-            text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
-        }
         // Value labels: `always` ones are ordinary text, `hover` ones wait for their bar.
         self.hover_labels.clear();
-        for label in &scene.labels {
-            let color = self.encode_color(label.text.color);
-            match label.show {
-                LabelShow::Always => text::layout_glyphs(&label.text, color, font, &mut glyphs),
-                LabelShow::Hover => self.hover_labels.push(HoverLabel {
-                    mark: label.mark,
-                    text: label.text.clone(),
-                    color,
-                }),
+        match plan {
+            Some(plan) => {
+                let format = self.config.format;
+                let enc = move |t: &Text| encode_color(format, t.color);
+                for p in &plan.texts {
+                    text::layout_glyph_pair(
+                        (&p.from, enc(&p.from)),
+                        (&p.to, enc(&p.to)),
+                        p.delay_ms,
+                        font,
+                        &mut glyphs,
+                    );
+                }
+                for p in &plan.labels {
+                    let (from, to) = (&p.from.text, &p.to.text);
+                    match p.to.show {
+                        LabelShow::Always => text::layout_glyph_pair(
+                            (from, enc(from)),
+                            (to, enc(to)),
+                            p.delay_ms,
+                            font,
+                            &mut glyphs,
+                        ),
+                        // Hover labels are not animated; one shows at its mark's end state.
+                        LabelShow::Hover if p.phase != facetry_core::transition::Phase::Exit => {
+                            self.hover_labels.push(HoverLabel {
+                                mark: p.to.mark,
+                                text: to.clone(),
+                                color: enc(to),
+                            });
+                        }
+                        LabelShow::Hover => {}
+                    }
+                }
+            }
+            None => {
+                for t in &scene.texts {
+                    text::layout_glyphs(t, self.encode_color(t.color), font, &mut glyphs);
+                }
+                for label in &scene.labels {
+                    let color = self.encode_color(label.text.color);
+                    match label.show {
+                        LabelShow::Always => {
+                            text::layout_glyphs(&label.text, color, font, &mut glyphs);
+                        }
+                        LabelShow::Hover => self.hover_labels.push(HoverLabel {
+                            mark: label.mark,
+                            text: label.text.clone(),
+                            color,
+                        }),
+                    }
+                }
             }
         }
         self.text.set_instances(&self.device, &self.queue, &glyphs);
@@ -487,11 +573,8 @@ impl Renderer {
         self.hover = None;
         self.mark_count = scene.mark_count();
         self.bar_count = scene.rects.len();
-        self.bar_offset = scene
-            .rules
-            .iter()
-            .filter(|r| r.kind == facetry_core::scene::RuleKind::Grid)
-            .count();
+        self.bar_offset = grids;
+        self.bar_end = grids + bars;
     }
 
     /// Uploads a 3D scene: the next `render` draws it from the current camera. Orbiting does
@@ -616,8 +699,10 @@ impl Renderer {
         self.text.set_overlay(&self.device, &self.queue, &[]);
         self.has_overlay = !scene.overlay.is_empty();
         self.plot_rect = scene.plot;
+        self.anim = ANIM_IDLE;
         self.bar_offset = 0;
         self.bar_count = 0;
+        self.bar_end = 0;
         self.label_plan = Some(plan);
         self.label_key = None;
         self.hover = None;
@@ -809,6 +894,7 @@ impl Renderer {
                 atlas: [font.atlas.width as f32, font.atlas.height as f32],
                 px_range: font.atlas.px_range,
                 _pad: [0.0; 3],
+                anim: self.anim,
             }),
         );
     }
@@ -890,7 +976,7 @@ impl Renderer {
             _ => {
                 // Back to front: gridlines and bars, then pie slices, the line layers and their markers,
                 // then axis lines and ticks, the hover marker, and text on top.
-                let split = (self.bar_offset + self.bar_count) as u32;
+                let split = self.bar_end as u32;
                 self.rects.draw_range(&mut pass, &self.quad, 0..split);
                 self.arcs.draw(&mut pass, &self.mesh);
                 self.lines.draw(&mut pass, &self.mesh);

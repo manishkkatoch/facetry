@@ -17,6 +17,7 @@ export type {
   ChartSpec,
   ColorEncoding,
   Dimension,
+  Easing,
   Encoding,
   InteractionSpec,
   KeyEncoding,
@@ -36,4 +37,7 @@ export type {
   ScaleSpec,
   StyleSpec,
   ThetaEncoding,
+  TransitionConfig,
+  TransitionSpec,
+  UpdateOptions,
 } from "../wasm/facetry_wasm.js";
