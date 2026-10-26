@@ -31,7 +31,7 @@ pub fn with_ease(shader: &str) -> String {
 }
 
 /// Uniforms shared by the 3D shaders (matches `Globals` in `box.wgsl`, `line3d.wgsl` and
-/// `text3d.wgsl`). 144 bytes, a multiple of 16 as WebGL2 needs. Rewritten every frame from
+/// `text3d.wgsl`). 160 bytes, a multiple of 16 as WebGL2 needs. Rewritten every frame from
 /// the camera, which is all that changes when the user orbits.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -50,6 +50,8 @@ pub struct Globals3 {
     pub atlas: [f32; 2],
     pub px_range: f32,
     pub _pad: [f32; 3],
+    /// The animation clock, as in [`Globals`].
+    pub anim: [f32; 4],
 }
 
 /// Depth buffer format: 24 bits is plenty for one chart and is supported everywhere,
@@ -136,7 +138,7 @@ mod tests {
     #[test]
     fn globals_match_the_wgsl_block_size() {
         assert_eq!(std::mem::size_of::<Globals>(), 48);
-        assert_eq!(std::mem::size_of::<Globals3>(), 144);
+        assert_eq!(std::mem::size_of::<Globals3>(), 160);
     }
 
     #[test]

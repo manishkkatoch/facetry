@@ -3,6 +3,7 @@
 
 use facetry_core::spec::{Column, Dimension, Timing, TransitionSpec, resolve_transition};
 use facetry_core::transition::Plan;
+use facetry_core::transition3d::{Plan3, blank_like as blank_like_3d};
 use facetry_core::value::MAX_DEPTH;
 use facetry_core::{
     ChartSpec, Color, Issue, Scene, Scene3d, Theme, Value, build_scene_3d_with_theme,
@@ -253,11 +254,61 @@ fn transition_option(value: &JsValue) -> Result<Option<Option<Timing>>, JsValue>
     Ok(Some(spec.resolve()))
 }
 
+/// What a transition is made of: the keyed start and end states of a 2D or a 3D scene.
+#[derive(Debug)]
+enum Plans {
+    TwoD(Box<Plan>),
+    ThreeD(Box<Plan3>),
+}
+
+impl Plans {
+    /// The transition from the scene on screen to its replacement, or `None` when there is
+    /// nothing to animate (the same picture, or a change between 2D and 3D).
+    fn diff(from: &SceneKind, to: &SceneKind, timing: Timing) -> Option<Self> {
+        match (from, to) {
+            (SceneKind::TwoD(a), SceneKind::TwoD(b)) => {
+                let plan = Plan::diff(a, b, timing);
+                (!plan.is_static()).then(|| Self::TwoD(Box::new(plan)))
+            }
+            (SceneKind::ThreeD(a), SceneKind::ThreeD(b)) => {
+                let plan = Plan3::diff(a, b, timing);
+                (!plan.is_static()).then(|| Self::ThreeD(Box::new(plan)))
+            }
+            _ => None,
+        }
+    }
+
+    fn total_ms(&self) -> f32 {
+        match self {
+            Self::TwoD(p) => p.total_ms(),
+            Self::ThreeD(p) => p.total_ms(),
+        }
+    }
+
+    /// The scene as it looks `elapsed` ms into the transition.
+    fn sample(&self, elapsed: f32) -> SceneKind {
+        match self {
+            Self::TwoD(p) => SceneKind::TwoD(p.sample(elapsed)),
+            Self::ThreeD(p) => SceneKind::ThreeD(p.sample(elapsed)),
+        }
+    }
+}
+
+/// An empty scene of the size and background of `scene`: what a chart that animates in starts
+/// from.
+fn blank_scene(scene: &SceneKind) -> SceneKind {
+    match scene {
+        SceneKind::TwoD(s) => SceneKind::TwoD(blank_like(s)),
+        SceneKind::ThreeD(s) => SceneKind::ThreeD(blank_like_3d(s)),
+    }
+}
+
 /// A transition in progress. The renderer draws it from the plan's start and end states by
 /// the clock; the chart keeps the clock.
 #[derive(Debug)]
 struct Anim {
-    plan: Plan,
+    plan: Plans,
+    timing: Timing,
     /// The `now` of the first frame, so the transition begins at time 0 whenever that frame
     /// comes. `None` until then.
     start_ms: Option<f64>,
@@ -310,7 +361,7 @@ pub struct Chart {
 }
 
 /// The laid-out chart, 2D or 3D.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SceneKind {
     TwoD(Scene),
     ThreeD(Scene3d),
@@ -499,33 +550,22 @@ impl Chart {
             self.relayout();
             return;
         };
-        let timing = anim.plan.timing;
+        let timing = anim.timing;
         self.scene = self.layout(&self.spec);
         self.hover = None;
-        if let SceneKind::TwoD(to) = &self.scene {
-            let from = match anim.origin {
-                Origin::Spec(ref spec) => match self.layout(spec) {
-                    SceneKind::TwoD(from) => Some(from),
-                    SceneKind::ThreeD(_) => None,
-                },
-                Origin::Hidden(ref hidden) => {
-                    let now = std::mem::replace(&mut self.spec.hidden_override, hidden.clone());
-                    let from = self.layout(&self.spec);
-                    self.spec.hidden_override = now;
-                    match from {
-                        SceneKind::TwoD(from) => Some(from),
-                        SceneKind::ThreeD(_) => None,
-                    }
-                }
-                Origin::Blank => Some(blank_like(to)),
-                Origin::Mid => None,
-            };
-            if let Some(from) = from {
-                self.anim = Some(Anim {
-                    plan: Plan::diff(&from, to, timing),
-                    ..anim
-                });
+        let from = match anim.origin {
+            Origin::Spec(ref spec) => Some(self.layout(spec)),
+            Origin::Hidden(ref hidden) => {
+                let now = std::mem::replace(&mut self.spec.hidden_override, hidden.clone());
+                let from = self.layout(&self.spec);
+                self.spec.hidden_override = now;
+                Some(from)
             }
+            Origin::Blank => Some(blank_scene(&self.scene)),
+            Origin::Mid => None,
+        };
+        if let Some(plan) = from.and_then(|from| Plans::diff(&from, &self.scene, timing)) {
+            self.anim = Some(Anim { plan, ..anim });
         }
         self.reload_scene();
     }
@@ -910,26 +950,21 @@ impl Chart {
     /// `origin` says what was on screen, for laying it out again if the canvas is resized
     /// before the transition ends.
     fn relayout_animated(&mut self, timing: Option<Timing>, origin: Origin) {
-        let shown = match (&self.anim, &self.scene) {
-            (Some(a), _) => Some((a.plan.sample(a.elapsed), Origin::Mid)),
-            (None, SceneKind::TwoD(s)) => Some((s.clone(), origin)),
-            (None, SceneKind::ThreeD(_)) => None,
+        let shown = match &self.anim {
+            Some(a) => (a.plan.sample(a.elapsed), Origin::Mid),
+            None => (self.scene.clone(), origin),
         };
         let target = self.layout(&self.spec);
         self.hover = None;
-        let plan = match (timing, shown, &target) {
-            (Some(timing), Some((from, origin)), SceneKind::TwoD(to)) => {
-                let plan = Plan::diff(&from, to, timing);
-                (!plan.is_static()).then_some((plan, origin))
-            }
-            _ => None,
-        };
+        let plan =
+            timing.and_then(|timing| Some((Plans::diff(&shown.0, &target, timing)?, timing)));
         self.scene = target;
-        self.anim = plan.map(|(plan, origin)| Anim {
+        self.anim = plan.map(|(plan, timing)| Anim {
             plan,
+            timing,
             start_ms: None,
             elapsed: 0.0,
-            origin,
+            origin: shown.1,
         });
         self.reload_scene();
     }
@@ -939,13 +974,10 @@ impl Chart {
         let Some(timing) = resolve_transition(self.spec.transition.as_ref()) else {
             return;
         };
-        let SceneKind::TwoD(to) = &self.scene else {
-            return;
-        };
-        let plan = Plan::diff(&blank_like(to), to, timing);
-        if !plan.is_static() {
+        if let Some(plan) = Plans::diff(&blank_scene(&self.scene), &self.scene, timing) {
             self.anim = Some(Anim {
                 plan,
+                timing,
                 start_ms: None,
                 elapsed: 0.0,
                 origin: Origin::Blank,
@@ -954,8 +986,8 @@ impl Chart {
         }
     }
 
-    /// Moves the renderer's clock to the transition's `elapsed`; at the end the transition is
-    /// over and the plain new scene replaces it.
+    /// Moves the transition to its `elapsed`; at the end the transition is over and the plain
+    /// new scene replaces it.
     fn apply_time(&mut self) -> bool {
         let Some(anim) = &self.anim else {
             return false;
@@ -965,23 +997,61 @@ impl Chart {
             self.reload_scene();
             return false;
         }
-        self.renderer.set_time(anim.elapsed);
+        self.upload_frame();
         true
+    }
+
+    /// Hands the renderer what changes from frame to frame at the transition's current time:
+    /// the clock the GPU mixes by and what the CPU tessellates (and in 3D the plot box's size).
+    fn upload_frame(&mut self) {
+        let Some(anim) = &self.anim else { return };
+        self.renderer.set_time(anim.elapsed);
+        match &anim.plan {
+            Plans::TwoD(plan) => {
+                if plan.has_marks() {
+                    self.renderer.set_marks(&plan.marks_at(anim.elapsed));
+                }
+            }
+            Plans::ThreeD(plan) => {
+                self.renderer
+                    .set_view_3d(plan.size_at(anim.elapsed), plan.plot_at(anim.elapsed));
+                if plan.has_marks() {
+                    self.renderer.set_marks_3d(&plan.marks_at(anim.elapsed));
+                }
+            }
+        }
     }
 
     /// Uploads the current scene (and camera) to the GPU again, keeping the hover. A transition
     /// in progress is uploaded as it is, at its current time.
     fn reload_scene(&mut self) {
         match (&self.scene, &self.anim) {
+            (
+                SceneKind::ThreeD(_),
+                Some(Anim {
+                    plan: Plans::ThreeD(plan),
+                    ..
+                }),
+            ) => {
+                self.renderer.begin_transition_3d(plan);
+                self.renderer.set_camera(self.camera);
+                self.upload_frame();
+            }
+            (
+                SceneKind::TwoD(_),
+                Some(Anim {
+                    plan: Plans::TwoD(plan),
+                    ..
+                }),
+            ) => {
+                self.renderer.begin_transition(plan);
+                self.upload_frame();
+            }
             (SceneKind::ThreeD(scene), _) => {
                 self.renderer.set_scene_3d(scene);
                 self.renderer.set_camera(self.camera);
             }
-            (SceneKind::TwoD(_), Some(anim)) => {
-                self.renderer.begin_transition(&anim.plan);
-                self.renderer.set_time(anim.elapsed);
-            }
-            (SceneKind::TwoD(scene), None) => self.renderer.set_scene(scene),
+            (SceneKind::TwoD(scene), _) => self.renderer.set_scene(scene),
         }
         self.renderer.set_hover(self.hover);
     }

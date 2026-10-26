@@ -138,6 +138,15 @@ pub struct Polyline {
     /// The layer it belongs to; the renderer draws one batch per layer.
     #[serde(skip)]
     pub layer: usize,
+    /// How much of the line is drawn, from its start: 1 all of it. A transition draws a new
+    /// line on by taking this from 0 to 1; the scene builders always make 1.
+    #[serde(skip)]
+    pub reveal: f32,
+    /// The key of the data point at each vertex, in the order of `runs` flattened (empty for
+    /// lines that are not a data series). It lets a transition match vertices of two versions
+    /// of a line by point, so a point that stays on the line moves with it.
+    #[serde(skip)]
+    pub keys: Vec<String>,
 }
 
 fn runs<S: Serializer>(v: &[Vec<[f32; 2]>], s: S) -> Result<S::Ok, S::Error> {

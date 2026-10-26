@@ -15,11 +15,14 @@
 //!
 //! Pure and deterministic: no clock, no GPU, which is why it is unit-tested natively.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::Color;
-use crate::anim::{lerp, lerp_bounds, lerp_color};
-use crate::scene::{AxisMap, MarkLabel, Rect, Rule, Scene, Text, TickRef};
+use crate::anim::{lerp, lerp_angle, lerp_bounds, lerp_color};
+use crate::pathmorph::{keyed_runs, match_runs, mix_runs, reveal_runs};
+use crate::scene::{
+    ArcMark, AxisMap, Base, MarkLabel, PointMark, Polyline, Rect, Rule, Scene, Text, TickRef,
+};
 use crate::spec::Timing;
 
 /// One item's journey: the state it starts in, the state it ends in, and how long after the
@@ -45,7 +48,7 @@ pub enum Phase {
 
 /// Suffix of the key an old text gets when its string changed under the same key: it fades out
 /// as its own item while the new one fades in.
-const OLD_SUFFIX: &str = "\u{1}old";
+pub(crate) const OLD_SUFFIX: &str = "\u{1}old";
 
 /// A transition between two scenes. Items are listed in the new scene's order followed by the
 /// exits, so index `i` of `rects` is bar `i` of `target` for `i < target.rects.len()` (hover
@@ -59,35 +62,47 @@ pub struct Plan {
     pub rules: Vec<Pair<Rule>>,
     pub texts: Vec<Pair<Text>>,
     pub labels: Vec<Pair<MarkLabel>>,
+    /// Lines, their markers and pie slices. They are tessellated on the CPU, so the renderer
+    /// is handed [`Plan::marks_at`] for each frame instead of start and end states.
+    pub polylines: Vec<Pair<Polyline>>,
+    pub points: Vec<Pair<PointMark>>,
+    pub arcs: Vec<Pair<ArcMark>>,
     /// The old scene's axes, to interpolate the axes of a sampled scene.
     from_axes: Vec<AxisMap>,
     max_delay_ms: f32,
 }
 
 /// What happened to the item at an index.
-enum Change {
+pub(crate) enum Change {
     Update { old: usize, new: usize },
     Enter { new: usize },
     Exit { old: usize },
 }
 
 /// Matches `old` and `new` by key: every new item (in order) is an update or an enter, then
-/// every unmatched old item is an exit. An old item is matched at most once, so duplicate keys
-/// cannot make one item move to two places.
-fn diff_keys<T>(old: &[T], new: &[T], key: impl Fn(&T) -> &str) -> Vec<Change> {
-    let mut index: HashMap<&str, usize> = HashMap::with_capacity(old.len());
-    for (i, item) in old.iter().enumerate() {
-        index.entry(key(item)).or_insert(i);
+/// every unmatched old item is an exit. When a key occurs more than once (3D scenes reuse a few
+/// names) the n-th new item with it matches the n-th old one, and an old item is matched at
+/// most once, so nothing can move to two places.
+pub(crate) fn diff_keys<T>(old: &[T], new: &[T], key: impl Fn(&T) -> &str) -> Vec<Change> {
+    const NONE: usize = usize::MAX;
+    // The old items of each key as a chain, in order: `head[key]` is the first one not yet
+    // matched and `next[i]` the one after `i`.
+    let mut head: HashMap<&str, usize> = HashMap::with_capacity(old.len());
+    let mut next = vec![NONE; old.len()];
+    for (i, item) in old.iter().enumerate().rev() {
+        next[i] = head.insert(key(item), i).unwrap_or(NONE);
     }
     let mut used = vec![false; old.len()];
     let mut out = Vec::with_capacity(new.len());
     for (n, item) in new.iter().enumerate() {
-        match index.get(key(item)).copied().filter(|&o| !used[o]) {
-            Some(o) => {
+        match head.get_mut(key(item)) {
+            Some(first) if *first != NONE => {
+                let o = *first;
+                *first = next[o];
                 used[o] = true;
                 out.push(Change::Update { old: o, new: n });
             }
-            None => out.push(Change::Enter { new: n }),
+            _ => out.push(Change::Enter { new: n }),
         }
     }
     out.extend(
@@ -99,39 +114,31 @@ fn diff_keys<T>(old: &[T], new: &[T], key: impl Fn(&T) -> &str) -> Vec<Change> {
     out
 }
 
-fn transparent(c: Color) -> Color {
+pub(crate) fn transparent(c: Color) -> Color {
     Color { a: 0.0, ..c }
 }
 
-/// The axis of `scene` that `tick` refers to, with the one of the same id in `other`: the
-/// scale that puts the tick where it is, and the scale that would put it somewhere else.
-fn matching_axes<'a>(
-    tick: TickRef,
-    scene: &'a Scene,
-    other: &'a Scene,
-) -> Option<(&'a AxisMap, &'a AxisMap)> {
-    let own = scene.axes.get(tick.axis)?;
+/// How far `tick` would move, in pixels (or world units) along its axis, if the scale of the
+/// axis list `other` placed it instead of the one in `own`. `None` when `other` has no such
+/// axis. The flag says whether the axis runs along y.
+pub(crate) fn tick_shift(
+    tick: Option<TickRef>,
+    own: &[AxisMap],
+    other: &[AxisMap],
+) -> Option<(bool, f32)> {
+    let tick = tick?;
+    let own = own.get(tick.axis)?;
     let theirs = other
-        .axes
         .iter()
         .find(|a| a.id == own.id && a.vertical == own.vertical)?;
-    Some((own, theirs))
-}
-
-/// How far `tick` would move, in pixels along its axis, if the scale of `other` placed it
-/// instead of the one of `scene`. `None` when `other` has no such axis.
-fn tick_shift(tick: Option<TickRef>, scene: &Scene, other: &Scene) -> Option<(bool, f32)> {
-    let tick = tick?;
-    let (own, theirs) = matching_axes(tick, scene, other)?;
     let delta = theirs.px_unclamped(tick.value) - own.px_unclamped(tick.value);
     Some((own.vertical, delta as f32))
 }
 
 /// The pixel at which a bar's baseline edge would be on the scale of `other`.
-fn base_px(rect: &Rect, scene: &Scene, other: &Scene) -> Option<f32> {
-    let base = rect.base.as_ref()?;
-    let own = scene.axes.get(base.axis)?;
-    let theirs = other.axes.iter().find(|a| a.id == own.id && a.vertical)?;
+pub(crate) fn base_px(base: &Base, own: &[AxisMap], other: &[AxisMap]) -> Option<f32> {
+    let own = own.get(base.axis)?;
+    let theirs = other.iter().find(|a| a.id == own.id && a.vertical)?;
     Some(theirs.px(base.y0) as f32)
 }
 
@@ -187,7 +194,11 @@ fn flat_edge(
             Some(c) => far_edge(&other.rects[c]),
             None => flat_edge(j, scene, other, counterpart, memo),
         },
-        None => base_px(r, scene, other).unwrap_or_else(|| own_baseline(r)),
+        None => r
+            .base
+            .as_ref()
+            .and_then(|b| base_px(b, &scene.axes, &other.axes))
+            .unwrap_or_else(|| own_baseline(r)),
     };
     memo[i] = Some(y);
     y
@@ -219,6 +230,9 @@ impl Plan {
             rules: Vec::new(),
             texts: Vec::new(),
             labels: Vec::new(),
+            polylines: Vec::new(),
+            points: Vec::new(),
+            arcs: Vec::new(),
             from_axes: from.axes.clone(),
             max_delay_ms: 0.0,
         };
@@ -276,6 +290,167 @@ impl Plan {
             }
         }
 
+        // Lines draw on, fade out, or morph; their markers scale and fade; pie slices sweep
+        // open from, and close onto, the boundary of their neighbours. The stagger runs along
+        // the new scene's markers and slices (bars, then points, then slices make up the mark
+        // indices the value labels refer to).
+        let mut mark_delays = delays.clone();
+        // Where the vertices (and so the markers) that appear or disappear on a line that stays
+        // start from or end at: on the neighbouring point that stays.
+        let mut anchors: HashMap<&str, [f32; 2]> = HashMap::new();
+        // The points of lines whose vertices could not be matched by point (their markers
+        // cross-fade instead of moving, since the line does not move with them).
+        let mut loose: HashSet<&str> = HashSet::new();
+        for change in diff_keys(&from.polylines, &to.polylines, |l| &l.key) {
+            plan.polylines.push(match change {
+                Change::Update { old, new } => {
+                    let (a, b) = keyed_runs(
+                        (&from.polylines[old].runs, &from.polylines[old].keys),
+                        (&to.polylines[new].runs, &to.polylines[new].keys),
+                        &mut anchors,
+                    )
+                    .unwrap_or_else(|| {
+                        let both = from.polylines[old]
+                            .keys
+                            .iter()
+                            .chain(&to.polylines[new].keys);
+                        loose.extend(both.map(String::as_str));
+                        match_runs(&from.polylines[old].runs, &to.polylines[new].runs)
+                    });
+                    Pair {
+                        from: Polyline {
+                            runs: a,
+                            ..from.polylines[old].clone()
+                        },
+                        to: Polyline {
+                            runs: b,
+                            ..to.polylines[new].clone()
+                        },
+                        delay_ms: 0.0,
+                        phase: Phase::Update,
+                    }
+                }
+                Change::Enter { new } => Pair {
+                    from: Polyline {
+                        reveal: 0.0,
+                        ..to.polylines[new].clone()
+                    },
+                    to: to.polylines[new].clone(),
+                    delay_ms: 0.0,
+                    phase: Phase::Enter,
+                },
+                Change::Exit { old } => Pair {
+                    from: from.polylines[old].clone(),
+                    to: Polyline {
+                        color: transparent(from.polylines[old].color),
+                        ..from.polylines[old].clone()
+                    },
+                    delay_ms: 0.0,
+                    phase: Phase::Exit,
+                },
+            });
+        }
+        let count = to.points.len();
+        let mut leaving: Vec<Pair<PointMark>> = Vec::new();
+        for change in diff_keys(&from.points, &to.points, |p| &p.key) {
+            plan.points.push(match change {
+                Change::Update { old, new } if loose.contains(to.points[new].key.as_str()) => {
+                    // Fades out where it was (as a marker of its own, listed after the rest)
+                    // while the new one fades in where it is now.
+                    let mut gone = vanished(&from.points[old], &anchors);
+                    (gone.x, gone.y) = (from.points[old].x, from.points[old].y);
+                    gone.key.push_str(OLD_SUFFIX);
+                    leaving.push(Pair {
+                        from: PointMark {
+                            key: gone.key.clone(),
+                            ..from.points[old].clone()
+                        },
+                        to: gone,
+                        delay_ms: 0.0,
+                        phase: Phase::Exit,
+                    });
+                    Pair {
+                        from: vanished(&to.points[new], &anchors),
+                        to: to.points[new].clone(),
+                        delay_ms: timing.delay_of(new, count),
+                        phase: Phase::Enter,
+                    }
+                }
+                Change::Update { old, new } => Pair {
+                    from: from.points[old].clone(),
+                    to: to.points[new].clone(),
+                    delay_ms: timing.delay_of(new, count),
+                    phase: Phase::Update,
+                },
+                Change::Enter { new } => Pair {
+                    from: vanished(&to.points[new], &anchors),
+                    to: to.points[new].clone(),
+                    delay_ms: timing.delay_of(new, count),
+                    phase: Phase::Enter,
+                },
+                Change::Exit { old } => Pair {
+                    from: from.points[old].clone(),
+                    to: vanished(&from.points[old], &anchors),
+                    delay_ms: 0.0,
+                    phase: Phase::Exit,
+                },
+            });
+        }
+        // (The exits already in the list stay after the new ones, so mark indices still agree.)
+        mark_delays.extend(
+            plan.points
+                .iter()
+                .filter(|p| p.phase != Phase::Exit)
+                .map(|p| p.delay_ms),
+        );
+        plan.points.extend(leaving);
+        let count = to.arcs.len();
+        let changes = diff_keys(&from.arcs, &to.arcs, |a| &a.key);
+        let mut new_to_old = vec![None; count];
+        let mut old_to_new = vec![None; from.arcs.len()];
+        for change in &changes {
+            if let Change::Update { old, new } = *change {
+                new_to_old[new] = Some(old);
+                old_to_new[old] = Some(new);
+            }
+        }
+        for change in changes {
+            plan.arcs.push(match change {
+                Change::Update { old, new } => Pair {
+                    from: from.arcs[old].clone(),
+                    to: to.arcs[new].clone(),
+                    delay_ms: timing.delay_of(new, count),
+                    phase: Phase::Update,
+                },
+                Change::Enter { new } => {
+                    // Opens from the old boundary where the slice would have been squeezed in.
+                    let at = open_seam(new, &angles(&to.arcs), &new_to_old, &angles(&from.arcs));
+                    Pair {
+                        from: closed(&to.arcs[new], at),
+                        to: to.arcs[new].clone(),
+                        delay_ms: timing.delay_of(new, count),
+                        phase: Phase::Enter,
+                    }
+                }
+                Change::Exit { old } => {
+                    // Closes onto the new boundary of the slices that stay on either side.
+                    let at = close_seam(old, &angles(&from.arcs), &old_to_new, &angles(&to.arcs));
+                    Pair {
+                        from: from.arcs[old].clone(),
+                        to: closed(&from.arcs[old], at),
+                        delay_ms: 0.0,
+                        phase: Phase::Exit,
+                    }
+                }
+            });
+        }
+        mark_delays.extend(
+            plan.arcs
+                .iter()
+                .filter(|p| p.phase != Phase::Exit)
+                .map(|p| p.delay_ms),
+        );
+
         // Rules: gridlines, axis lines, ticks and legend swatches. A tick that enters starts
         // where the old scale would have put it, one that leaves ends where the new scale puts
         // it, and both fade: the way d3 animates an axis.
@@ -290,7 +465,7 @@ impl Plan {
                 Change::Enter { new } => {
                     let mut start = to.rules[new].clone();
                     start.color = transparent(start.color);
-                    if let Some((vertical, d)) = tick_shift(start.tick, to, from) {
+                    if let Some((vertical, d)) = tick_shift(start.tick, &to.axes, &from.axes) {
                         if vertical {
                             start.bounds.y += d;
                         } else {
@@ -307,7 +482,7 @@ impl Plan {
                 Change::Exit { old } => {
                     let mut end = from.rules[old].clone();
                     end.color = transparent(end.color);
-                    if let Some((vertical, d)) = tick_shift(end.tick, from, to) {
+                    if let Some((vertical, d)) = tick_shift(end.tick, &from.axes, &to.axes) {
                         if vertical {
                             end.bounds.y += d;
                         } else {
@@ -384,7 +559,7 @@ impl Plan {
         for pair in &mut plan.texts {
             match pair.phase {
                 Phase::Enter => {
-                    if let Some((vertical, d)) = tick_shift(pair.to.tick, to, from) {
+                    if let Some((vertical, d)) = tick_shift(pair.to.tick, &to.axes, &from.axes) {
                         if vertical {
                             pair.from.y += d;
                         } else {
@@ -393,7 +568,7 @@ impl Plan {
                     }
                 }
                 Phase::Exit => {
-                    if let Some((vertical, d)) = tick_shift(pair.from.tick, from, to) {
+                    if let Some((vertical, d)) = tick_shift(pair.from.tick, &from.axes, &to.axes) {
                         if vertical {
                             pair.to.y += d;
                         } else {
@@ -408,7 +583,7 @@ impl Plan {
         // Value labels follow their bar's delay.
         let old_texts: Vec<Text> = from.labels.iter().map(|l| l.text.clone()).collect();
         let new_texts: Vec<Text> = to.labels.iter().map(|l| l.text.clone()).collect();
-        let label_delay = |i: usize| delays.get(to.labels[i].mark).copied().unwrap_or(0.0);
+        let label_delay = |i: usize| mark_delays.get(to.labels[i].mark).copied().unwrap_or(0.0);
         let label_pairs = text_pairs(&old_texts, &new_texts, &label_delay);
         plan.labels = label_pairs
             .into_iter()
@@ -445,7 +620,10 @@ impl Plan {
             })
             .collect();
 
-        for d in plan.labels.iter().map(|p| p.delay_ms) {
+        let delays = (plan.labels.iter().map(|p| p.delay_ms))
+            .chain(plan.points.iter().map(|p| p.delay_ms))
+            .chain(plan.arcs.iter().map(|p| p.delay_ms));
+        for d in delays {
             plan.max_delay_ms = plan.max_delay_ms.max(d);
         }
         plan
@@ -464,7 +642,13 @@ impl Plan {
                 .iter()
                 .all(|p| p.phase == Phase::Update && p.from == p.to)
         }
-        calm(&self.rects) && calm(&self.rules) && calm(&self.texts) && calm(&self.labels)
+        calm(&self.rects)
+            && calm(&self.rules)
+            && calm(&self.texts)
+            && calm(&self.labels)
+            && calm(&self.polylines)
+            && calm(&self.points)
+            && calm(&self.arcs)
     }
 
     /// The scene as it looks `elapsed_ms` into the transition: every item mixed between its
@@ -508,31 +692,175 @@ impl Plan {
                 ),
             })
             .collect();
+        self.fill_marks(&mut scene, elapsed_ms);
         // The scales slide too (all at the undelayed pace), so the next diff starts from where
         // the axes visibly are.
-        let e = t(0.0);
-        scene.axes = self
-            .target
-            .axes
-            .iter()
-            .map(|to| match self.from_axes.iter().find(|a| a.id == to.id) {
-                Some(from) if from.vertical == to.vertical => AxisMap {
-                    id: to.id.clone(),
-                    vertical: to.vertical,
-                    domain: (
-                        f64::from(lerp(from.domain.0 as f32, to.domain.0 as f32, e)),
-                        f64::from(lerp(from.domain.1 as f32, to.domain.1 as f32, e)),
-                    ),
-                    range: (
-                        f64::from(lerp(from.range.0 as f32, to.range.0 as f32, e)),
-                        f64::from(lerp(from.range.1 as f32, to.range.1 as f32, e)),
-                    ),
-                },
-                _ => to.clone(),
-            })
-            .collect();
+        scene.axes = lerp_axes(&self.from_axes, &self.target.axes, t(0.0));
         scene
     }
+}
+
+/// The axes `e` of the way from those of the old scene to those of the new one; an axis only
+/// the new scene has is as it is.
+pub(crate) fn lerp_axes(from: &[AxisMap], to: &[AxisMap], e: f32) -> Vec<AxisMap> {
+    to.iter()
+        .map(|to| match from.iter().find(|a| a.id == to.id) {
+            Some(from) if from.vertical == to.vertical => {
+                let l = |a: f64, b: f64| f64::from(lerp(a as f32, b as f32, e));
+                AxisMap {
+                    id: to.id.clone(),
+                    vertical: to.vertical,
+                    domain: (l(from.domain.0, to.domain.0), l(from.domain.1, to.domain.1)),
+                    range: (l(from.range.0, to.range.0), l(from.range.1, to.range.1)),
+                }
+            }
+            _ => to.clone(),
+        })
+        .collect()
+}
+
+impl Plan {
+    /// Whether there are lines, markers or slices to move: they are redrawn each frame from
+    /// [`marks_at`](Self::marks_at) because the CPU tessellates them.
+    pub fn has_marks(&self) -> bool {
+        !(self.polylines.is_empty() && self.points.is_empty() && self.arcs.is_empty())
+    }
+
+    /// A scene holding only the lines, markers and slices as they are `elapsed_ms` into the
+    /// transition (the rest empty): what the renderer re-tessellates each frame.
+    pub fn marks_at(&self, elapsed_ms: f32) -> Scene {
+        let mut scene = Scene::empty();
+        scene.width = self.target.width;
+        scene.height = self.target.height;
+        scene.background = self.target.background;
+        self.fill_marks(&mut scene, elapsed_ms);
+        scene
+    }
+
+    fn fill_marks(&self, scene: &mut Scene, elapsed_ms: f32) {
+        let t = |delay: f32| self.timing.eased(elapsed_ms, delay);
+        scene.polylines = self
+            .polylines
+            .iter()
+            .map(|p| morph_polyline(p, t(p.delay_ms)))
+            .collect();
+        scene.points = self
+            .points
+            .iter()
+            .map(|p| morph_point(p, t(p.delay_ms)))
+            .collect();
+        scene.arcs = self
+            .arcs
+            .iter()
+            .map(|p| morph_arc(p, t(p.delay_ms)))
+            .collect();
+    }
+}
+
+/// A marker with no size and no opacity: what one scales and fades from or to. It sits at its
+/// anchor (the neighbouring point of its line that stays, see [`keyed_runs`]), else where it is.
+fn vanished(p: &PointMark, anchors: &HashMap<&str, [f32; 2]>) -> PointMark {
+    let [x, y] = anchors.get(p.key.as_str()).copied().unwrap_or([p.x, p.y]);
+    PointMark {
+        x,
+        y,
+        size: 0.0,
+        color: transparent(p.color),
+        ..p.clone()
+    }
+}
+
+/// The angle a slice that is not in the old scene opens from. Between two slices that stay
+/// (X before it, Y after it) the old gap is `[X.end, Y.start]` and the new one `[X.end', Y.start']`;
+/// the slices that enter fill the new gap as it opens, so they open from the *old* end of the
+/// gap, `Y.start`: the first enters at `lerp(Y.start, X.end')`, the last ends at `lerp(Y.start,
+/// Y.start')`, which is where Y is then. Slices that enter next to each other open from the
+/// same angle, so they unfold as one piece, and together with the ones that leave they tile the
+/// gap at every moment. With no slice after it, the gap ends where the circle does; with no old
+/// slices at all, everything opens from the first angle.
+///
+/// `counterpart[j]` is the index in `old` of slice `j` of `new`, if it has one.
+pub(crate) fn open_seam(
+    i: usize,
+    new: &[(f32, f32)],
+    counterpart: &[Option<usize>],
+    old: &[(f32, f32)],
+) -> f32 {
+    counterpart[i..]
+        .iter()
+        .find_map(|c| c.map(|c| old[c].0))
+        .or_else(|| old.last().map(|o| o.1))
+        .unwrap_or(new[0].0)
+}
+
+/// The angle a slice that is not in the new scene closes onto: where the slice before it that
+/// stays ends in the new layout (the mirror of [`open_seam`]: leaving slices collapse onto the
+/// start of the new gap). With none before it, the start of the circle.
+///
+/// `counterpart[j]` is the index in `new` of slice `j` of `old`, if it has one.
+pub(crate) fn close_seam(
+    i: usize,
+    old: &[(f32, f32)],
+    counterpart: &[Option<usize>],
+    new: &[(f32, f32)],
+) -> f32 {
+    counterpart[..i]
+        .iter()
+        .rev()
+        .find_map(|c| c.map(|c| new[c].1))
+        .or_else(|| new.first().map(|n| n.0))
+        .unwrap_or(old[0].0)
+}
+
+fn angles(arcs: &[ArcMark]) -> Vec<(f32, f32)> {
+    arcs.iter().map(|a| (a.start, a.end)).collect()
+}
+
+/// The slice squeezed to nothing at angle `at`.
+fn closed(slice: &ArcMark, at: f32) -> ArcMark {
+    ArcMark {
+        start: at,
+        end: at,
+        ..slice.clone()
+    }
+}
+
+pub fn morph_polyline(p: &Pair<Polyline>, e: f32) -> Polyline {
+    let mut l = p.to.clone();
+    l.runs = mix_runs(&p.from.runs, &p.to.runs, e);
+    l.color = lerp_color(p.from.color, p.to.color, e);
+    l.width = lerp(p.from.width, p.to.width, e);
+    let reveal = lerp(p.from.reveal, p.to.reveal, e);
+    if reveal < 1.0 {
+        l.runs = reveal_runs(&l.runs, reveal);
+    }
+    l.reveal = 1.0;
+    l
+}
+
+pub fn morph_point(p: &Pair<PointMark>, e: f32) -> PointMark {
+    let mut m = p.to.clone();
+    m.x = lerp(p.from.x, p.to.x, e);
+    m.y = lerp(p.from.y, p.to.y, e);
+    m.size = lerp(p.from.size, p.to.size, e).max(0.0);
+    m.color = lerp_color(p.from.color, p.to.color, e);
+    m
+}
+
+pub fn morph_arc(p: &Pair<ArcMark>, e: f32) -> ArcMark {
+    let mut a = p.to.clone();
+    let l = |f: f32, t: f32| lerp(f, t, e);
+    a.center = [
+        l(p.from.center[0], p.to.center[0]),
+        l(p.from.center[1], p.to.center[1]),
+    ];
+    a.inner = l(p.from.inner, p.to.inner).max(0.0);
+    a.outer = l(p.from.outer, p.to.outer).max(0.0);
+    a.start = lerp_angle(p.from.start, p.to.start, e);
+    a.end = lerp_angle(p.from.end, p.to.end, e).max(a.start);
+    a.pad = l(p.from.pad, p.to.pad);
+    a.color = lerp_color(p.from.color, p.to.color, e);
+    a
 }
 
 impl Text {
@@ -570,6 +898,7 @@ pub fn morph_text(p: &Pair<Text>, e: f32) -> Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pathmorph::subdivide;
     use crate::scene::{Anchor, Base, Bounds, Rotation, RuleKind};
     use crate::spec::Easing;
 
@@ -1057,6 +1386,391 @@ mod tests {
                 let shown = Plan::diff(&sa, &sb, timing()).sample(at);
                 let again = Plan::diff(&shown, &sc, timing()).sample(0.0);
                 prop_assert_eq!(&again.rects, &shown.rects);
+            }
+        }
+    }
+
+    fn line(key: &str, points: &[[f32; 2]]) -> Polyline {
+        Polyline {
+            key: key.into(),
+            color: Color::linear(0.2, 0.4, 0.6, 1.0),
+            width: 2.0,
+            runs: vec![points.to_vec()],
+            layer: 1,
+            reveal: 1.0,
+            keys: Vec::new(),
+        }
+    }
+
+    /// A data line whose vertices are the points `a`, `b`, ... at the given positions.
+    fn keyed_line(points: &[(&str, [f32; 2])]) -> Polyline {
+        Polyline {
+            keys: points.iter().map(|p| p.0.to_owned()).collect(),
+            ..line("l", &points.iter().map(|p| p.1).collect::<Vec<_>>())
+        }
+    }
+
+    fn marker(key: &str, at: [f32; 2]) -> PointMark {
+        PointMark {
+            key: key.into(),
+            x: at[0],
+            y: at[1],
+            color: Color::linear(1.0, 0.0, 0.0, 1.0),
+            size: 8.0,
+            visible: true,
+            layer: 1,
+            row: 0,
+        }
+    }
+
+    fn line_scene(points: &[(&str, [f32; 2])]) -> Scene {
+        let mut s = scene(vec![], (0.0, 1.0));
+        s.polylines.push(keyed_line(points));
+        s.points = points.iter().map(|p| marker(p.0, p.1)).collect();
+        s
+    }
+
+    #[test]
+    fn a_point_that_is_added_to_a_line_grows_out_of_its_neighbour_and_its_marker_with_it() {
+        let old = line_scene(&[
+            ("a", [0.0, 100.0]),
+            ("b", [100.0, 50.0]),
+            ("c", [200.0, 80.0]),
+        ]);
+        let new = line_scene(&[
+            ("a", [0.0, 90.0]),
+            ("b", [80.0, 40.0]),
+            ("c", [160.0, 70.0]),
+            ("d", [240.0, 10.0]),
+        ]);
+        let plan = Plan::diff(&old, &new, timing());
+        let pair = &plan.polylines[0];
+        assert_eq!(pair.from.runs[0].len(), 4);
+        // At the start the line is the old one with the new vertex sitting on its last point.
+        assert_eq!(pair.from.runs[0][3], [200.0, 80.0]);
+        assert_eq!(
+            &plan.sample(400.0).polylines[0].runs,
+            &new.polylines[0].runs
+        );
+        // The marker of the new point starts on the same spot as the vertex does, and every
+        // marker that stays is on the line at every moment.
+        for step in 0..=8 {
+            let s = plan.sample(step as f32 * 50.0);
+            let line = &s.polylines[0].runs[0];
+            for m in &s.points {
+                assert!(
+                    line.iter()
+                        .any(|v| (v[0] - m.x).abs() < 1e-3 && (v[1] - m.y).abs() < 1e-3),
+                    "marker {} off the line at step {step}: {m:?} vs {line:?}",
+                    m.key
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_point_that_is_removed_closes_onto_its_neighbour() {
+        let old = line_scene(&[
+            ("a", [0.0, 100.0]),
+            ("b", [100.0, 50.0]),
+            ("c", [200.0, 80.0]),
+        ]);
+        let new = line_scene(&[("a", [0.0, 100.0]), ("c", [200.0, 80.0])]);
+        let plan = Plan::diff(&old, &new, timing());
+        let pair = &plan.polylines[0];
+        assert_eq!(pair.from.runs[0], old.polylines[0].runs[0]);
+        // b ends on a.
+        assert_eq!(pair.to.runs[0][1], [0.0, 100.0]);
+        for step in 0..=8 {
+            let s = plan.sample(step as f32 * 50.0);
+            let line = &s.polylines[0].runs[0];
+            for m in &s.points {
+                assert!(
+                    line.iter()
+                        .any(|v| (v[0] - m.x).abs() < 1e-3 && (v[1] - m.y).abs() < 1e-3)
+                );
+            }
+        }
+        assert_eq!(
+            &plan.sample(400.0).polylines[0].runs,
+            &new.polylines[0].runs
+        );
+    }
+
+    #[test]
+    fn lines_whose_points_changed_order_fall_back_to_resampling() {
+        let old = line_scene(&[
+            ("a", [0.0, 100.0]),
+            ("b", [100.0, 50.0]),
+            ("c", [200.0, 80.0]),
+        ]);
+        let new = line_scene(&[
+            ("c", [0.0, 10.0]),
+            ("b", [100.0, 20.0]),
+            ("a", [200.0, 30.0]),
+        ]);
+        let plan = Plan::diff(&old, &new, timing());
+        let pair = &plan.polylines[0];
+        assert_eq!(pair.from.runs[0].len(), pair.to.runs[0].len());
+        assert_eq!(
+            &plan.sample(400.0).polylines[0].runs,
+            &new.polylines[0].runs
+        );
+    }
+
+    #[test]
+    fn subdividing_keeps_every_vertex_and_the_shape() {
+        let run = [[0.0, 0.0], [10.0, 0.0], [10.0, 30.0]];
+        let more = subdivide(&run, 7);
+        assert_eq!(more.len(), 7);
+        // The original points are still there, in order.
+        let mut at = 0;
+        for p in run {
+            at += more[at..].iter().position(|&q| q == p).unwrap();
+        }
+        // The new ones lie on the old line, mostly on the longer segment.
+        for q in &more {
+            let on_first = q[1] == 0.0 && (0.0..=10.0).contains(&q[0]);
+            let on_second = q[0] == 10.0 && (0.0..=30.0).contains(&q[1]);
+            assert!(on_first || on_second, "{q:?}");
+        }
+        assert_eq!(more.iter().filter(|q| q[0] == 10.0).count(), 5);
+        assert_eq!(subdivide(&run, 3), run);
+        assert_eq!(subdivide(&[[1.0, 2.0]], 3), vec![[1.0, 2.0]; 3]);
+    }
+
+    #[test]
+    fn a_line_morphs_between_different_point_counts_without_a_jump() {
+        let a = line("l", &[[0.0, 100.0], [50.0, 50.0], [100.0, 80.0]]);
+        let b = line(
+            "l",
+            &[
+                [0.0, 90.0],
+                [25.0, 40.0],
+                [50.0, 60.0],
+                [75.0, 30.0],
+                [100.0, 20.0],
+            ],
+        );
+        let mut old = scene(vec![], (0.0, 1.0));
+        old.polylines.push(a.clone());
+        let mut new = scene(vec![], (0.0, 1.0));
+        new.polylines.push(b.clone());
+        let plan = Plan::diff(&old, &new, timing());
+        let pair = &plan.polylines[0];
+        assert_eq!(pair.from.runs[0].len(), pair.to.runs[0].len());
+        // First frame: the old line (its original vertices among the extra points).
+        let first = &plan.sample(0.0).polylines[0].runs[0];
+        for p in &a.runs[0] {
+            assert!(first.contains(p), "{p:?} missing in {first:?}");
+        }
+        assert_eq!(&plan.sample(400.0).polylines[0].runs, &b.runs);
+        // Midway the line is in between: every point between its two ends.
+        let mid = &plan.sample(200.0).polylines[0].runs[0];
+        for (m, (f, t)) in mid
+            .iter()
+            .zip(pair.from.runs[0].iter().zip(&pair.to.runs[0]))
+        {
+            assert!((m[1] - (f[1] + t[1]) / 2.0).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn a_new_line_is_drawn_on_from_its_start_and_an_old_one_fades_out() {
+        let l = line("l", &[[0.0, 100.0], [100.0, 100.0], [100.0, 200.0]]);
+        let mut with = scene(vec![], (0.0, 1.0));
+        with.polylines.push(l.clone());
+        let without = scene(vec![], (0.0, 1.0));
+        let plan = Plan::diff(&without, &with, timing());
+        assert_eq!(plan.polylines[0].phase, Phase::Enter);
+        assert!(
+            plan.sample(0.0).polylines[0].runs.is_empty()
+                || plan.sample(0.0).polylines[0].runs[0].len() == 1
+        );
+        // A quarter of the way: a quarter of the length (50 of 200 px), still on the first leg.
+        let quarter = &plan.sample(100.0).polylines[0].runs[0];
+        assert_eq!(quarter.as_slice(), &[[0.0, 100.0], [50.0, 100.0]]);
+        let three_quarters = &plan.sample(300.0).polylines[0].runs[0];
+        assert_eq!(
+            three_quarters.as_slice(),
+            &[[0.0, 100.0], [100.0, 100.0], [100.0, 150.0]]
+        );
+        assert_eq!(&plan.sample(400.0).polylines[0].runs, &l.runs);
+        // Leaving: the same line, fading.
+        let plan = Plan::diff(&with, &without, timing());
+        assert_eq!(plan.polylines[0].phase, Phase::Exit);
+        let mid = &plan.sample(200.0).polylines[0];
+        assert_eq!(mid.runs, l.runs);
+        assert!((mid.color.a - 0.5).abs() < 1e-6);
+        assert!(plan.sample(400.0).polylines.is_empty());
+    }
+
+    #[test]
+    fn markers_scale_and_fade_in_and_out() {
+        let marker = |key: &str, x: f32| PointMark {
+            key: key.into(),
+            x,
+            y: 10.0,
+            color: Color::linear(1.0, 0.0, 0.0, 1.0),
+            size: 8.0,
+            visible: true,
+            layer: 1,
+            row: 0,
+        };
+        let mut a = scene(vec![], (0.0, 1.0));
+        a.points = vec![marker("a", 10.0), marker("b", 20.0)];
+        let mut b = scene(vec![], (0.0, 1.0));
+        b.points = vec![marker("b", 30.0), marker("c", 40.0)];
+        let plan = Plan::diff(&a, &b, timing());
+        let mid = plan.sample(200.0);
+        let by_key = |k: &str| mid.points.iter().find(|p| p.key == k).unwrap();
+        assert_eq!(by_key("b").x, 25.0);
+        assert_eq!(by_key("b").size, 8.0);
+        assert_eq!(by_key("c").size, 4.0); // entering: half grown
+        assert!((by_key("c").color.a - 0.5).abs() < 1e-6);
+        assert_eq!(by_key("a").size, 4.0); // leaving: half shrunk
+        assert_eq!(by_key("c").x, 40.0); // in place
+        assert_eq!(plan.sample(400.0).points.len(), 2);
+    }
+
+    fn slices(spec: &[(&str, f32)]) -> Scene {
+        let total: f32 = spec.iter().map(|s| s.1).sum();
+        let mut at = 0.0;
+        let mut s = Scene::empty();
+        for (key, v) in spec {
+            let end = at + v / total * std::f32::consts::TAU;
+            s.arcs.push(ArcMark {
+                key: (*key).into(),
+                color: Color::linear(0.5, 0.5, 0.5, 1.0),
+                center: [100.0, 100.0],
+                inner: 20.0,
+                outer: 80.0,
+                start: at,
+                end,
+                pad: 0.0,
+                layer: 0,
+                row: 0,
+                sum: None,
+            });
+            at = end;
+        }
+        s
+    }
+
+    /// The slices of a sampled scene, in angular order, never overlap and never leave a gap
+    /// bigger than float noise: they tile the circle at every moment.
+    fn assert_tiles(s: &Scene, what: &str) {
+        let mut arcs: Vec<&ArcMark> = s.arcs.iter().collect();
+        arcs.sort_by(|a, b| a.start.total_cmp(&b.start).then(a.end.total_cmp(&b.end)));
+        for pair in arcs.windows(2) {
+            assert!(
+                pair[0].end <= pair[1].start + 1e-3,
+                "{what}: {} ends at {} after {} starts at {}",
+                pair[0].key,
+                pair[0].end,
+                pair[1].key,
+                pair[1].start
+            );
+        }
+        for a in &arcs {
+            assert!(a.end >= a.start - 1e-6, "{what}: {} inverted", a.key);
+        }
+    }
+
+    #[test]
+    fn pie_slices_open_and_close_along_their_neighbours_and_never_overlap() {
+        let abc = slices(&[("a", 3.0), ("b", 2.0), ("c", 1.0)]);
+        let ac = slices(&[("a", 3.0), ("c", 1.0)]);
+        let abdc = slices(&[("a", 3.0), ("b", 2.0), ("d", 4.0), ("c", 1.0)]);
+        let empty = slices(&[]);
+        let all = [&abc, &ac, &abdc, &empty];
+        for from in all {
+            for to in all {
+                let plan = Plan::diff(from, to, timing());
+                for step in 0..=20 {
+                    assert_tiles(&plan.sample(step as f32 * 20.0), &format!("step {step}"));
+                }
+            }
+        }
+        // Removing b: it closes onto the seam between a and c in the new layout.
+        let plan = Plan::diff(&abc, &ac, timing());
+        let exit = plan.arcs.iter().find(|p| p.phase == Phase::Exit).unwrap();
+        assert_eq!(exit.to.start, exit.to.end);
+        assert_eq!(exit.to.start, ac.arcs[0].end);
+        // Adding d between b and c: it opens from where the old c began (= where b ended).
+        let plan = Plan::diff(&abc, &abdc, timing());
+        let enter = plan.arcs.iter().find(|p| p.phase == Phase::Enter).unwrap();
+        assert_eq!(enter.from.start, abc.arcs[2].start);
+        assert_eq!(enter.from.start, enter.from.end);
+        // A whole new pie sweeps open from its first angle.
+        let plan = Plan::diff(&empty, &abc, timing());
+        assert!(plan.arcs.iter().all(|p| p.from.start == abc.arcs[0].start));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod arc_properties {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn pie() -> impl Strategy<Value = Vec<(String, f32)>> {
+            proptest::collection::btree_map("[a-f]", 0.5f32..10.0, 0..6)
+                .prop_map(|m| m.into_iter().collect())
+        }
+
+        proptest! {
+            /// Whatever slices appear and disappear, the pie tiles at every moment, and the
+            /// first and last frames are exactly the old and the new pie.
+            #[test]
+            fn slices_tile_at_every_moment(a in pie(), b in pie(), t in 0.0f32..400.0) {
+                let as_scene = |p: &Vec<(String, f32)>| {
+                    slices(&p.iter().map(|(k, v)| (k.as_str(), *v)).collect::<Vec<_>>())
+                };
+                let (from, to) = (as_scene(&a), as_scene(&b));
+                let plan = Plan::diff(&from, &to, timing());
+                assert_tiles(&plan.sample(t), "random");
+                prop_assert_eq!(&plan.sample(400.0).arcs, &to.arcs);
+                let first = plan.sample(0.0);
+                for arc in &from.arcs {
+                    let shown = first.arcs.iter().find(|x| x.key == arc.key).unwrap();
+                    prop_assert_eq!((shown.start, shown.end), (arc.start, arc.end));
+                }
+            }
+
+            #[test]
+            fn subdividing_is_exact_and_monotone(
+                pts in proptest::collection::vec((0.0f32..500.0, 0.0f32..500.0), 2..12),
+                extra in 0usize..20,
+            ) {
+                let run: Vec<[f32; 2]> = pts.iter().map(|p| [p.0, p.1]).collect();
+                let more = subdivide(&run, run.len() + extra);
+                prop_assert_eq!(more.len(), run.len() + extra);
+                prop_assert_eq!(more[0], run[0]);
+                prop_assert_eq!(more[more.len() - 1], run[run.len() - 1]);
+                let mut at = 0;
+                for p in &run {
+                    let found = more[at..].iter().position(|q| q == p);
+                    prop_assert!(found.is_some());
+                    at += found.unwrap();
+                }
+            }
+
+            /// Revealing more shows more: the length shown never goes down, and the whole line
+            /// is drawn at 1.
+            #[test]
+            fn reveal_grows_with_the_fraction(
+                pts in proptest::collection::vec((0.0f32..500.0, 0.0f32..500.0), 2..12),
+            ) {
+                let run: Vec<[f32; 2]> = pts.iter().map(|p| [p.0, p.1]).collect();
+                let length = |runs: &[Vec<[f32; 2]>]| -> f32 {
+                    runs.iter().flat_map(|r| r.windows(2)).map(|w| (w[1][0]-w[0][0]).hypot(w[1][1]-w[0][1])).sum()
+                };
+                let mut last = -1.0;
+                for i in 0..=10 {
+                    let shown = length(&reveal_runs(std::slice::from_ref(&run), i as f32 / 10.0));
+                    prop_assert!(shown >= last - 1e-3);
+                    last = shown;
+                }
+                prop_assert_eq!(reveal_runs(std::slice::from_ref(&run), 1.0), vec![run]);
             }
         }
     }

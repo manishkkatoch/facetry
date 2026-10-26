@@ -192,6 +192,7 @@ mod tests {
             layer: 0,
             row: 0,
             sum: None,
+            base: None,
         }
     }
 

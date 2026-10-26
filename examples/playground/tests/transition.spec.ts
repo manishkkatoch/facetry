@@ -103,10 +103,26 @@ test("an update animates and settles on exactly what a direct render shows", asy
   expect(differing(settled, direct, 0)).toBe(0);
 });
 
-for (const name of ["bar-stacked", "bar-grouped", "bar-labels", "bar-stacked-hidden", "line-basic"]) {
+const GOLDENS: [string, string][] = [
+  // [example, example it comes from]
+  ["bar-stacked", "bar-basic"],
+  ["bar-grouped", "bar-stacked"],
+  ["bar-labels", "bar-basic"],
+  ["bar-stacked-hidden", "bar-stacked"],
+  ["line-basic", "bar-basic"],
+  ["line-numeric-x", "line-basic"],
+  ["combo-bar-line", "bar-basic"],
+  ["pie", "donut"],
+  ["donut", "pie"],
+  ["bar3d-grid", "bar3d-stacked"],
+  ["bar3d-stacked", "bar3d-grid"],
+  ["pie3d", "bar3d-grid"],
+  ["line3d", "pie3d"],
+  ["combo3d-bar-line", "line3d"],
+];
+for (const [name, from] of GOLDENS) {
   // The end of a transition is the golden image of that example, whatever it came from.
-  test(`animating to ${name} ends on its golden image`, async ({ page }) => {
-    const from = name === "bar-grouped" ? "bar-stacked" : "bar-basic";
+  test(`animating from ${from} to ${name} ends on its golden image`, async ({ page }) => {
     await open(page, from);
     await page.evaluate((name) => {
       const w = window as any;
@@ -447,7 +463,7 @@ test("a resize during a transition lays out again and carries on", async ({ page
 });
 
 test("animateIn makes the first frame a transition from nothing", async ({ page }) => {
-  await open(page, "bar-stacked", "&animateIn=1");
+  await open(page, "bar-stacked", "&animateIn=1&clock=manual");
   expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(true);
   await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
   const first = await at(page, 0);
@@ -458,4 +474,196 @@ test("animateIn makes the first frame a transition from nothing", async ({ page 
   // And without the option the first frame is simply there.
   await open(page, "bar-stacked");
   expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(false);
+});
+
+// --- lines, pies and 3D ------------------------------------------------------------------------
+
+const ORANGE = [0xf5, 0x85, 0x18];
+
+/** The rightmost x of pixels close to `want` (within the plot, left of the legend). */
+function rightmost(png: PNG, want: number[], tolerance = 8) {
+  let best = -1;
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < 640; x++) {
+      const i = (y * png.width + x) * 4;
+      if (want.every((v, k) => Math.abs(png.data[i + k]! - v) <= tolerance)) best = Math.max(best, x);
+    }
+  }
+  return best;
+}
+
+test("a new line series is drawn on from left to right and an old one fades out", async ({ page }) => {
+  await open(page, "line-basic");
+  // Remove "Pro": the orange line leaves; then bring it back: it is drawn on.
+  const without = `
+    const t = spec.data.traffic;
+    const keep = t.plan.map((p) => p === "Free");
+    for (const k of Object.keys(t)) t[k] = t[k].filter((_, i) => keep[i]);`;
+  const before = await shot(page);
+  await update(page, without);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  // How orange the plot is: the red-over-blue excess of its pixels (grey stays 0, the blue
+  // line is negative). A fading orange line adds less and less.
+  const orangeness = (png: PNG) => {
+    let sum = 0;
+    for (let y = 0; y < png.height; y++) {
+      for (let x = 0; x < 640; x++) {
+        const i = (y * png.width + x) * 4;
+        sum += Math.max(0, png.data[i]! - png.data[i + 2]! - 6);
+      }
+    }
+    return sum;
+  };
+  const counts = [];
+  for (const ms of [0, 130, 260, 399, 10_000]) counts.push(orangeness(await at(page, ms)));
+  expect(counts[0]).toBeGreaterThan(5_000);
+  for (let i = 1; i < 4; i++) expect(counts[i]!).toBeLessThan(counts[i - 1]!);
+  expect(counts[4]).toBe(0);
+  // Back: drawn on from the left, so how far right it reaches grows.
+  await update(page, "", { transition: false });
+  await update(page, without, { transition: false });
+  await update(page, "", { transition: { duration: 400, easing: "linear" } });
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  const reach = [];
+  for (const ms of [40, 160, 280, 10_000]) reach.push(rightmost(await at(page, ms), ORANGE));
+  for (let i = 1; i < reach.length; i++) expect(reach[i]!).toBeGreaterThan(reach[i - 1]!);
+  expect(reach[0]!).toBeLessThan(reach[3]! - 150);
+  expect(before).toBeTruthy();
+});
+
+test("markers stay on their line while a point is added to it", async ({ page }) => {
+  await open(page, "line-basic");
+  await update(
+    page,
+    `const t = spec.data.traffic;
+     for (const [plan, v] of [["Free", 40], ["Pro", 31]]) { t.month.push("Jul"); t.plan.push(plan); t.visits.push(v); }`,
+  );
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  // Markers have a rim of background colour round a fill of the line colour: the fill is
+  // within the line's stroke. Check that at mid-flight every blue marker centre has line pixels
+  // of the same colour on both sides (it is on a line, not floating).
+  const BLUE_LINE = [0x4c, 0x78, 0xa8];
+  const png = await at(page, 180);
+  const solid = (x: number, y: number) => {
+    const i = (y * png.width + x) * 4;
+    return BLUE_LINE.every((v, k) => Math.abs(png.data[i + k]! - v) <= 10);
+  };
+  // Each column of the plot with blue pixels has them in one connected vertical run or on a
+  // line: a floating marker would be an isolated blob far from any line pixel. Count blobs of
+  // blue that touch no other blue pixel within 12 px horizontally.
+  let isolated = 0;
+  for (let y = 4; y < png.height - 4; y++) {
+    for (let x = 60; x < 600; x++) {
+      if (!solid(x, y)) continue;
+      let near = false;
+      for (let dx = -12; dx <= 12 && !near; dx += 4) {
+        if (dx !== 0 && (solid(x + dx, y) || solid(x + dx, y - 3) || solid(x + dx, y + 3) || solid(x + dx, y - 8) || solid(x + dx, y + 8))) near = true;
+      }
+      if (!near) isolated++;
+    }
+  }
+  expect(isolated).toBeLessThan(40);
+});
+
+test("slices of a donut open and close without overlapping", async ({ page }) => {
+  await open(page, "donut");
+  const start = await shot(page);
+  await update(page, `spec.data.plans = { plan: ["Free", "Team", "Startup", "Enterprise"], users: [200, 420, 260, 90] };`);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  const mid = await at(page, 200);
+  const end = await at(page, 10_000);
+  expect(differing(mid, start)).toBeGreaterThan(3_000);
+  expect(differing(mid, end)).toBeGreaterThan(3_000);
+  await update(page, `spec.data.plans = { plan: ["Free", "Team", "Startup", "Enterprise"], users: [200, 420, 260, 90] };`, { transition: false });
+  expect(differing(end, await shot(page), 0)).toBe(0);
+});
+
+test("a 3D update animates: a box grows from the floor and the first frame is the old picture", async ({ page }) => {
+  await open(page, "bar3d-stacked");
+  const start = await shot(page);
+  await update(
+    page,
+    `const t = spec.data.sales;
+     const keys = Object.keys(t);
+     const strs = keys.filter((k) => typeof t[k][0] === "string");
+     const num = keys.find((k) => typeof t[k][0] === "number");
+     const seen = new Set();
+     const rows = [];
+     for (let i = 0; i < t[num].length; i++) { const id = strs.slice(1).map((k) => t[k][i]).join("|"); if (!seen.has(id)) { seen.add(id); rows.push(i); } }
+     for (const i of rows) for (const k of keys) t[k].push(k === strs[0] ? "Q5" : k === num ? 90 : t[k][i]);`,
+  );
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  // A box that is still flat is not drawn (no plate on the floor): the first frame is exactly
+  // the old picture.
+  expect(differing(await at(page, 0), start, 2)).toBe(0);
+  const mid = await at(page, 200);
+  const end = await at(page, 10_000);
+  expect(differing(mid, start)).toBeGreaterThan(3_000);
+  expect(differing(mid, end)).toBeGreaterThan(3_000);
+  await update(
+    page,
+    `const t = spec.data.sales;
+     const keys = Object.keys(t);
+     const strs = keys.filter((k) => typeof t[k][0] === "string");
+     const num = keys.find((k) => typeof t[k][0] === "number");
+     const seen = new Set();
+     const rows = [];
+     for (let i = 0; i < t[num].length; i++) { const id = strs.slice(1).map((k) => t[k][i]).join("|"); if (!seen.has(id)) { seen.add(id); rows.push(i); } }
+     for (const i of rows) for (const k of keys) t[k].push(k === strs[0] ? "Q5" : k === num ? 90 : t[k][i]);`,
+    { transition: false },
+  );
+  expect(differing(end, await shot(page), 0)).toBe(0);
+});
+
+test("an update that interrupts a 3D transition continues from where the picture is", async ({ page }) => {
+  await open(page, "bar3d-grid");
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v, i) => (i % 2 ? v * 2 : v * 0.3));`);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  const before = await at(page, 170);
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v, i) => (i % 3 ? v * 0.6 : v * 1.4));`);
+  const after = await at(page, 0);
+  expect(differing(before, after, 12)).toBeLessThan(80);
+  expect(differing(after, await at(page, 200), 12)).toBeGreaterThan(1_500);
+});
+
+test("the legend and the axes of a 3D chart animate too, and the camera is kept", async ({ page }) => {
+  await open(page, "bar3d-grid");
+  await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 80, elevation: 30 }));
+  const cam = await page.evaluate(() => (window as any).facetryChart.camera);
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v) => v * 3);`);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(0));
+  await at(page, 150);
+  expect(await page.evaluate(() => (window as any).facetryChart.camera)).toEqual(cam);
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(true);
+  await at(page, 10_000);
+  expect(await page.evaluate(() => (window as any).facetryChart.camera)).toEqual(cam);
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(false);
+});
+
+test("switching between 2D and 3D jumps", async ({ page }) => {
+  await open(page, "bar-basic");
+  await page.evaluate(() => {
+    const w = (window as any);
+    w.facetryChart.update(w.playgroundExample("bar3d-grid"));
+  });
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(false);
+});
+
+test("hover on a 3D box works while it is still growing", async ({ page }) => {
+  await open(page, "bar3d-grid");
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v) => v * 1.5);`);
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__hover = [];
+    w.facetryChart.on("hover", (m: any) => w.__hover.push(m?.key ?? null));
+    w.facetryChart.__animationClock(0);
+  });
+  const key = await page.evaluate(() => {
+    const w = window as any;
+    return w.playgroundSpec().data.sales.quarter.length ? "layer0/Q1/North" : "";
+  });
+  const pos = await page.evaluate((key) => (window as any).facetryChart.markPosition(key), key);
+  expect(pos).toBeTruthy();
+  await page.mouse.move(pos.x, pos.y);
+  await expect.poll(() => page.evaluate(() => (window as any).__hover.at(-1))).toBe(key);
 });

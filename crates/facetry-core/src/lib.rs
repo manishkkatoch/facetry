@@ -9,6 +9,7 @@ mod build_arc;
 mod build_arc3d;
 mod color;
 mod legend;
+mod pathmorph;
 pub mod scale;
 pub mod scene;
 pub mod scene3d;
@@ -18,6 +19,7 @@ mod text;
 mod theme;
 pub mod transform;
 pub mod transition;
+pub mod transition3d;
 mod validate;
 pub mod value;
 

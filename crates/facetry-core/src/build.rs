@@ -647,6 +647,7 @@ pub fn build_scene_with_theme(
             let color = color_of(series);
             let mut runs: Vec<Vec<[f32; 2]>> = Vec::new();
             let mut current: Vec<[f32; 2]> = Vec::new();
+            let mut vertex_keys: Vec<String> = Vec::new();
             for &(_, px, row) in &rows {
                 let value = layer.y[row];
                 // A missing value ends the run: the line has a gap there.
@@ -705,6 +706,7 @@ pub fn build_scene_with_theme(
                         ),
                     });
                 }
+                vertex_keys.push(key.clone());
                 scene.points.push(PointMark {
                     key,
                     x: px as f32,
@@ -729,6 +731,8 @@ pub fn build_scene_with_theme(
                     width: width as f32,
                     runs,
                     layer: layer.index,
+                    reveal: 1.0,
+                    keys: vertex_keys,
                 });
             }
         }

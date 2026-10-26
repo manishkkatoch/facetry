@@ -9,8 +9,10 @@ const examples = new Map(
 const params = new URLSearchParams(location.search);
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
-// ?animateIn=1 animates the first frame (the marks enter).
+// ?animateIn=1 animates the first frame (the marks enter). ?clock=manual holds the animation
+// clock from the start (for tests: `facetryChart.__animationClock(ms)` then moves it).
 const animateIn = params.get("animateIn") === "1";
+const manualClock = params.get("clock") === "manual";
 // ?example=<name> picks the starting spec; ?ui=0 hides everything but the chart.
 const initial = examples.has(params.get("example") ?? "") ? params.get("example")! : "bar-basic";
 if (params.get("ui") === "0") document.body.classList.add("embed");
@@ -83,6 +85,7 @@ currentSpec = examples.get(initial)!;
 let chart: Chart;
 try {
   chart = await Chart.create(canvas, examples.get(initial)!, { backend, animateIn });
+  if (manualClock) chart.__animationClock(0);
   await chart.firstFrame;
   status.textContent = `backend: ${chart.backend}, ${chart.msaaSamples}x MSAA`;
   root.dataset.msaa = String(chart.msaaSamples);
