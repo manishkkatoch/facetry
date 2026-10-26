@@ -168,6 +168,9 @@ pub struct Renderer {
     bar_offset: usize,
     /// 2D: how many of the marks are bars; then come the line points, then the pie slices.
     bar_count: usize,
+    /// 2D: where bar `i` of the scene is among the bars' rect instances (`bar_offset + slot`),
+    /// during a transition, when leaving bars sit between the others. Empty: bar `i` is at `i`.
+    bar_slots: Vec<usize>,
     /// 2D: the rect instance after the last bar, where the 2D pass splits the rectangles
     /// (`bar_offset + bar_count`, plus the bars that are leaving during a transition).
     bar_end: usize,
@@ -339,6 +342,7 @@ impl Renderer {
             mark_count: 0,
             bar_offset: 0,
             bar_count: 0,
+            bar_slots: Vec::new(),
             bar_end: 0,
             anim: ANIM_IDLE,
             point_marks: Vec::new(),
@@ -589,6 +593,7 @@ impl Renderer {
         self.bar_count = scene.rects.len();
         self.bar_offset = grids;
         self.bar_end = grids + bars;
+        self.bar_slots = plan.map_or_else(Vec::new, |p| p.rect_slot.clone());
     }
 
     /// Uploads a 3D scene: the next `render` draws it from the current camera. Orbiting does
@@ -862,6 +867,7 @@ impl Renderer {
         self.bar_offset = 0;
         self.bar_count = 0;
         self.bar_end = 0;
+        self.bar_slots.clear();
         self.label_plan = Some(label_plan);
         self.label_key = None;
         self.hover = None;
@@ -927,14 +933,15 @@ impl Renderer {
             // points and the pie slices, which get something drawn over them instead.
             if let Some(p) = previous.filter(|&p| p < self.bar_count) {
                 self.rects
-                    .set_hover(&self.queue, self.bar_offset + p, false);
+                    .set_hover(&self.queue, self.bar_instance(p), false);
             }
             let mut glyphs = Vec::new();
             let mut marker = MeshData::default();
             if let Some(m) = mark {
                 let points = self.bar_count + self.point_marks.len();
                 if m < self.bar_count {
-                    self.rects.set_hover(&self.queue, self.bar_offset + m, true);
+                    self.rects
+                        .set_hover(&self.queue, self.bar_instance(m), true);
                 } else if m < points {
                     let p = &self.point_marks[m - self.bar_count];
                     let background = self.encode_color(self.background);
@@ -961,6 +968,11 @@ impl Renderer {
             self.hover_marker.set(&self.device, &self.queue, &marker);
             self.text.set_overlay(&self.device, &self.queue, &glyphs);
         }
+    }
+
+    /// The rect instance of bar `i` of the scene.
+    fn bar_instance(&self, i: usize) -> usize {
+        self.bar_offset + self.bar_slots.get(i).copied().unwrap_or(i)
     }
 
     /// The mark of `scene` (a bar, or a pie slice after the bars) under pixel `(x, y)` of the

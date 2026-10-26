@@ -107,6 +107,26 @@ impl Camera {
         self.distance = self.distance.clamp(MIN_DISTANCE, MAX_DISTANCE);
     }
 
+    /// The camera `e` of the way from this one to `to` (`e` is eased progress, 0 here and 1
+    /// there, and may overshoot): azimuth the short way round, elevation and distance
+    /// directly, the lens of `to`. Clamped like any camera.
+    pub fn tween(&self, to: &Camera, e: f32) -> Camera {
+        let mut camera = Camera {
+            projection: to.projection,
+            ..*self
+        };
+        camera.set(
+            Some(facetry_core::anim::lerp_angle_deg(
+                self.azimuth,
+                to.azimuth,
+                e,
+            )),
+            Some(facetry_core::anim::lerp(self.elevation, to.elevation, e)),
+            Some(facetry_core::anim::lerp(self.distance, to.distance, e)),
+        );
+        camera
+    }
+
     /// A drag of `(dx, dy)` pixels. The scene follows the pointer: dragging right turns the
     /// chart to the right (the camera moves left), dragging down tips it toward you (the
     /// camera rises).

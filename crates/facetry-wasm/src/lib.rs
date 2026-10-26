@@ -49,6 +49,16 @@ export interface CameraState {
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
 
+/**
+ * Turns `Chart.setCamera` / `Chart.resetCamera` into a tween: how long it takes (ms, default
+ * 400; 0 jumps) and the speed curve (default `"cubicInOut"`). Azimuth takes the shortest way
+ * round.
+ */
+export interface CameraTweenOptions {
+    duration?: number;
+    easing?: Easing;
+}
+
 /** A mark (a bar, a line's data point or a pie slice), as hover and click events report it. */
 export interface MarkInfo {
     /** The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it). */
@@ -236,6 +246,12 @@ fn read_spec(value: JsValue) -> Result<ChartSpec, JsValue> {
     }
 }
 
+/// The timing of a camera tween from its `options` (`{ duration, easing }`): `None` for no
+/// tween (no options, `false`, or a duration of 0).
+fn tween_timing(options: &JsValue) -> Result<Option<Timing>, JsValue> {
+    Ok(transition_option(options)?.flatten())
+}
+
 /// How an `update` call's `transition` option reads: absent (use the spec's), or what to use.
 fn transition_option(value: &JsValue) -> Result<Option<Option<Timing>>, JsValue> {
     if value.is_undefined() || value.is_null() {
@@ -338,6 +354,17 @@ fn blank_like(scene: &Scene) -> Scene {
     blank
 }
 
+/// The camera on its way to a new place (`setCamera` and `resetCamera` with a duration).
+#[derive(Debug)]
+struct CameraTween {
+    from: Camera,
+    to: Camera,
+    timing: Timing,
+    /// The `now` of the first frame, so the tween begins at time 0 (see [`Anim::start_ms`]).
+    start_ms: Option<f64>,
+    elapsed: f32,
+}
+
 /// A GPU-backed chart bound to one `<canvas>`.
 #[wasm_bindgen]
 #[derive(Debug)]
@@ -358,6 +385,8 @@ pub struct Chart {
     pending: Option<Snapshot>,
     /// The transition on screen, if any. `scene` is already its target.
     anim: Option<Anim>,
+    /// The camera tween in progress, if any. `camera` is where it is now.
+    camera_tween: Option<CameraTween>,
 }
 
 /// The laid-out chart, 2D or 3D.
@@ -415,6 +444,7 @@ impl Chart {
             hover: None,
             pending: None,
             anim: None,
+            camera_tween: None,
         };
         chart.relayout();
         if bool_option(
@@ -452,8 +482,9 @@ impl Chart {
         // What the viewer hid stays hidden, for series that still exist, unless the new spec
         // says (`legend.hidden`).
         settle_hidden(&mut spec, self.spec.hidden_override.as_deref());
+        // A new camera in the spec moves the camera there, over the same time as the data.
         if spec.camera != self.spec.camera {
-            self.camera = Camera::from_spec(spec.camera.as_ref());
+            self.move_camera(Camera::from_spec(spec.camera.as_ref()), timing);
         }
         let before = std::mem::replace(&mut self.spec, spec);
         self.relayout_animated(timing, Origin::Spec(Box::new(before)));
@@ -580,6 +611,8 @@ impl Chart {
     /// Turns the camera by a pointer drag of `(dx, dy)` pixels. Call `render` afterwards.
     pub fn orbit(&mut self, dx_px: f64, dy_px: f64) {
         if self.is_3d() {
+            // The viewer takes over: a tween in progress stops where it is.
+            self.camera_tween = None;
             self.camera.orbit(dx_px as f32, dy_px as f32);
             self.renderer.set_camera(self.camera);
         }
@@ -588,27 +621,38 @@ impl Chart {
     /// Zooms by a wheel `delta` (positive: out, negative: in; a typical notch is about 100).
     pub fn zoom(&mut self, delta: f64) {
         if self.is_3d() {
+            self.camera_tween = None;
             self.camera.zoom(delta as f32);
             self.renderer.set_camera(self.camera);
         }
     }
 
-    /// Back to the spec's camera (or the defaults).
+    /// Back to the spec's camera (or the defaults). With `options` (`{ duration, easing }`,
+    /// `{}` for the defaults) the camera turns there over time instead of jumping, azimuth the
+    /// short way round.
     #[wasm_bindgen(js_name = resetCamera)]
-    pub fn reset_camera(&mut self) {
+    pub fn reset_camera(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CameraTweenOptions | undefined")] options: JsValue,
+    ) -> Result<(), JsValue> {
+        let timing = tween_timing(&options)?;
         if self.is_3d() {
-            self.camera = Camera::from_spec(self.spec.camera.as_ref());
-            self.renderer.set_camera(self.camera);
+            self.move_camera(Camera::from_spec(self.spec.camera.as_ref()), timing);
         }
+        Ok(())
     }
 
     /// Sets any of `type`, `azimuth`, `elevation`, `distance`; values are clamped. Throws
-    /// `invalid-options` if a field has the wrong type.
+    /// `invalid-options` if a field has the wrong type. With `options` (`{ duration, easing }`,
+    /// `{}` for the defaults) the camera turns there over time instead of jumping, azimuth the
+    /// short way round; the `type` (lens) changes at once.
     #[wasm_bindgen(js_name = setCamera)]
     pub fn set_camera(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "CameraUpdate")] update: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CameraTweenOptions | undefined")] options: JsValue,
     ) -> Result<(), JsValue> {
+        let timing = tween_timing(&options)?;
         let number = |key: &str| -> Result<Option<f32>, JsValue> {
             let v = js_sys::Reflect::get(&update, &key.into())?;
             if v.is_undefined() || v.is_null() {
@@ -634,11 +678,14 @@ impl Chart {
             }
         };
         if self.is_3d() {
+            // Where the camera is going: from where it is now, or from where it is headed if
+            // a tween is already running (so two quick calls compose).
+            let mut target = self.camera_tween.as_ref().map_or(self.camera, |t| t.to);
             if let Some(p) = projection {
-                self.camera.projection = p;
+                target.projection = p;
             }
-            self.camera.set(azimuth, elevation, distance);
-            self.renderer.set_camera(self.camera);
+            target.set(azimuth, elevation, distance);
+            self.move_camera(target, timing);
         }
         Ok(())
     }
@@ -846,43 +893,58 @@ impl Chart {
     /// `render` after it) until this is false.
     #[wasm_bindgen(getter)]
     pub fn animating(&self) -> bool {
-        self.anim.is_some()
+        self.anim.is_some() || self.camera_tween.is_some()
     }
 
-    /// Advances the transition to the frame at `now_ms` (any clock that only goes forward,
-    /// such as `requestAnimationFrame`'s timestamp). The first call after the transition began
-    /// is its time 0. Returns whether it is still running; when it ends the chart is the plain
-    /// new scene, so `render` after the last `tick` draws the final picture.
+    /// Advances every animation (a transition, a camera tween) to the frame at `now_ms` (any
+    /// clock that only goes forward, such as `requestAnimationFrame`'s timestamp). The first call
+    /// after one began is its time 0. Returns whether anything is still running; when a
+    /// transition ends the chart is the plain new scene, so `render` after the last `tick`
+    /// draws the final picture.
     pub fn tick(&mut self, now_ms: f64) -> bool {
-        let Some(anim) = &mut self.anim else {
-            return false;
-        };
-        let start = *anim.start_ms.get_or_insert(now_ms);
-        anim.elapsed = (now_ms - start).max(0.0) as f32;
-        self.apply_time()
+        if let Some(anim) = &mut self.anim {
+            let start = *anim.start_ms.get_or_insert(now_ms);
+            anim.elapsed = (now_ms - start).max(0.0) as f32;
+        }
+        if let Some(tween) = &mut self.camera_tween {
+            let start = *tween.start_ms.get_or_insert(now_ms);
+            tween.elapsed = (now_ms - start).max(0.0) as f32;
+        }
+        self.advance()
     }
 
-    /// Jumps the transition to `elapsed_ms` since it began (for tests and scrubbing). Returns
-    /// whether it is still running.
+    /// Jumps every running animation to `elapsed_ms` since it began (for tests and scrubbing).
+    /// Returns whether anything is still running.
     pub fn seek(&mut self, elapsed_ms: f64) -> bool {
-        let Some(anim) = &mut self.anim else {
-            return false;
-        };
-        anim.elapsed = elapsed_ms.max(0.0) as f32;
-        self.apply_time()
+        let elapsed = elapsed_ms.max(0.0) as f32;
+        if let Some(anim) = &mut self.anim {
+            anim.elapsed = elapsed;
+        }
+        if let Some(tween) = &mut self.camera_tween {
+            tween.elapsed = elapsed;
+        }
+        self.advance()
     }
 
-    /// Makes the transition continue from its current time on the clock that reads `now_ms`
-    /// (after `seek` was used to hold it still).
+    /// Makes the animations continue from their current time on the clock that reads `now_ms`
+    /// (after `seek` was used to hold them still).
     pub fn rebase(&mut self, now_ms: f64) {
         if let Some(anim) = &mut self.anim {
             anim.start_ms = Some(now_ms - f64::from(anim.elapsed));
         }
+        if let Some(tween) = &mut self.camera_tween {
+            tween.start_ms = Some(now_ms - f64::from(tween.elapsed));
+        }
     }
 
-    /// Ends the transition now: the chart shows its final picture (call `render` after).
+    /// Ends every animation now: the chart shows its final picture and the camera is where it
+    /// was headed (call `render` after).
     #[wasm_bindgen(js_name = finishTransition)]
     pub fn finish_transition(&mut self) {
+        if let Some(tween) = self.camera_tween.take() {
+            self.camera = tween.to;
+            self.renderer.set_camera(self.camera);
+        }
         if self.anim.take().is_some() {
             self.reload_scene();
         }
@@ -986,19 +1048,56 @@ impl Chart {
         }
     }
 
-    /// Moves the transition to its `elapsed`; at the end the transition is over and the plain
-    /// new scene replaces it.
-    fn apply_time(&mut self) -> bool {
-        let Some(anim) = &self.anim else {
-            return false;
-        };
-        if anim.elapsed >= anim.plan.total_ms() {
-            self.anim = None;
-            self.reload_scene();
-            return false;
+    /// Moves every running animation to its `elapsed`; at the end of a transition the plain new
+    /// scene replaces it, at the end of a tween the camera is where it was going. Whether
+    /// anything is still running.
+    fn advance(&mut self) -> bool {
+        if let Some(anim) = &self.anim {
+            if anim.elapsed >= anim.plan.total_ms() {
+                self.anim = None;
+                self.reload_scene();
+            } else {
+                self.upload_frame();
+            }
         }
-        self.upload_frame();
-        true
+        if let Some(tween) = &self.camera_tween {
+            let e = tween.timing.eased(tween.elapsed, 0.0);
+            self.camera = if tween.elapsed >= tween.timing.duration_ms {
+                tween.to
+            } else {
+                tween.from.tween(&tween.to, e)
+            };
+            if tween.elapsed >= tween.timing.duration_ms {
+                self.camera_tween = None;
+            }
+            self.renderer.set_camera(self.camera);
+        }
+        self.animating()
+    }
+
+    /// Moves the camera to `target`: at once, or over `timing`. A camera that is already there
+    /// stays put. The lens (perspective or orthographic) cannot be in between, so it changes at
+    /// the start.
+    fn move_camera(&mut self, target: Camera, timing: Option<Timing>) {
+        self.camera_tween = None;
+        let moving = Camera {
+            projection: target.projection,
+            ..self.camera
+        };
+        match timing.filter(|_| target != moving) {
+            Some(timing) => {
+                self.camera = moving;
+                self.camera_tween = Some(CameraTween {
+                    from: moving,
+                    to: target,
+                    timing,
+                    start_ms: None,
+                    elapsed: 0.0,
+                });
+            }
+            None => self.camera = target,
+        }
+        self.renderer.set_camera(self.camera);
     }
 
     /// Hands the renderer what changes from frame to frame at the transition's current time:

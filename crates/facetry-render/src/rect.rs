@@ -73,9 +73,8 @@ pub fn from_boxes(
         .collect()
 }
 
-/// The rectangles of a transition, back to front like [`instances`]: gridlines, bars, then the
-/// other rules. Within each group the new scene's items come first (so bar `i` of the target
-/// is instance `grid + i`, which hover relies on), then the ones that are leaving.
+/// The rectangles of a transition, back to front like [`instances`]: gridlines, bars (in the
+/// plan's order, where bar `i` of the target is `plan.rect_slot[i]`), then the other rules.
 ///
 /// Returns the instances and the number of gridlines and of bars among them.
 pub fn pair_instances(

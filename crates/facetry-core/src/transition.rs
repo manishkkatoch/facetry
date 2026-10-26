@@ -58,7 +58,11 @@ pub struct Plan {
     pub timing: Timing,
     /// Where the transition ends: what picking, snapshots and the next layout see.
     pub target: Scene,
+    /// Bars in drawing order: the new scene's, with each one that leaves kept right after the
+    /// bar that was before it, so a bar keeps its place in front of or behind its neighbours
+    /// when an update interrupts the transition. `rect_slot[i]` is where bar `i` of `target` is.
     pub rects: Vec<Pair<Rect>>,
+    pub rect_slot: Vec<usize>,
     pub rules: Vec<Pair<Rule>>,
     pub texts: Vec<Pair<Text>>,
     pub labels: Vec<Pair<MarkLabel>>,
@@ -227,6 +231,7 @@ impl Plan {
             timing,
             target: to.clone(),
             rects: Vec::new(),
+            rect_slot: Vec::new(),
             rules: Vec::new(),
             texts: Vec::new(),
             labels: Vec::new(),
@@ -253,6 +258,7 @@ impl Plan {
         }
         let mut enter_memo = vec![None; count];
         let mut exit_memo = vec![None; from.rects.len()];
+        let mut exit_after: Vec<usize> = Vec::new();
         for change in changes {
             match change {
                 Change::Update { old, new } => {
@@ -286,7 +292,28 @@ impl Plan {
                         delay_ms: 0.0,
                         phase: Phase::Exit,
                     });
+                    // Which bar of the new scene the one before it in the old scene became.
+                    let before = old_to_new[..old].iter().rev().find_map(|n| *n);
+                    exit_after.push(before.map_or(0, |n| n + 1));
                 }
+            }
+        }
+        // Each leaving bar goes right after the bar that was before it (the first ones, which
+        // had none, go behind everything).
+        let leaving = plan.rects.split_off(count);
+        let mut leaving: Vec<(usize, Pair<Rect>)> = exit_after.into_iter().zip(leaving).collect();
+        leaving.sort_by_key(|(after, _)| *after);
+        let mut leaving = leaving.into_iter().peekable();
+        let staying = std::mem::take(&mut plan.rects);
+        plan.rect_slot = vec![0; count];
+        while let Some((_, pair)) = leaving.next_if(|(after, _)| *after == 0) {
+            plan.rects.push(pair);
+        }
+        for (n, pair) in staying.into_iter().enumerate() {
+            plan.rect_slot[n] = plan.rects.len();
+            plan.rects.push(pair);
+            while let Some((_, pair)) = leaving.next_if(|(after, _)| *after == n + 1) {
+                plan.rects.push(pair);
             }
         }
 
@@ -1020,9 +1047,35 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["a"]
         );
-        // The new scene's bars come first, in order, then the exits.
+        // The new scene's bars in order; the one that leaves had none before it, so it is
+        // behind them all. `rect_slot` says where each bar of the new scene is.
         let order: Vec<&str> = plan.rects.iter().map(|p| p.to.key.as_str()).collect();
-        assert_eq!(order, ["b", "c", "a"]);
+        assert_eq!(order, ["a", "b", "c"]);
+        assert_eq!(plan.rect_slot, [1, 2]);
+    }
+
+    #[test]
+    fn a_leaving_bar_keeps_its_place_between_its_neighbours() {
+        let old = scene(
+            vec![
+                bar("a", 0.0, 200.0, 300.0),
+                bar("b", 30.0, 150.0, 300.0),
+                bar("c", 60.0, 100.0, 300.0),
+            ],
+            (0.0, 100.0),
+        );
+        let new = scene(
+            vec![bar("a", 0.0, 200.0, 300.0), bar("c", 60.0, 100.0, 300.0)],
+            (0.0, 100.0),
+        );
+        let plan = Plan::diff(&old, &new, timing());
+        let order: Vec<&str> = plan.rects.iter().map(|p| p.to.key.as_str()).collect();
+        assert_eq!(order, ["a", "b", "c"]);
+        assert_eq!(plan.rect_slot, [0, 2]);
+        // And back: the bar that comes back is where it was drawn before.
+        let back = Plan::diff(&plan.sample(100.0), &old, timing());
+        let order: Vec<&str> = back.rects.iter().map(|p| p.to.key.as_str()).collect();
+        assert_eq!(order, ["a", "b", "c"]);
     }
 
     #[test]

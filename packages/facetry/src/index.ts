@@ -13,6 +13,7 @@ export type {
   CameraKind,
   CameraSpec,
   CameraState,
+  CameraTweenOptions,
   CameraUpdate,
   ChartSpec,
   ColorEncoding,

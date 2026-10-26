@@ -1,6 +1,7 @@
 import type {
   Chart as WasmChart,
   CameraState,
+  CameraTweenOptions,
   CameraUpdate,
   ChartSpec,
   MarkInfo,
@@ -382,11 +383,16 @@ export class Chart {
    * Moves the 3D camera; any subset of `type`, `azimuth`, `elevation`, `distance`. Values are
    * clamped (elevation 5-85 degrees). Does not rebuild the chart, only redraws. Does nothing
    * in a 2D chart.
+   *
+   * With `options` the camera turns there over time instead of jumping: `{ duration, easing }`
+   * as for a transition (`{}` for 400 ms, `cubicInOut`); azimuth takes the shortest way round
+   * (350 to 10 degrees passes through 0), the lens (`type`) changes at once. Dragging or zooming
+   * stops a tween where it is; viewers who prefer reduced motion get the jump.
    */
-  setCamera(update: CameraUpdate): void {
+  setCamera(update: CameraUpdate, options?: CameraTweenOptions): void {
     if (this.#destroyed) return;
     try {
-      this.#inner.setCamera(update);
+      this.#inner.setCamera(update, this.#tween(options));
     } catch (e) {
       throw FacetryError.from(e);
     }
@@ -394,10 +400,14 @@ export class Chart {
     this.requestRender();
   }
 
-  /** Returns the 3D camera to the spec's `camera` (or the defaults). */
-  resetCamera(): void {
+  /** Returns the 3D camera to the spec's `camera` (or the defaults); `options` as for {@link setCamera}. */
+  resetCamera(options?: CameraTweenOptions): void {
     if (this.#destroyed) return;
-    this.#inner.resetCamera();
+    try {
+      this.#inner.resetCamera(this.#tween(options));
+    } catch (e) {
+      throw FacetryError.from(e);
+    }
     this.#repick();
     this.requestRender();
   }
@@ -450,8 +460,11 @@ export class Chart {
     if (this.#destroyed || this.#raf) return;
     this.#raf = requestAnimationFrame((now) => {
       this.#raf = 0;
+      const wasAnimating = this.#inner.animating;
       if (this.#manualClock === null) this.#inner.tick(now);
       this.#draw();
+      // The camera may have moved under a pointer that did not: look again at what is under it.
+      if (wasAnimating) this.#repick();
       if (this.#manualClock === null && this.#inner.animating) this.requestRender();
     });
   }
@@ -472,6 +485,11 @@ export class Chart {
   /** The options for the wasm call: reduced motion turns every transition into a jump. */
   #motion(options?: UpdateOptions): UpdateOptions | undefined {
     return this.#reducedMotion?.matches ? { transition: false } : options;
+  }
+
+  /** Camera tween options for the wasm call: none (a jump) under reduced motion. */
+  #tween(options?: CameraTweenOptions): CameraTweenOptions | undefined {
+    return this.#reducedMotion?.matches ? undefined : options;
   }
 
   /** Stops observing and drawing, and frees the GPU resources. Safe to call twice. */
@@ -611,7 +629,7 @@ export class Chart {
     };
     const dblclick = () => {
       if (!this.#inner.orbitEnabled) return;
-      this.#inner.resetCamera();
+      this.#inner.resetCamera(undefined);
       this.#repick();
       this.requestRender();
     };
