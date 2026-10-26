@@ -1,0 +1,198 @@
+# 3D diagrams from Mermaid: design
+
+Status: **proposal**, nothing implemented. This describes how Facetry draws dataflow,
+architecture and sequence diagrams, written in a subset of [Mermaid](https://mermaid.js.org)
+syntax, as lit 3D scenes with the existing renderer, plus optional animation.
+
+## Goals and non-goals
+
+In priority order:
+
+1. **Layout quality.** The audience is polished, static documentation. A diagram must read at
+   a glance: few crossings, few bends, compact, the same picture for the same input, labels that
+   never overflow their shapes. It should be measurably better than Mermaid's own layout.
+2. **Visual polish.** Diagrams must look good enough to put in product docs without tweaking.
+3. **Animation**, opt-in: sequence playback, build-in, flow along edges.
+
+Decided:
+
+| Question | Decision |
+|---|---|
+| Diagram types | `flowchart` (dataflow), `architecture-beta`, `sequenceDiagram` |
+| Mermaid compatibility | A documented subset of each grammar, not full syntax |
+| Unsupported or invalid syntax | **Fail** with an error that names the line and column; never render part of a diagram |
+| 2D output | Out of scope: diagrams are 3D only |
+| Packaging | Separate, opt-in wasm module; the core module stays small |
+| Rendering without a GPU (server-side / CI PNGs) | Out of scope: browser only |
+| Architecture icons | Mermaid's built-in icons only (`cloud`, `database`, `disk`, `internet`, `server`) |
+
+Out of scope: class, ER, state, gantt, mindmap, timeline and the other Mermaid types; Mermaid
+directives, `%%{init}%%` config and `classDef`/`style` beyond what is listed below; icon packs;
+editing diagrams interactively.
+
+## Packaging
+
+Two wasm modules cannot share memory or GPU state, so an add-on that rendered on its own would
+contain a second copy of wgpu (about 300 KB gzip, 900 KB on WebGL2) for every page that also
+shows charts. Instead the add-on does **only CPU work**:
+
+```
+ Mermaid text ─▶ facetry_diagrams.wasm ─────────────────▶ ChartSpec ─▶ facetry_wasm (render)
+                 parse ─▶ validate ─▶ layout ─▶ route       mark: "diagram", positions resolved
+```
+
+* New crate `crates/facetry-diagrams` (parser, layout, routing; no wgpu, no font atlas, only the
+  glyph metrics from `facetry-font` for measuring labels) and a wasm-bindgen wrapper built by
+  `scripts/build-wasm.sh` as `facetry_diagrams`. Target: under 120 KB gzip.
+* The core gains a `diagram` mark that draws **already laid-out** geometry: positioned nodes
+  (with shape, size, label, group), routed edges (polylines or splines with arrowheads),
+  platforms for groups, sequence lifelines, activations and fragments. It does no layout, so the
+  core cost is limited to the new primitives (below). Target: under 20 KB gzip on the WebGPU
+  module, measured with `scripts/wasm-size.sh` like every other milestone.
+* The new mesh primitives (rounded box, cylinder, diamond, hexagon, stadium, tube, cone) are
+  generic, so bars and lines can use them later too.
+* npm: a `facetry/diagrams` subpath export that loads the add-on lazily.
+
+```ts
+import { Chart, FacetryError } from "facetry";
+import { diagram } from "facetry/diagrams"; // fetches facetry_diagrams.wasm on first use
+
+try {
+  const spec = await diagram.fromMermaid(source, { theme: "default" }); // parse + layout
+  const chart = await Chart.create(canvas, spec);
+} catch (e) {
+  if (e instanceof FacetryError && e.code === "invalid-diagram") {
+    for (const { line, column, message } of e.diagramIssues) console.log(line, column, message);
+  }
+}
+
+await diagram.run(); // renders every <pre class="mermaid"> block, like mermaid.run()
+```
+
+Because the output is an ordinary `ChartSpec`, diagrams get spec validation, hover and click,
+PNG snapshots, the orbit camera and the label system for free, and a laid-out spec can be cached
+or shipped as JSON and rendered without the add-on.
+
+## Errors
+
+`fromMermaid` rejects with a new `FacetryError` code, `invalid-diagram`, and draws nothing. Its
+`diagramIssues` lists every problem found (like `issues` for `invalid-spec`), each with a 1-based
+`line` and `column`, the source `excerpt`, and a `message`. Syntax that is valid Mermaid but
+outside the supported subset is an error of the same kind, with a message that says so
+(`"subgraph direction" is not supported`), so users are never shown a silently incomplete
+diagram. Unknown icon names, edges to undeclared architecture services and unbalanced sequence
+`alt`/`end` blocks are errors too.
+
+## Supported syntax
+
+The exact subset is fixed per diagram type at the start of its milestone, written down in the
+README and covered by parser tests; a first cut:
+
+* **`flowchart`** (`graph` too): direction `TB`/`TD`/`BT`/`LR`/`RL`; node shapes `[ ]` rounded
+  box, `( )`, `([ ])` stadium, `[( )]` cylinder, `{ }` diamond, `{{ }}` hexagon, `(( ))` circle;
+  edges `-->`, `---`, `-.->`, `==>`, with `|label|` and chains `a --> b --> c`, `a & b --> c`;
+  `subgraph id [title] … end`, nested; comments `%%`.
+* **`architecture-beta`**: `group`, `service` (with `in` for nesting), `junction`, edges with
+  sides `a:R --> L:b` and optional arrowheads, the five built-in icons.
+* **`sequenceDiagram`**: `participant`/`actor` with `as` aliases, `box … end`, messages `->`,
+  `->>`, `-->>`, `-x`, `-)` and their dotted forms, `+`/`-` activations and
+  `activate`/`deactivate`, `Note left of|right of|over`, `loop`/`alt`/`else`/`opt`/`par`/`and`/`critical`/`break`
+  … `end`, `autonumber`.
+
+## Layout
+
+All layouts are deterministic (no randomness, no dependence on hash order) and sized from the
+real glyph metrics, so a node is exactly as large as its padded label.
+
+### Dataflow: layered (Sugiyama)
+
+Done in 2D on the floor plane, then lifted into 3D:
+
+1. Break cycles (depth-first, reverse back edges), merge parallel edges.
+2. **Rank** by network simplex (minimises total edge length; dagre's choice).
+3. Insert dummy nodes for edges that span ranks.
+4. **Order** within ranks: barycenter sweeps plus a transpose pass, keeping the best ordering by
+   crossing count.
+5. **Coordinates** by Brandes–Köpf (balanced of the four alignments).
+6. **Route** edges as splines through the inter-rank gaps, attached at node borders, with
+   arrowheads.
+7. **Subgraphs** as compound nodes: their members are kept contiguous in each rank and boxed;
+   this is the weakest part of Mermaid's output and where most of the effort goes.
+
+The algorithm follows dagre (MIT), ported and adapted rather than wrapped; ELK's layered
+algorithm is better in places but is EPL-licensed and much larger. In 3D, height carries
+structure: each subgraph is a platform raised or inset relative to its parent, and where two
+edges cross in the plan, one arcs over the other so they never intersect visually.
+
+### Architecture: constraint grid
+
+Mermaid uses a force-directed layout (Cytoscape fCoSE), which is not reproducible. Architecture
+edges already state which side they leave and enter (`api:R --> L:db`), which is a grid
+constraint: `db` is right of `api`. Services are placed on an integer grid by propagating these
+constraints (breadth-first from the most connected service, resolving conflicts by shifting
+columns or rows), groups become the bounding rectangles of their members with margins, and edges
+are routed orthogonally between the stated sides. Groups are platforms; nested groups stack.
+Services are blocks with their icon on the top face; junctions are small posts.
+
+### Sequence: direct
+
+No search is needed: participants are placed left to right in declaration order, spaced by
+their label widths and the widest message between neighbours; each message, note and fragment
+takes the next row down. Participant heads are blocks above their lifelines, messages are tubes
+with arrowheads (self-messages loop), activations are thin slabs on the lifeline, fragments
+(`loop`, `alt`, ...) are translucent frames standing slightly in front of the lifelines with their
+label in the corner, `box` groups are tinted platforms behind their participants, notes float in
+front. Time runs downwards, as in Mermaid.
+
+### Measuring layout quality
+
+A golden corpus in `examples/diagrams/`: about 50 real-world diagrams per type, taken from public
+docs. For every layout a test computes edge crossings, bends, total edge length, bounding area,
+aspect ratio and label overlaps, records them with `insta`, and fails on regressions; a script
+prints the same metrics for Mermaid's own layout of the corpus for comparison. Rendered results
+go through the existing golden-image test.
+
+## Rendering and polish
+
+* **Camera:** orthographic by default, azimuth about 30, elevation about 35 (close to
+  isometric): no perspective distortion, which is what documentation wants. Orbit, zoom and
+  reset work as in 3D charts; `camera` in the spec overrides.
+* **Contact shadows:** each node and platform gets a soft blurred shadow quad on the
+  surface below it. Cheap, and what most of the "solid" look comes from.
+* **Shapes:** bevelled, rounded, low-poly instanced meshes, the same lighting as 3D bars.
+* **Labels:** node labels on the top face or as camera-facing labels anchored at the node
+  (decided by measuring legibility at the default camera); edge labels at the path midpoint,
+  lower priority in the existing label-collision pass.
+* **Themes:** presets matching Mermaid's `default`, `neutral`, `dark` and `forest`.
+* **Hover and click** report `{ kind: "node" | "edge" | "group" | "message", id }`; hovering a
+  dataflow node dims everything outside its upstream and downstream paths.
+* **PNG export:** the existing snapshot API, with a `pixelRatio` option for high-DPI images.
+
+## Animation
+
+Opt-in through `animation` in the spec, after layout and polish are done:
+
+* **Sequence playback:** messages, activations and notes appear in order.
+* **Build-in:** dataflow nodes rise rank by rank, edges draw from source to target; architecture
+  groups first, then services, then edges.
+* **Flow along edges:** dashes or particles moving along edge paths.
+
+All three are driven by a single time value in a uniform, so the scene is never rebuilt while
+animating. `chart.play()`, `chart.pause()` and `chart.setTime(t)` control it; `setTime` makes
+snapshot tests deterministic. Animation honours `prefers-reduced-motion` (shows the end state),
+pauses while the canvas is off screen, and when nothing animates the renderer keeps its
+render-only-on-change loop. This controller is meant to be the same one keyed transitions on
+`chart.update()` will use for charts.
+
+## Milestones
+
+| | Scope |
+|---|---|
+| **D1** | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` mark with rounded box, cylinder, diamond, tube and cone; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus |
+| **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, remaining shapes, themes, `diagram.run()` |
+| **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
+| **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
+| **D5** | Animation controller, sequence playback, build-in, flow along edges |
+
+Each milestone reports the size of both core modules and of the add-on, as `docs/wasm-size.md`
+does for charts.
