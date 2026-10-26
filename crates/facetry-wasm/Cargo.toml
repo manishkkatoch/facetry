@@ -22,7 +22,6 @@ webgl = ["facetry-render/webgl"]
 facetry-core = { workspace = true, features = ["ts"] }
 facetry-render.workspace = true
 facetry-font.workspace = true
-serde-wasm-bindgen.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 js-sys.workspace = true

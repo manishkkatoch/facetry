@@ -8,8 +8,6 @@
 
 use std::borrow::Cow;
 
-use serde::Serialize;
-use serde::de::Deserializer;
 #[cfg(feature = "ts")]
 use tsify::Tsify;
 
@@ -18,10 +16,12 @@ use crate::spec::{
     AxisSpec, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, LayerSpec,
     MAX_LABEL_DECIMALS, MAX_STROKE_WIDTH, Mark, Orient, Position, PositionEncoding, Table,
 };
+use crate::spec_read::parse_spec_value;
 use crate::transform::{self, Cell, Row};
+use crate::value::parse_json;
 
 /// One problem with a spec.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
 pub struct Issue {
     /// JSON pointer into the spec, e.g. `/layers/0/encoding/y/axis`; `""` is the whole spec.
@@ -30,7 +30,7 @@ pub struct Issue {
 }
 
 impl Issue {
-    fn new(path: String, message: impl Into<String>) -> Self {
+    pub(crate) fn new(path: String, message: impl Into<String>) -> Self {
         Self {
             path,
             message: message.into(),
@@ -39,38 +39,20 @@ impl Issue {
 }
 
 /// Builds a JSON pointer, escaping `~` and `/` inside keys (RFC 6901).
-fn pointer(parts: &[&str]) -> String {
+pub(crate) fn pointer(parts: &[&str]) -> String {
     parts
         .iter()
         .map(|p| format!("/{}", p.replace('~', "~0").replace('/', "~1")))
         .collect()
 }
 
-/// Deserialises a spec from any serde source (JSON text, a JS object via
-/// serde-wasm-bindgen, ...). Shape errors (unknown field, wrong type) come back as a single
-/// [`Issue`] whose path says where in the input it went wrong.
-pub fn parse_spec<'de, D>(deserializer: D) -> Result<ChartSpec, Vec<Issue>>
-where
-    D: Deserializer<'de>,
-{
-    serde_path_to_error::deserialize(deserializer).map_err(|e| {
-        use serde_path_to_error::Segment;
-        let path: String = e
-            .path()
-            .iter()
-            .filter_map(|seg| match seg {
-                Segment::Seq { index } => Some(format!("/{index}")),
-                Segment::Map { key } => Some(pointer(&[key])),
-                Segment::Enum { .. } | Segment::Unknown => None,
-            })
-            .collect();
-        vec![Issue::new(path, e.inner().to_string())]
-    })
-}
-
-/// [`parse_spec`] for JSON text.
+/// Reads a spec from JSON text: [`parse_json`] for the syntax, then
+/// [`parse_spec_value`] for the shape. Either kind of failure is a single [`Issue`] whose path
+/// says where in the input it went wrong; a syntax error's message ends in its line and
+/// column.
 pub fn parse_spec_json(json: &str) -> Result<ChartSpec, Vec<Issue>> {
-    parse_spec(&mut serde_json::Deserializer::from_str(json))
+    let value = parse_json(json).map_err(|e| vec![Issue::new(e.path, e.message)])?;
+    parse_spec_value(value)
 }
 
 /// Where a layer's colours come from.

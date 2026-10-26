@@ -13,10 +13,15 @@ ts = ["dep:tsify", "dep:wasm-bindgen"]
 [dependencies]
 facetry-font.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-serde_path_to_error.workspace = true
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
+
+# serde is what the old spec parser was built on. It stays here for two things only: the frozen
+# copy of that parser (tests/serde_reference) that tests/parse_differential.rs checks the
+# hand-written reader against, and JSON in other tests. None of it is in the shipped wasm.
+[dev-dependencies]
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_path_to_error.workspace = true
 
 # Test-only crates that do not build for wasm32 (`cargo clippy --target wasm32 --all-targets`
 # still compiles the tests), so they are native-only and the tests that use them are gated.
