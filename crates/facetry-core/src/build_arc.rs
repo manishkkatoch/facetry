@@ -254,6 +254,7 @@ pub(crate) fn build_pie(
     if let Some(l) = legend {
         scene.rules.extend(l.rules);
         scene.texts.extend(l.texts);
+        scene.legend_hits = l.hits;
     }
 
     // Labels. Inside ones are centred in the slice; outside ones sit past a leader line (only

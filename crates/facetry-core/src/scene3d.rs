@@ -258,6 +258,9 @@ fn is_true(v: &bool) -> bool {
 pub struct Overlay {
     pub rules: Vec<crate::scene::Rule>,
     pub texts: Vec<crate::scene::Text>,
+    /// Where the legend's entries can be clicked (canvas pixels).
+    #[serde(skip)]
+    pub hits: Vec<crate::scene::LegendHit>,
 }
 
 impl Overlay {
@@ -272,6 +275,22 @@ fn plot_rect<S: Serializer>(v: &Option<[f32; 4]>, s: S) -> Result<S::Ok, S::Erro
 }
 
 impl Scene3d {
+    /// The series whose legend entry is under the canvas pixel `(x, y)`.
+    pub fn legend_pick(&self, x: f32, y: f32) -> Option<&str> {
+        crate::scene::legend_pick(&self.overlay.hits, x, y).map(|h| h.series.as_str())
+    }
+
+    /// The middle of the legend entry of `series`, in canvas pixels.
+    pub fn legend_center(&self, series: &str) -> Option<[f32; 2]> {
+        let b = self
+            .overlay
+            .hits
+            .iter()
+            .find(|h| h.series == series)?
+            .bounds;
+        Some([b.x + b.w / 2.0, b.y + b.h / 2.0])
+    }
+
     /// The part of the canvas the plot is drawn in: `[x, y, width, height]`.
     pub fn plot_rect(&self) -> [f32; 4] {
         self.plot

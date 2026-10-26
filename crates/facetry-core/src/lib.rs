@@ -20,6 +20,7 @@ mod validate;
 pub use build::{build_scene, build_scene_with_theme};
 pub use build3d::{build_scene_3d, build_scene_3d_with_theme, framing_radius};
 pub use color::{Color, ParseColorError};
+pub use legend::{series_names, set_series_visible, settle_hidden};
 pub use scene::Scene;
 pub use scene3d::Scene3d;
 pub use spec::ChartSpec;

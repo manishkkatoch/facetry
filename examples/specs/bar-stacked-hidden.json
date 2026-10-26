@@ -1,0 +1,28 @@
+{
+  "dimension": "2d",
+  "data": {
+    "sales": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4"],
+      "product": ["Hardware", "Hardware", "Hardware", "Hardware", "Software", "Software", "Software", "Software", "Services", "Services", "Services", "Services"],
+      "revenue": [120, 90, 140, 110, 80, 95, 110, 130, 40, 45, 30, 5]
+    }
+  },
+  "axes": [
+    { "id": "x", "orient": "bottom", "title": "Quarter" },
+    { "id": "y", "orient": "left", "title": "Revenue" }
+  ],
+  "layers": [
+    {
+      "mark": "bar",
+      "data": "sales",
+      "position": "stack",
+      "encoding": {
+        "x": { "field": "quarter", "axis": "x" },
+        "y": { "field": "revenue", "axis": "y" },
+        "color": { "field": "product" }
+      },
+      "label": { "show": "always" }
+    }
+  ],
+  "legend": { "title": "Product", "hidden": ["Software"] }
+}

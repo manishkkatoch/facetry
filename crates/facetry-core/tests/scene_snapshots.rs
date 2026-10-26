@@ -36,6 +36,7 @@ snapshot!(empty_data, "bar-empty");
 snapshot!(many_categories_thin_labels, "bar-many");
 snapshot!(value_labels_always, "bar-labels");
 snapshot!(stacked_bars, "bar-stacked");
+snapshot!(stacked_bars_with_a_series_hidden, "bar-stacked-hidden");
 snapshot!(normalized_bars, "bar-normalized");
 snapshot!(grouped_bars, "bar-grouped");
 snapshot!(basic_lines, "line-basic");

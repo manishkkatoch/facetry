@@ -2,6 +2,7 @@ export {
   Chart,
   type ChartEvents,
   type ChartOptions,
+  type LegendClickEvent,
   type MarkEvent,
   type SnapshotOptions,
 } from "./chart.js";

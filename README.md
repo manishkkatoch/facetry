@@ -11,8 +11,8 @@ with bars on two y axes) and **pies and donuts**; in 2D and, for bars and pies, 
 depth-tested solids you can orbit (see [3D charts](#3d-charts)). Charts that colour by a field
 get a [legend](#legend). Marks can carry value labels and report hover and click, and the
 current view can be saved as a PNG (see [Value labels, hover and
-click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Animation and
-click-to-toggle legends come later.
+click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Clicking a legend entry
+hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)). Animation comes later.
 
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
@@ -252,9 +252,54 @@ column), so the three non-default positions need it.
   **after** the 3D pass (a second render pass), and the 3D viewport is shrunk to what the legend
   leaves, so the plot box never sits under it. Picking and `markPosition` account for that
   offset. Snapshots include the legend.
-- Not yet: clicking an entry to hide its series (a follow-up); the legend is not interactive.
+- Entries are clickable: see [Hiding series](#hiding-series-from-the-legend).
 - Because the default depends on `color.field`, specs that colour by field (for example
   `bar-colored` and `bar3d-grid`) now show a legend; set `legend: false` to keep the old look.
+
+### Hiding series from the legend
+
+Clicking a legend entry hides its **series** (the colour category) in every layer that colours by
+it (bars, stacked segments, lines and pie slices, in 2D and 3D); clicking again shows it.
+
+```jsonc
+{ "legend": { "title": "Product", "interactive": true, "hidden": ["Services"] } }
+```
+
+```ts
+chart.setSeriesVisible("Software", false);   // returns true if something changed
+chart.hiddenSeries;                          // ["Software"], in legend order
+chart.on("legendclick", ({ series, visible }) => { /* fired after the chart was laid out again */ });
+```
+
+- **What "hidden" means.** The hidden series' rows are treated as missing *before* any transform,
+  so stacks restack (the next segment drops onto the one below), `normalize` columns still reach
+  100%, a pie divides the circle among the slices that are left (its percent labels too), a `group`
+  layer gives the hidden series' slot back to the others, and the y axis (and a numeric x axis) refit to the data that is
+  drawn. A category that only a hidden series used (an x category, or a 3D depth row when `z` and
+  `color` are the same field) leaves its axis with it. **Colours never change**: a series keeps its
+  palette colour whether others are shown or not. Layout is recomputed (the scene is rebuilt, which
+  is cheap at these sizes); the 3D camera is kept.
+- **The legend entry stays**, drawn at 40% opacity (swatch and text), so it can be clicked back.
+- **The last visible series cannot be hidden**: the click (or `setSeriesVisible`) does nothing and
+  returns `false`, and no `legendclick` fires. A blank chart helps nobody. `legend.hidden` naming
+  every series is a validation issue (`/legend/hidden`); a name that is not a series is ignored
+  (so a spec can keep a name while the data comes and goes) and is not reported by `hiddenSeries`.
+- **State.** `legend.hidden` is the *starting* state. After that the chart owns it: viewer clicks and
+  `setSeriesVisible` change it, and `chart.update(spec)` **keeps it for series that still exist**
+  unless the new spec has `legend.hidden` (then that list wins). PNG snapshots show the current state.
+  `legend.interactive: false` keeps the legend but turns the clicking off (no pointer cursor, no
+  `legendclick`); `setSeriesVisible` and `legend.hidden` still work. `legend: false` has no legend to
+  click, but the API works, so you can build your own.
+- **Events.** A click on a legend entry (press and release on the same entry, with less than 4 px of
+  movement) emits `legendclick` and **never** the chart's `click` (and the press does not start an
+  orbit drag in 3D, and does not hover a bar). The pointer shows `cursor: pointer` over an entry.
+  `setSeriesVisible` calls from code do not emit `legendclick`.
+- **How it is found.** The legend lays itself out as rectangles in device pixels (in 2D inside the
+  scene, in 3D in the overlay that is drawn after the 3D pass), and each entry also reports a hit
+  rectangle (its swatch and label, a little padded). Hit testing is a few rectangle tests on the CPU
+  (`Scene::legend_pick`), the same style as bar picking, no GPU read-back. `chart.legendPosition(series)` says where an
+  entry is (CSS px), for tests and annotations.
+- Not done: dimming the other series while an entry is hovered.
 
 ### 3D charts
 
@@ -480,7 +525,7 @@ layout, geometry and shader-validation tests, not by pixels).
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
 `chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
 `?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
-`examples/specs/`: `bar-stacked`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
+`examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, ...), `?ui=0` (only the chart). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
@@ -494,7 +539,7 @@ console.
   `INSTA_UPDATE=no`, so any difference fails.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
-  `bar3d-grid`, `bar3d-stacked`, `pie3d`): Playwright screenshots these examples (3D ones at their
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,

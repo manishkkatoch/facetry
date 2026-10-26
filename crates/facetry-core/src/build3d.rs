@@ -124,12 +124,13 @@ pub fn build_scene_3d_with_theme(
     );
 
     // --- the box ----------------------------------------------------------------------------
-    let union = |dicts: &mut dyn Iterator<Item = &[String]>| {
+    // Categories that only a hidden series used are not on the axis.
+    let union = |lists: &mut dyn Iterator<Item = Vec<String>>| {
         let mut domain: Vec<String> = Vec::new();
-        for dict in dicts {
-            for c in dict {
-                if !domain.contains(c) {
-                    domain.push(c.clone());
+        for list in lists {
+            for c in list {
+                if !domain.contains(&c) {
+                    domain.push(c);
                 }
             }
         }
@@ -139,13 +140,13 @@ pub fn build_scene_3d_with_theme(
         &mut layers
             .iter()
             .filter(|l| Some(l.x_axis) == x_axis)
-            .map(|l| l.x_dict),
+            .map(|l| l.x_categories()),
     );
     let z_domain = union(
         &mut layers
             .iter()
             .filter(|l| l.z_axis.is_some() && l.z_axis == z_axis)
-            .map(|l| l.z_dict),
+            .map(|l| l.z_categories()),
     );
     let nx = x_domain.len().max(1);
     let nz = z_domain.len().max(1);
@@ -765,6 +766,7 @@ pub(crate) fn overlay(legend: crate::legend::Legend) -> Overlay {
     Overlay {
         rules: legend.rules,
         texts: legend.texts,
+        hits: legend.hits,
     }
 }
 
@@ -875,6 +877,7 @@ fn layer_bars(
         return Vec::new(); // `validate` rejects these positions without a colour field
     };
     let cells = layer.cells();
+    let shown = layer.visible_series();
     let stacked = layer.position != Position::Group;
     let normalize = layer.position == Position::Normalize;
     let spans = if stacked {
@@ -906,7 +909,14 @@ fn layer_bars(
             Some(Bar3 {
                 x,
                 z,
-                slot: (!stacked).then_some((cell.series, dict.len())),
+                slot: (!stacked)
+                    .then(|| {
+                        shown
+                            .iter()
+                            .position(|&s| s == cell.series)
+                            .map(|k| (k, shown.len()))
+                    })
+                    .flatten(),
                 y0: span.y0,
                 y1: span.y1,
                 value: cell.value,
@@ -925,5 +935,5 @@ fn layer_bars(
 fn z_domain_is_empty(layers: &[ResolvedLayer], z_axis: Option<usize>) -> bool {
     !layers
         .iter()
-        .any(|l| l.z_axis.is_some() && l.z_axis == z_axis && !l.z_dict.is_empty())
+        .any(|l| l.z_axis.is_some() && l.z_axis == z_axis && !l.z_categories().is_empty())
 }

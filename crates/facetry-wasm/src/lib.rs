@@ -4,7 +4,7 @@
 use facetry_core::spec::{Column, Dimension};
 use facetry_core::{
     ChartSpec, Color, Issue, Scene, Scene3d, Theme, build_scene_3d_with_theme,
-    build_scene_with_theme, parse_spec, validate,
+    build_scene_with_theme, parse_spec, set_series_visible, settle_hidden, validate,
 };
 use facetry_font::FontMetrics;
 use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
@@ -175,7 +175,8 @@ impl Chart {
         options: Option<ChartOptions>,
         dpr: f64,
     ) -> Result<Chart, JsValue> {
-        let spec = read_spec(spec)?;
+        let mut spec = read_spec(spec)?;
+        settle_hidden(&mut spec, None);
         let mut preference = BackendPreference::Auto;
         let mut theme = Theme::default();
         if let Some(options) = options.as_deref() {
@@ -218,13 +219,76 @@ impl Chart {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "ChartSpec")] spec: JsValue,
     ) -> Result<(), JsValue> {
-        let spec = read_spec(spec)?;
+        let mut spec = read_spec(spec)?;
+        // What the viewer hid stays hidden, for series that still exist, unless the new spec
+        // says (`legend.hidden`).
+        settle_hidden(&mut spec, self.spec.hidden_override.as_deref());
         if spec.camera != self.spec.camera {
             self.camera = Camera::from_spec(spec.camera.as_ref());
         }
         self.spec = spec;
         self.relayout();
         Ok(())
+    }
+
+    /// Hides (`visible = false`) or shows one series: its marks leave every layer that
+    /// colours by that category, and stacks, shares, pies and axes are computed again without
+    /// it. The legend entry stays, dimmed. Returns whether anything changed: `false` for an
+    /// unknown name, a series already in that state, and for hiding the last visible series
+    /// (which is refused). The camera is kept. Call `render` afterwards.
+    #[wasm_bindgen(js_name = setSeriesVisible)]
+    pub fn set_series_visible(&mut self, name: &str, visible: bool) -> bool {
+        let changed = set_series_visible(&mut self.spec, name, visible);
+        if changed {
+            self.relayout();
+        }
+        changed
+    }
+
+    /// The names of the hidden series, in legend order.
+    #[wasm_bindgen(getter, js_name = hiddenSeries, unchecked_return_type = "string[]")]
+    pub fn hidden_series(&self) -> JsValue {
+        self.spec
+            .hidden_series()
+            .iter()
+            .map(|s| JsValue::from_str(s))
+            .collect::<js_sys::Array>()
+            .into()
+    }
+
+    /// The series whose legend entry is at `(x, y)` (CSS pixels from the canvas's top-left),
+    /// or `undefined`: no legend, `legend.interactive: false`, or nothing there. The legend is
+    /// a few rectangles on the CPU, so this is as cheap as `pick`.
+    #[wasm_bindgen(js_name = legendPick)]
+    pub fn legend_pick(&self, x: f64, y: f64) -> Option<String> {
+        let (x, y) = (
+            (x * f64::from(self.dpr)) as f32,
+            (y * f64::from(self.dpr)) as f32,
+        );
+        match &self.scene {
+            SceneKind::TwoD(scene) => scene.legend_pick(x, y),
+            SceneKind::ThreeD(scene) => scene.legend_pick(x, y),
+        }
+        .map(str::to_owned)
+    }
+
+    /// Where the legend entry of `series` is: `{ x, y }`, its middle in CSS pixels from the
+    /// canvas's top-left, or `undefined` (no such entry, or the legend is not interactive).
+    /// For tests and for anchoring your own annotations.
+    #[wasm_bindgen(js_name = legendPosition, unchecked_return_type = "{ x: number, y: number } | undefined")]
+    pub fn legend_position(&self, series: &str) -> JsValue {
+        let centre = match &self.scene {
+            SceneKind::TwoD(scene) => scene.legend_center(series),
+            SceneKind::ThreeD(scene) => scene.legend_center(series),
+        };
+        let Some([x, y]) = centre else {
+            return JsValue::UNDEFINED;
+        };
+        let dpr = f64::from(self.dpr);
+        let object = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&object, &"x".into(), &(f64::from(x) / dpr).into());
+        let _ = js_sys::Reflect::set(&object, &"y".into(), &(f64::from(y) / dpr).into());
+        object.into()
     }
 
     /// Resizes the drawing buffer (physical pixels) and re-runs layout for the new size:

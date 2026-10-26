@@ -42,9 +42,10 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub layers: Vec<LayerSpec>,
-    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "..." }`, `true`
-    /// for the defaults, or `false` for none. Absent: a legend on the right when any layer
-    /// colours by a field, none otherwise.
+    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "...",
+    /// "interactive": true, "hidden": ["series", ...] }`, `true` for the defaults, or `false`
+    /// for none. Absent: a legend on the right when any layer colours by a field, none
+    /// otherwise. Clicking an entry hides or shows its series (`interactive`, default on).
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub legend: Option<LegendSpec>,
@@ -56,9 +57,38 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub interaction: Option<InteractionSpec>,
+    /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
+    /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
+    /// spec's starting state without editing the user's spec. Not part of the JSON.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", tsify(skip))]
+    pub hidden_override: Option<Vec<String>>,
 }
 
 impl ChartSpec {
+    /// The names of the series that are hidden: the run-time set if the host set one, else
+    /// `legend.hidden`. Names that are not a series of any layer are harmless: they hide
+    /// nothing.
+    pub fn hidden_series(&self) -> &[String] {
+        if let Some(h) = &self.hidden_override {
+            return h;
+        }
+        match &self.legend {
+            Some(LegendSpec::Config(c)) => c.hidden.as_deref().unwrap_or(&[]),
+            _ => &[],
+        }
+    }
+
+    /// Whether clicking a legend entry toggles its series: there is a legend and
+    /// `legend.interactive` is not `false`.
+    pub fn legend_interactive(&self) -> bool {
+        match &self.legend {
+            Some(LegendSpec::Shown(false)) => false,
+            Some(LegendSpec::Config(c)) => c.interactive.unwrap_or(true),
+            _ => true,
+        }
+    }
+
     /// Whether dragging/wheeling should move the camera: only in 3D, on unless
     /// `interaction.orbit` is `false`.
     pub fn orbit_enabled(&self) -> bool {
@@ -93,6 +123,17 @@ pub struct LegendConfig {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub title: Option<String>,
+    /// Click an entry to hide or show its series (every layer that colours by that
+    /// category). Default: `true`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub interactive: Option<bool>,
+    /// Series that start hidden. A name that is not a series is ignored; hiding every
+    /// series is an error. The viewer's later clicks replace this set (see
+    /// `Chart.setSeriesVisible`); `Chart.update` keeps theirs unless this field is present.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub hidden: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]

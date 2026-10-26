@@ -6,6 +6,8 @@
 //! [`resolve_layer`]. `validate` calls it and reports failures; `build_scene` calls it and
 //! skips layers that fail. One code path means they can never disagree.
 
+use std::borrow::Cow;
+
 use serde::Serialize;
 use serde::de::Deserializer;
 #[cfg(feature = "ts")]
@@ -99,15 +101,72 @@ pub(crate) struct ResolvedLayer<'a> {
     pub x_num: &'a [f64],
     /// The x field is numeric (a line layer on a linear x scale), not categorical.
     pub x_numeric: bool,
-    pub y: &'a [f64],
+    /// The y values, with the rows of hidden series set to NaN (missing). Every transform
+    /// already ignores a missing number, which is how a hidden series drops out of stacks,
+    /// shares, extents and lines without any row being renumbered: row indices stay those
+    /// of the user's table, so hover and click still find the right datum.
+    pub y: Cow<'a, [f64]>,
     pub z_codes: &'a [u32],
     pub z_dict: &'a [String],
     pub color: ColorSource<'a>,
     pub key: Option<&'a Column>,
     pub position: Position,
+    /// Per colour category (by code): hidden. Empty when nothing is hidden in this layer.
+    pub hidden: Vec<bool>,
 }
 
 impl ResolvedLayer<'_> {
+    /// Whether `row` belongs to a hidden series.
+    pub fn row_hidden(&self, row: usize) -> bool {
+        match self.color {
+            ColorSource::Field { codes, .. } if !self.hidden.is_empty() => codes
+                .get(row)
+                .is_some_and(|&c| self.hidden.get(c as usize).copied().unwrap_or(false)),
+            _ => false,
+        }
+    }
+
+    /// The series (colour codes, ascending) that are shown. For `group` this decides how many
+    /// slots a band is split into: a hidden series gives its slot up.
+    pub fn visible_series(&self) -> Vec<usize> {
+        let ColorSource::Field { dict, .. } = self.color else {
+            return vec![0];
+        };
+        (0..dict.len())
+            .filter(|&c| !self.hidden.get(c).copied().unwrap_or(false))
+            .collect()
+    }
+
+    /// The categories of `dict` that have at least one shown row, in dictionary order.
+    /// Without hidden series that is all of them. A category only a hidden series used drops
+    /// off the axis with it, so axes are computed from the data that is drawn.
+    fn shown_categories(&self, codes: &[u32], dict: &[String]) -> Vec<String> {
+        if self.hidden.is_empty() {
+            return dict.to_vec();
+        }
+        let mut seen = vec![false; dict.len()];
+        for row in (0..self.rows()).filter(|&r| !self.row_hidden(r)) {
+            if let Some(slot) = codes.get(row).and_then(|&c| seen.get_mut(c as usize)) {
+                *slot = true;
+            }
+        }
+        dict.iter()
+            .zip(seen)
+            .filter(|&(_, shown)| shown)
+            .map(|(c, _)| c.clone())
+            .collect()
+    }
+
+    /// The x categories that are drawn (see [`shown_categories`](Self::shown_categories)).
+    pub fn x_categories(&self) -> Vec<String> {
+        self.shown_categories(self.x_codes, self.x_dict)
+    }
+
+    /// The z (depth) categories that are drawn.
+    pub fn z_categories(&self) -> Vec<String> {
+        self.shown_categories(self.z_codes, self.z_dict)
+    }
+
     /// The rows merged into one cell per (x, series, z): what `stack`, `normalize` and
     /// `group` lay out. The series is the colour field's code (always a field for those
     /// positions; `validate` insists).
@@ -126,14 +185,6 @@ impl ResolvedLayer<'_> {
             value: self.y[row],
             row,
         }))
-    }
-
-    /// Number of series (distinct colour categories) of a layer coloured by field.
-    pub fn series_count(&self) -> usize {
-        match self.color {
-            ColorSource::Field { dict, .. } => dict.len(),
-            _ => 1,
-        }
     }
 
     /// The smallest and largest y value the layer's marks reach (`None` without finite
@@ -475,25 +526,62 @@ pub(crate) fn resolve_layer(spec: &ChartSpec, i: usize) -> Result<ResolvedLayer<
     }
 
     match (x_axis, y_axis, color) {
-        (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => Ok(ResolvedLayer {
-            index: i,
-            mark: layer.mark,
-            x_axis,
-            y_axis,
-            z_axis,
-            x_codes,
-            x_dict,
-            x_num,
-            x_numeric,
-            y: y_values,
-            z_codes,
-            z_dict,
-            color,
-            key,
-            position: layer.position,
-        }),
+        (Some(x_axis), Some(y_axis), Some(color)) if issues.is_empty() => {
+            let hidden = hidden_codes(spec, &color);
+            let y = match color {
+                ColorSource::Field { codes, .. } if !hidden.is_empty() => Cow::Owned(
+                    y_values
+                        .iter()
+                        .enumerate()
+                        .map(|(row, &v)| hide(&hidden, codes, row, v))
+                        .collect(),
+                ),
+                _ => Cow::Borrowed(y_values),
+            };
+            Ok(ResolvedLayer {
+                index: i,
+                mark: layer.mark,
+                x_axis,
+                y_axis,
+                z_axis,
+                x_codes,
+                x_dict,
+                x_num,
+                x_numeric,
+                y,
+                z_codes,
+                z_dict,
+                color,
+                key,
+                position: layer.position,
+                hidden,
+            })
+        }
         _ => Err(issues),
     }
+}
+
+/// Which of a colour field's categories are hidden, by code. Empty when none is (the common
+/// case), so the rest of the code can skip the work.
+fn hidden_codes(spec: &ChartSpec, color: &ColorSource) -> Vec<bool> {
+    let ColorSource::Field { dict, .. } = color else {
+        return Vec::new();
+    };
+    let names = spec.hidden_series();
+    let flags: Vec<bool> = dict.iter().map(|c| names.contains(c)).collect();
+    if flags.contains(&true) {
+        flags
+    } else {
+        Vec::new()
+    }
+}
+
+/// `value`, or NaN (missing) when `row` belongs to a hidden category.
+fn hide(hidden: &[bool], codes: &[u32], row: usize, value: f64) -> f64 {
+    let is_hidden = codes
+        .get(row)
+        .is_some_and(|&c| hidden.get(c as usize).copied().unwrap_or(false));
+    if is_hidden { f64::NAN } else { value }
 }
 
 /// `style` and `point` only make sense on some marks, and their numbers must be usable.
@@ -602,8 +690,8 @@ fn check_position(
 #[derive(Debug)]
 pub(crate) struct ResolvedArc<'a> {
     pub index: usize,
-    /// The slice sizes.
-    pub theta: &'a [f64],
+    /// The slice sizes, with the rows of hidden slices set to NaN (no slice).
+    pub theta: Cow<'a, [f64]>,
     /// Each row's slice (colour category) and the category names.
     pub codes: &'a [u32],
     pub dict: &'a [String],
@@ -782,13 +870,27 @@ pub(crate) fn resolve_arc(spec: &ChartSpec, i: usize) -> Result<ResolvedArc<'_>,
     });
 
     match color {
-        Some(ColorSource::Field { codes, dict }) if issues.is_empty() => Ok(ResolvedArc {
-            index: i,
-            theta,
-            codes,
-            dict,
-            key,
-        }),
+        Some(ColorSource::Field { codes, dict }) if issues.is_empty() => {
+            let hidden = hidden_codes(spec, &ColorSource::Field { codes, dict });
+            let theta = if hidden.is_empty() {
+                Cow::Borrowed(theta)
+            } else {
+                Cow::Owned(
+                    theta
+                        .iter()
+                        .enumerate()
+                        .map(|(row, &v)| hide(&hidden, codes, row, v))
+                        .collect(),
+                )
+            };
+            Ok(ResolvedArc {
+                index: i,
+                theta,
+                codes,
+                dict,
+                key,
+            })
+        }
         _ => Err(issues),
     }
 }
@@ -1067,9 +1169,29 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
         .filter_map(|i| resolve_layer(spec, i).ok())
         .collect();
     check_arcs(spec, &mut issues);
+    check_hidden(spec, &mut issues);
     check_percent_axes(spec, &resolved, &mut issues);
     check_x_axes(spec, &resolved, &mut issues);
     issues
+}
+
+/// `legend.hidden` may name anything (a name that is not a series hides nothing, so a spec can
+/// keep a hidden name while the data comes and goes), but it must leave a series to draw:
+/// a chart with every series hidden is blank and the viewer could not tell why.
+fn check_hidden(spec: &ChartSpec, issues: &mut Vec<Issue>) {
+    let Some(crate::spec::LegendSpec::Config(config)) = &spec.legend else {
+        return;
+    };
+    let Some(hidden) = config.hidden.as_deref().filter(|h| !h.is_empty()) else {
+        return;
+    };
+    let series = crate::legend::series_names(spec);
+    if !series.is_empty() && series.iter().all(|s| hidden.contains(s)) {
+        issues.push(Issue::new(
+            pointer(&["legend", "hidden"]),
+            "legend.hidden hides every series; leave at least one visible",
+        ));
+    }
 }
 
 /// A bottom axis is a band scale (categories) or a linear one (numbers, from line layers). All

@@ -31,6 +31,20 @@ export interface ChartEvents {
    * dragging. A drag that orbits a 3D chart never clicks.
    */
   click: MarkEvent | null;
+  /**
+   * A legend entry was clicked and its series toggled; fired after the chart has been laid
+   * out again. `visible` is the series' new state. Not fired for a click that changed nothing
+   * (the last visible series cannot be hidden), nor for {@link Chart.setSeriesVisible}.
+   */
+  legendclick: LegendClickEvent;
+}
+
+/** What a `legendclick` event reports. */
+export interface LegendClickEvent {
+  /** The series (colour category) that was toggled, as the legend spells it. */
+  series: string;
+  /** Whether it is shown now. */
+  visible: boolean;
 }
 
 export interface SnapshotOptions {
@@ -67,6 +81,7 @@ export class Chart {
   readonly #listeners: { [K in keyof ChartEvents]: Set<(e: ChartEvents[K]) => void> } = {
     hover: new Set(),
     click: new Set(),
+    legendclick: new Set(),
   };
   /** The bar under the pointer (index into the chart's bars), -1 for none. */
   #hover = -1;
@@ -177,6 +192,45 @@ export class Chart {
   /** Removes a listener added with {@link on}. */
   off<K extends keyof ChartEvents>(type: K, listener: (event: ChartEvents[K]) => void): void {
     this.#listeners[type].delete(listener);
+  }
+
+  /**
+   * Hides (`visible: false`) or shows a series: the category of the colour field that the
+   * legend lists. Its marks leave every layer that colours by it (bars, stacked segments,
+   * lines, pie slices, in 2D and 3D) and the chart is laid out again without them: stacks
+   * restack, shares renormalise, pies divide the circle among what is left and axes refit.
+   * Colours do not change, the legend entry stays (dimmed) and the 3D camera is kept.
+   *
+   * Returns whether anything changed. Nothing happens for a name that is not a series, for a
+   * series already in that state, or when hiding would leave no series visible. Does not
+   * fire `legendclick` (that is for the viewer's clicks).
+   */
+  setSeriesVisible(name: string, visible: boolean): boolean {
+    if (this.#destroyed) return false;
+    const changed = this.#inner.setSeriesVisible(name, visible);
+    if (changed) {
+      this.#resetHover();
+      this.requestRender();
+    }
+    return changed;
+  }
+
+  /**
+   * The series that are hidden now, in legend order: the spec's `legend.hidden` at first,
+   * then whatever the viewer or {@link setSeriesVisible} changed. `chart.update(spec)` keeps
+   * it for series that still exist, unless the new spec has `legend.hidden`.
+   */
+  get hiddenSeries(): string[] {
+    return this.#inner.hiddenSeries;
+  }
+
+  /**
+   * Where the legend entry of `series` is, `{ x, y }` in CSS pixels from the canvas's
+   * top-left, or `undefined` when there is no such entry or the legend is not interactive.
+   * Handy for tests and for aiming your own annotations.
+   */
+  legendPosition(series: string): { x: number; y: number } | undefined {
+    return this.#inner.legendPosition(series);
   }
 
   /**
@@ -332,6 +386,7 @@ export class Chart {
     this.#removeListeners();
     this.#listeners.hover.clear();
     this.#listeners.click.clear();
+    this.#listeners.legendclick.clear();
     cancelAnimationFrame(this.#raf);
     this.#raf = 0;
     this.#rejectFirstFrame(new FacetryError("destroyed", "chart destroyed before first frame"));
@@ -356,7 +411,15 @@ export class Chart {
    */
   #attachPointerControls(): () => void {
     const canvas = this.#canvas;
-    let press: { id: number; x: number; y: number; lastX: number; lastY: number } | null = null;
+    let press: {
+      id: number;
+      x: number;
+      y: number;
+      lastX: number;
+      lastY: number;
+      /** The legend entry the press started on: it is a legend click, never an orbit or a chart click. */
+      legend?: string;
+    } | null = null;
 
     /** Pointer position in CSS pixels from the canvas's top-left. */
     const at = (e: MouseEvent) => {
@@ -369,23 +432,25 @@ export class Chart {
     };
     const endDrag = () => {
       this.#dragging = false;
-      canvas.style.cursor = this.#inner.orbitEnabled ? "grab" : "";
+      this.#look();
     };
 
     const down = (e: PointerEvent) => {
       if (e.button !== 0 || press) return;
       press = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY };
       this.#pointer = at(e);
-      // Capture keeps the drag going when the pointer leaves the canvas.
-      if (this.#inner.orbitEnabled) canvas.setPointerCapture(e.pointerId);
+      press.legend = this.#inner.legendPick(this.#pointer.x, this.#pointer.y);
+      // Capture keeps the drag going when the pointer leaves the canvas (not for a legend
+      // press: that never drags).
+      if (this.#inner.orbitEnabled && press.legend === undefined) canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
       this.#pointer = at(e);
       if (!press) {
-        this.#setHover(this.#inner.pick(this.#pointer.x, this.#pointer.y));
+        this.#look();
         return;
       }
-      if (e.pointerId !== press.id || !this.#inner.orbitEnabled) return;
+      if (e.pointerId !== press.id || !this.#inner.orbitEnabled || press.legend !== undefined) return;
       if (!this.#dragging) {
         if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= CLICK_SLOP) return;
         this.#dragging = true;
@@ -404,11 +469,21 @@ export class Chart {
     const up = (e: PointerEvent) => {
       if (!press || e.pointerId !== press.id) return;
       const wasDrag = this.#dragging;
+      const legend = press.legend;
+      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
       press = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       endDrag();
       this.#pointer = at(e);
       if (e.type === "pointercancel") return;
+      if (legend !== undefined) {
+        // A legend click: pressed and released on the same entry. It toggles the series and
+        // is not a chart click.
+        if (moved <= CLICK_SLOP && this.#inner.legendPick(this.#pointer.x, this.#pointer.y) === legend) {
+          this.#toggleSeries(legend);
+        }
+        return;
+      }
       if (wasDrag) {
         this.#repick();
         return;
@@ -425,7 +500,7 @@ export class Chart {
     const leave = () => {
       if (press) return;
       this.#pointer = null;
-      this.#setHover(-1);
+      this.#look();
     };
     const wheel = (e: WheelEvent) => {
       if (!this.#inner.orbitEnabled) return;
@@ -463,6 +538,24 @@ export class Chart {
     };
   }
 
+  /** A viewer's click on a legend entry: toggles that series and tells `legendclick` listeners. */
+  #toggleSeries(series: string): void {
+    const visible = this.#inner.hiddenSeries.includes(series);
+    if (!this.setSeriesVisible(series, visible)) return;
+    this.#emit("legendclick", { series, visible });
+  }
+
+  /**
+   * Looks at what is under the pointer: over a legend entry the cursor becomes a pointer
+   * and no bar is hovered; otherwise the bar there (if any) is.
+   */
+  #look(): void {
+    const p = this.#pointer;
+    const entry = p ? this.#inner.legendPick(p.x, p.y) : undefined;
+    this.#canvas.style.cursor = entry !== undefined ? "pointer" : this.#inner.orbitEnabled ? "grab" : "";
+    this.#setHover(p && entry === undefined ? this.#inner.pick(p.x, p.y) : -1);
+  }
+
   /** Makes `mark` the hovered bar (-1: none), redraws, and tells `hover` listeners. */
   #setHover(mark: number): void {
     if (mark === this.#hover || this.#destroyed) return;
@@ -474,9 +567,7 @@ export class Chart {
 
   /** Looks again at what is under the last known pointer position (the chart moved, not the pointer). */
   #repick(): void {
-    if (this.#pointer && !this.#dragging) {
-      this.#setHover(this.#inner.pick(this.#pointer.x, this.#pointer.y));
-    }
+    if (this.#pointer && !this.#dragging) this.#look();
   }
 
   /** The chart was laid out again: its bars are new, so nothing is hovered until we look again. */
