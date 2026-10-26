@@ -629,9 +629,11 @@ cargo run -p font-atlas --release
 
 This rewrites `crates/facetry-font/assets/inter-regular-msdf.rgb` (raw RGB, embedded),
 `inter-regular-msdf.png` (the same pixels, for viewing; a test checks they agree) and
-`inter-regular-metrics.json` from `tools/font-atlas/fonts/Inter-Regular.ttf` (Inter 4.1, SIL Open
-Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files are embedded with
-`include_bytes!`) and update the scene snapshots, since layout uses the glyph widths.
+`inter-regular-metrics.rs` (the glyph metrics as a Rust expression that `facetry-font` includes
+into a `static`, so the wasm needs no JSON parser) from `tools/font-atlas/fonts/Inter-Regular.ttf`
+(Inter 4.1, SIL Open Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files
+are embedded with `include_bytes!`/`include!`) and update the scene snapshots, since layout uses
+the glyph widths.
 
 ## Bundle size
 
@@ -640,8 +642,8 @@ profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` pr
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 769,096 B (751 KiB) | 339,694 B (332 KiB) | 279,010 B (272 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,383,259 B (2327 KiB) | 982,766 B (960 KiB) | 774,598 B (756 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 669,204 B (654 KiB) | 302,702 B (296 KiB) | 251,204 B (245 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,284,087 B (2231 KiB) | 944,713 B (923 KiB) | 747,655 B (730 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
@@ -649,6 +651,11 @@ numbers per step and where they go.
 
 The legend toggle added 5,385 B gzip to the WebGPU module (4,347 to the WebGL2 one) and lines in
 3D another 10,032 (11,115): 324,277 to 339,694 and 967,304 to 982,766 together (+4.8% and +1.6%).
+
+Reading the spec by hand instead of through serde, and shipping the font metrics as Rust data
+instead of JSON, took 99,892 B raw and 36,992 B gzip (-10.9%) off the WebGPU module (769,096 to
+669,204 and 339,694 to 302,702) and 38,053 B gzip off the WebGL2 one (982,766 to 944,713); see
+the last section of `docs/wasm-size.md`.
 
 History of the single combined module (both backends), for comparison:
 

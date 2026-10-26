@@ -2,9 +2,10 @@
 //! the idiomatic TypeScript wrapper lives in `packages/facetry`.
 
 use facetry_core::spec::{Column, Dimension};
+use facetry_core::value::MAX_DEPTH;
 use facetry_core::{
-    ChartSpec, Color, Issue, Scene, Scene3d, Theme, build_scene_3d_with_theme,
-    build_scene_with_theme, parse_spec, set_series_visible, settle_hidden, validate,
+    ChartSpec, Color, Issue, Scene, Scene3d, Theme, Value, build_scene_3d_with_theme,
+    build_scene_with_theme, parse_spec_value, set_series_visible, settle_hidden, validate,
 };
 use facetry_font::FontMetrics;
 use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
@@ -55,7 +56,7 @@ export interface SnapshotMeta {
 
 #[wasm_bindgen]
 extern "C" {
-    /// Plain JS object; fields are read by hand to avoid pulling in serde.
+    /// Plain JS object; fields are read by hand.
     #[wasm_bindgen(typescript_type = "ChartOptions")]
     pub type ChartOptions;
 }
@@ -92,9 +93,14 @@ fn invalid_spec(issues: &[Issue]) -> JsValue {
         ),
     };
     let error = js_error("invalid-spec", &summary);
-    if let Ok(list) = serde_wasm_bindgen::to_value(issues) {
-        let _ = js_sys::Reflect::set(&error, &"issues".into(), &list);
+    let list = js_sys::Array::new();
+    for issue in issues {
+        let item = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&item, &"path".into(), &issue.path.as_str().into());
+        let _ = js_sys::Reflect::set(&item, &"message".into(), &issue.message.as_str().into());
+        list.push(&item);
     }
+    let _ = js_sys::Reflect::set(&error, &"issues".into(), &list);
     error
 }
 
@@ -119,10 +125,80 @@ fn string_option(options: &JsValue, key: &str) -> Result<Option<String>, JsValue
         .ok_or_else(|| invalid_options(format!("`{key}` must be a string")))
 }
 
-/// Parses and validates a spec passed from JS (a plain object, read via serde).
+/// Copies a JS value into the plain tree the spec reader works on (`facetry_core::Value`).
+///
+/// JSON-like data is followed: numbers (a safe integer becomes `Int`, as JSON would have it),
+/// strings, booleans, plain objects (own enumerable keys, in order) and arrays. Other
+/// iterables, typed arrays for instance, count as arrays. `null` and `undefined` are both
+/// `Null`. Functions, symbols and BigInts become `Value::Other`, which the reader rejects
+/// at their path. Nesting past `MAX_DEPTH` (or a cycle) does too.
+fn value_from_js(v: &JsValue, depth: usize) -> Value {
+    // Numbers first: columns are mostly numbers and this runs once per cell.
+    if let Some(n) = v.as_f64() {
+        return if js_sys::Number::is_safe_integer(v) {
+            Value::Int(n as i64)
+        } else {
+            Value::Float(n)
+        };
+    }
+    if let Some(s) = v.as_string() {
+        return Value::Str(s);
+    }
+    if let Some(b) = v.as_bool() {
+        return Value::Bool(b);
+    }
+    if v.is_null() || v.is_undefined() {
+        return Value::Null;
+    }
+    if v.is_bigint() {
+        return Value::Other("bigint");
+    }
+    if !v.is_object() {
+        return Value::Other(if v.is_function() {
+            "function"
+        } else {
+            "symbol"
+        });
+    }
+    if depth >= MAX_DEPTH {
+        return Value::Other("a value nested too deeply");
+    }
+    let items = |iter: js_sys::IntoIter| {
+        Value::Array(
+            iter.map(|r| {
+                r.map_or(Value::Other("an iterator that threw"), |x| {
+                    value_from_js(&x, depth + 1)
+                })
+            })
+            .collect(),
+        )
+    };
+    if js_sys::Array::is_array(v) {
+        return Value::Array(
+            js_sys::Array::from(v)
+                .iter()
+                .map(|x| value_from_js(&x, depth + 1))
+                .collect(),
+        );
+    }
+    if let Ok(Some(iter)) = js_sys::try_iter(v) {
+        return items(iter);
+    }
+    Value::Object(
+        js_sys::Object::entries(v.unchecked_ref())
+            .iter()
+            .map(|pair| {
+                let pair: js_sys::Array = pair.unchecked_into();
+                let key = pair.get(0).as_string().unwrap_or_default();
+                (key, value_from_js(&pair.get(1), depth + 1))
+            })
+            .collect(),
+    )
+}
+
+/// Parses and validates a spec passed from JS (a plain object).
 fn read_spec(value: JsValue) -> Result<ChartSpec, JsValue> {
-    let spec =
-        parse_spec(serde_wasm_bindgen::Deserializer::from(value)).map_err(|i| invalid_spec(&i))?;
+    let spec = parse_spec_value(value_from_js(&value, 0)).map_err(|i| invalid_spec(&i))?;
     let issues = validate(&spec);
     if issues.is_empty() {
         Ok(spec)

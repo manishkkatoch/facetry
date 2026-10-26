@@ -12,11 +12,20 @@ ts = ["dep:tsify", "dep:wasm-bindgen"]
 
 [dependencies]
 facetry-font.workspace = true
+# Only `Scene`/`Scene3d` (and `Color`, `LabelShow`) derive Serialize, for the insta snapshot
+# tests. Nothing serialises at run time, so no serde code is linked into the wasm. The spec is
+# read by hand (src/spec_read.rs).
 serde.workspace = true
-serde_json.workspace = true
-serde_path_to_error.workspace = true
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
+
+# The frozen serde-based spec parser (tests/serde_reference) that tests/parse_differential.rs
+# checks the hand-written reader against, and JSON building in other tests. `float_roundtrip`
+# makes serde_json round floats exactly, as JavaScript (and the new reader) do; its default
+# can be one ULP off for inputs with many digits.
+[dev-dependencies]
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_path_to_error.workspace = true
 
 # Test-only crates that do not build for wasm32 (`cargo clippy --target wasm32 --all-targets`
 # still compiles the tests), so they are native-only and the tests that use them are gated.
