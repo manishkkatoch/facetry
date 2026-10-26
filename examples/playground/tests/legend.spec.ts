@@ -28,6 +28,13 @@ async function edit(page: Page, change: (spec: any) => void) {
 
 async function shot(page: Page) {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  // The config runs these tests with reduced motion, so every update is a jump: by now nothing
+  // may still be moving. Checked here so a failure says why the picture is not the final one.
+  const motion = await page.evaluate(() => ({
+    reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    animating: (window as any).facetryChart.animating as boolean,
+  }));
+  expect(motion).toEqual({ reduced: true, animating: false });
   return PNG.sync.read(await page.locator("#chart").screenshot());
 }
 

@@ -24,6 +24,9 @@ export default defineConfig({
     // (every transition is then a jump, exactly as before animation existed). The animation
     // tests (transition*.spec.ts) opt back in with `test.use({ reducedMotion: "no-preference" })`.
     reducedMotion: "reduce",
+    // Kept only for failing tests, and uploaded by CI with test-results/.
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     launchOptions: {
       // CI installs the matching browser; locally set CHROMIUM_PATH to reuse another one.
       executablePath: process.env.CHROMIUM_PATH || undefined,
