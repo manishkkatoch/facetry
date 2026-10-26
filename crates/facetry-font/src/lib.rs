@@ -2,22 +2,21 @@
 //! (MSDF) atlas, plus the metrics needed to lay text out.
 //!
 //! Both files are generated offline by `tools/font-atlas` (see the README) and committed,
-//! so neither the build nor the browser ever rasterises a font. This crate is pure data
+//! so neither the build nor the browser ever rasterises a font. The metrics are a Rust
+//! expression, so they are plain static data in the binary: there is nothing to parse at run
+//! time (parsing JSON used to cost far more wasm than the table itself). This crate is pure data
 //! and arithmetic: it needs no GPU, so layout code and its tests can use the real metrics.
-
-use std::sync::OnceLock;
-
-use serde::{Deserialize, Serialize};
 
 /// The atlas image as raw 8-bit RGB (row-major, top row first, `width * height * 3` bytes);
 /// the three channels are the MSDF. Raw rather than PNG so the wasm needs no image decoder:
 /// the zero-filled background is dropped by wasm-opt and the rest compresses as well as a PNG.
 /// `tools/font-atlas` writes it (and a PNG preview next to it).
 pub const ATLAS_RGB: &[u8] = include_bytes!("../assets/inter-regular-msdf.rgb");
-const METRICS_JSON: &str = include_str!("../assets/inter-regular-metrics.json");
+/// Written by `tools/font-atlas`; the types below are what it names.
+static INTER: FontMetrics = include!("../assets/inter-regular-metrics.rs");
 
 /// Where the atlas came from and how to read distances out of it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AtlasInfo {
     pub width: u32,
     pub height: u32,
@@ -29,9 +28,8 @@ pub struct AtlasInfo {
 }
 
 /// One glyph. Lengths in `advance`/`plane` are in em (1.0 = the font size), y pointing up.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Glyph {
-    #[serde(rename = "char")]
     pub ch: char,
     /// Horizontal distance to the next pen position.
     pub advance: f32,
@@ -44,25 +42,21 @@ pub struct Glyph {
 }
 
 /// Font-wide vertical metrics (em, y up) and every glyph, sorted by character.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FontMetrics {
-    pub family: String,
+    pub family: &'static str,
     pub atlas: AtlasInfo,
     pub ascender: f32,
     /// Negative: below the baseline.
     pub descender: f32,
     pub cap_height: f32,
-    pub glyphs: Vec<Glyph>,
+    pub glyphs: &'static [Glyph],
 }
 
 impl FontMetrics {
-    /// The bundled font's metrics, parsed once.
+    /// The bundled font's metrics.
     pub fn inter() -> &'static FontMetrics {
-        static METRICS: OnceLock<FontMetrics> = OnceLock::new();
-        METRICS.get_or_init(|| {
-            // The JSON is embedded at compile time and checked by a unit test.
-            serde_json::from_str(METRICS_JSON).expect("embedded font metrics are valid")
-        })
+        &INTER
     }
 
     /// The glyph for `c`, or the `?` glyph when the font (printable ASCII only) lacks it.
@@ -110,7 +104,7 @@ mod tests {
     #[test]
     fn atlas_rects_fit_inside_the_atlas() {
         let m = FontMetrics::inter();
-        for g in &m.glyphs {
+        for g in m.glyphs {
             if let Some([x, y, w, h]) = g.atlas {
                 assert!(
                     x + w <= m.atlas.width && y + h <= m.atlas.height,

@@ -316,10 +316,6 @@ dependencies = [
 [[package]]
 name = "facetry-font"
 version = "0.0.0"
-dependencies = [
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "facetry-render"
@@ -421,7 +417,6 @@ dependencies = [
  "fdsm-ttf-parser",
  "image",
  "nalgebra",
- "serde_json",
  "ttf-parser",
 ]
 

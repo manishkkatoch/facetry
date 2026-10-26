@@ -629,9 +629,11 @@ cargo run -p font-atlas --release
 
 This rewrites `crates/facetry-font/assets/inter-regular-msdf.rgb` (raw RGB, embedded),
 `inter-regular-msdf.png` (the same pixels, for viewing; a test checks they agree) and
-`inter-regular-metrics.json` from `tools/font-atlas/fonts/Inter-Regular.ttf` (Inter 4.1, SIL Open
-Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files are embedded with
-`include_bytes!`) and update the scene snapshots, since layout uses the glyph widths.
+`inter-regular-metrics.rs` (the glyph metrics as a Rust expression that `facetry-font` includes
+into a `static`, so the wasm needs no JSON parser) from `tools/font-atlas/fonts/Inter-Regular.ttf`
+(Inter 4.1, SIL Open Font License 1.1, licence next to it). Rebuild the wasm afterwards (the files
+are embedded with `include_bytes!`/`include!`) and update the scene snapshots, since layout uses
+the glyph widths.
 
 ## Bundle size
 
