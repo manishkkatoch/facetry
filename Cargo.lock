@@ -314,6 +314,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "facetry-diagrams"
+version = "0.0.0"
+dependencies = [
+ "facetry-core",
+ "facetry-font",
+ "insta",
+ "serde_json",
+]
+
+[[package]]
+name = "facetry-diagrams-wasm"
+version = "0.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "facetry-diagrams",
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "facetry-font"
 version = "0.0.0"
 

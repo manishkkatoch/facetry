@@ -12,10 +12,11 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
-    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, Encoding,
-    InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig,
-    LegendOrient, LegendSpec, Mark, Orient, PointConfig, PointSpec, Position, PositionEncoding,
-    ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, DiagramEdge, DiagramNode,
+    DiagramSpec, Dimension, EdgeEnd, EdgeStroke, Encoding, InteractionSpec, KeyEncoding,
+    LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark,
+    NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec,
+    Table, ThetaEncoding,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -275,7 +276,8 @@ fn read_chart_spec(v: Value) -> Read<ChartSpec> {
         layers [def] = "layers" => list(read_layer),
         legend [def] = "legend" => opt(read_legend),
         camera [def] = "camera" => opt(read_camera),
-        interaction [def] = "interaction" => opt(read_interaction);
+        interaction [def] = "interaction" => opt(read_interaction),
+        diagram [def] = "diagram" => opt(read_diagram);
         hidden_override = None
     })
 }
@@ -521,6 +523,84 @@ fn read_key(v: Value) -> Read<KeyEncoding> {
     object!(v, "KeyEncoding", KeyEncoding {
         field [req] = "field" => string,
     })
+}
+
+// --- diagrams -------------------------------------------------------------------------------
+
+fn read_diagram(v: Value) -> Read<DiagramSpec> {
+    object!(v, "DiagramSpec", DiagramSpec {
+        nodes [req] = "nodes" => list(read_diagram_node),
+        edges [def] = "edges" => list(read_diagram_edge),
+        font_size [def] = "fontSize" => opt(number),
+    })
+}
+
+fn read_diagram_node(v: Value) -> Read<DiagramNode> {
+    object!(v, "DiagramNode", DiagramNode {
+        id [req] = "id" => string,
+        label [def] = "label" => opt(string),
+        shape [def] = "shape" => read_node_shape,
+        x [req] = "x" => number,
+        y [req] = "y" => number,
+        width [req] = "width" => number,
+        height [req] = "height" => number,
+        color [def] = "color" => opt(string),
+    })
+}
+
+fn read_node_shape(v: Value) -> Read<NodeShape> {
+    variant(
+        v,
+        &[
+            ("rect", NodeShape::Rect),
+            ("rounded", NodeShape::Rounded),
+            ("stadium", NodeShape::Stadium),
+            ("cylinder", NodeShape::Cylinder),
+            ("circle", NodeShape::Circle),
+            ("diamond", NodeShape::Diamond),
+            ("hexagon", NodeShape::Hexagon),
+            ("parallelogram", NodeShape::Parallelogram),
+            ("parallelogramAlt", NodeShape::ParallelogramAlt),
+            ("trapezoid", NodeShape::Trapezoid),
+            ("trapezoidAlt", NodeShape::TrapezoidAlt),
+        ],
+    )
+}
+
+fn read_diagram_edge(v: Value) -> Read<DiagramEdge> {
+    object!(v, "DiagramEdge", DiagramEdge {
+        from [req] = "from" => string,
+        to [req] = "to" => string,
+        points [req] = "points" => list(pair),
+        label [def] = "label" => opt(string),
+        label_position [def] = "labelPosition" => opt(pair),
+        stroke [def] = "stroke" => read_edge_stroke,
+        head [def] = "head" => opt(read_edge_end),
+        tail [def] = "tail" => opt(read_edge_end),
+    })
+}
+
+fn read_edge_stroke(v: Value) -> Read<EdgeStroke> {
+    variant(
+        v,
+        &[
+            ("solid", EdgeStroke::Solid),
+            ("dotted", EdgeStroke::Dotted),
+            ("thick", EdgeStroke::Thick),
+        ],
+    )
+}
+
+fn read_edge_end(v: Value) -> Read<EdgeEnd> {
+    variant(
+        v,
+        &[
+            ("none", EdgeEnd::None),
+            ("arrow", EdgeEnd::Arrow),
+            ("circle", EdgeEnd::Circle),
+            ("cross", EdgeEnd::Cross),
+        ],
+    )
 }
 
 #[cfg(test)]

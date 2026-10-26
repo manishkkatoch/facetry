@@ -32,17 +32,23 @@ export interface CameraState {
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
 export type CameraUpdate = Partial<CameraState>;
 
-/** A mark (a bar, a line's data point or a pie slice), as hover and click events report it. */
+/**
+ * A mark (a bar, a line's data point, a pie slice or a diagram node), as hover and click
+ * events report it.
+ */
 export interface MarkInfo {
-    /** The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it). */
+    /**
+     * The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it); a
+     * diagram node's id.
+     */
     key: string;
-    /** Index into the spec's `layers`. */
+    /** Index into the spec's `layers`; `-1` for a diagram node. */
     layer: number;
     /**
      * The mark's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`).
      * A mark that stands for several rows that were summed (stacked, normalised and grouped
      * bars, pie slices) reports the first of them with the summed value in place of its y (or
-     * theta) value.
+     * theta) value. A diagram node: `{ id, label, shape }`.
      */
     datum: Record<string, number | string | null>;
 }
@@ -272,9 +278,10 @@ impl Chart {
         let renderer = renderer_for(canvas, preference)
             .await
             .map_err(|e| js_error(e.code(), &e.to_string()))?;
+        let camera = Camera::from_spec(spec.start_camera(renderer.size(), dpr as f32).as_ref());
         let mut chart = Chart {
             renderer,
-            camera: Camera::from_spec(spec.camera.as_ref()),
+            camera,
             spec,
             theme,
             dpr: dpr as f32,
@@ -299,8 +306,9 @@ impl Chart {
         // What the viewer hid stays hidden, for series that still exist, unless the new spec
         // says (`legend.hidden`).
         settle_hidden(&mut spec, self.spec.hidden_override.as_deref());
-        if spec.camera != self.spec.camera {
-            self.camera = Camera::from_spec(spec.camera.as_ref());
+        let (size, dpr) = (self.renderer.size(), self.dpr);
+        if spec.start_camera(size, dpr) != self.spec.start_camera(size, dpr) {
+            self.camera = Camera::from_spec(spec.start_camera(size, dpr).as_ref());
         }
         self.spec = spec;
         self.relayout();
@@ -402,7 +410,8 @@ impl Chart {
     #[wasm_bindgen(js_name = resetCamera)]
     pub fn reset_camera(&mut self) {
         if self.is_3d() {
-            self.camera = Camera::from_spec(self.spec.camera.as_ref());
+            let start = self.spec.start_camera(self.renderer.size(), self.dpr);
+            self.camera = Camera::from_spec(start.as_ref());
             self.renderer.set_camera(self.camera);
         }
     }
@@ -497,6 +506,12 @@ impl Chart {
         let Ok(mark) = usize::try_from(mark) else {
             return JsValue::NULL;
         };
+        if let SceneKind::ThreeD(s) = &self.scene {
+            let i = mark.checked_sub(s.boxes.len() + s.slices.len());
+            if let Some(prism) = i.and_then(|i| s.prisms.get(i)) {
+                return self.node_info(prism.node);
+            }
+        }
         let (key, layer, row, sum) = match &self.scene {
             SceneKind::TwoD(s) => s.mark(mark).map(|m| (m.key, m.layer, m.row, m.sum)),
             // Boxes, then pie slices, then line points.
@@ -510,7 +525,7 @@ impl Chart {
                         .get(i)
                         .map(|p| (p.key.as_str(), p.layer, p.row, p.sum))
                         .or_else(|| {
-                            let i = i.checked_sub(s.slices.len())?;
+                            let i = i.checked_sub(s.slices.len() + s.prisms.len())?;
                             s.points
                                 .get(i)
                                 .map(|p| (p.key.as_str(), p.layer, p.row, None))
@@ -551,6 +566,12 @@ impl Chart {
                         let p = s.slices.iter().find(|p| p.key == key)?;
                         let (a0, a1) = p.span();
                         Some(p.point((a0 + a1) / 2.0, (p.inner + p.outer) / 2.0, p.height))
+                    })
+                    // A diagram node: the middle of its top face.
+                    .or_else(|| {
+                        let p = s.prisms.iter().find(|p| p.key == key)?;
+                        let [x, z] = p.centre();
+                        Some([x, p.top, z])
                     })
                     // A line's data point.
                     .or_else(|| s.points.iter().find(|p| p.key == key).map(|p| p.pos));
@@ -706,6 +727,29 @@ impl Chart {
             SceneKind::TwoD(scene) => self.renderer.set_scene(scene),
         }
         self.renderer.set_hover(self.hover);
+    }
+
+    /// `{ key, layer: -1, datum: { id, label, shape } }` for diagram node `index`.
+    fn node_info(&self, index: usize) -> JsValue {
+        let Some(node) = self.spec.diagram.as_ref().and_then(|d| d.nodes.get(index)) else {
+            return JsValue::NULL;
+        };
+        let object = js_sys::Object::new();
+        let datum = js_sys::Object::new();
+        let set = |o: &js_sys::Object, name: &str, value: JsValue| {
+            let _ = js_sys::Reflect::set(o, &name.into(), &value);
+        };
+        set(&datum, "id", node.id.as_str().into());
+        set(
+            &datum,
+            "label",
+            node.label.as_deref().unwrap_or(&node.id).into(),
+        );
+        set(&datum, "shape", node.shape.name().into());
+        set(&object, "key", node.id.as_str().into());
+        set(&object, "layer", (-1.0).into());
+        set(&object, "datum", datum.into());
+        object.into()
     }
 
     /// The row of a layer's table as a plain JS object (numbers, strings, `null` for a

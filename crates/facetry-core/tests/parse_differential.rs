@@ -9,7 +9,8 @@
 //!   against `serde_json::Value`, because the old parser sometimes reported a shape error that
 //!   came earlier in the text instead.
 //!
-//! Inputs: every file in `examples/specs`, hand-written edge cases, thousands of mutations of
+//! Inputs: every file in `examples/specs` (but the diagram ones: the frozen parser predates
+//! diagrams), hand-written edge cases, thousands of mutations of
 //! the examples (unknown fields, wrong types, nulls, numbers as strings, empty arrays,
 //! duplicate keys, ...), text-level damage (deleted, replaced and truncated characters), and
 //! proptest-composed mutations.
@@ -60,7 +61,10 @@ fn normalise_old(message: &str) -> String {
 /// tree no longer has.
 fn equivalent(old: &str, new: &str) -> bool {
     let old = normalise_old(old);
-    old == new
+    // The top-level `diagram` field came after the old parser was frozen, so the reader's list
+    // of the spec's fields names one more.
+    let new = &new.replace("`interaction`, `diagram`", "`interaction`");
+    old == *new
         // A unit enum given a number, bool, null, array or `{}`: serde_json says "expected
         // value" (a syntax-style error); the reader names the type.
         || (old == "expected value"
@@ -150,6 +154,7 @@ fn example_names() -> Vec<String> {
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .map(|p| p.file_stem().unwrap().to_string_lossy().into_owned())
+        .filter(|n| !n.starts_with("diagram"))
         .collect();
     names.sort();
     names

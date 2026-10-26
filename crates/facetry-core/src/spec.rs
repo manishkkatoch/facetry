@@ -50,6 +50,11 @@ pub struct ChartSpec {
     /// How the viewer may move the camera (3D only; ignored in 2D).
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub interaction: Option<InteractionSpec>,
+    /// A laid-out diagram (nodes and routed edges) instead of `layers`. Usually written by
+    /// `facetry/diagrams` from Mermaid text rather than by hand. Needs `dimension: "3d"`; a
+    /// diagram spec has no `data`, `axes`, `layers` or `legend`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub diagram: Option<DiagramSpec>,
     /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
     /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
     /// spec's starting state without editing the user's spec. Not part of the JSON.
@@ -467,4 +472,161 @@ pub struct ThetaEncoding {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 pub struct KeyEncoding {
     pub field: String,
+}
+
+/// A diagram whose layout is already done: every node has its place and size and every edge
+/// its path, in **layout units** on a plan seen from above (x to the right, y down the page,
+/// as in an SVG; 1 unit is about a CSS pixel at the label size). The renderer extrudes the
+/// nodes into solids standing on that plan and draws the edges just above the floor.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramSpec {
+    pub nodes: Vec<DiagramNode>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub edges: Vec<DiagramEdge>,
+    /// The size the labels were measured at, in layout units (default 14). Labels are drawn at
+    /// the matching screen size for the starting camera, so they fit their nodes.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub font_size: Option<f64>,
+}
+
+/// Default label size of a diagram, in layout units.
+pub const DEFAULT_DIAGRAM_FONT_SIZE: f64 = 14.0;
+/// Largest `diagram.fontSize` accepted.
+pub const MAX_DIAGRAM_FONT_SIZE: f64 = 200.0;
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+pub struct DiagramNode {
+    /// Unique among the nodes; what edges, hover and click refer to.
+    pub id: String,
+    /// The text on the node. Default: the id. `""` for none.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<String>,
+    /// Default: `"rect"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub shape: NodeShape,
+    /// The centre of the node's footprint.
+    pub x: f64,
+    pub y: f64,
+    /// The footprint's size (the shape is fitted into this rectangle).
+    pub width: f64,
+    pub height: f64,
+    /// Fill colour, `#rrggbb`. Default: the theme's node colour.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub color: Option<String>,
+}
+
+/// The outline a node is extruded from. All are convex, fitted into the node's rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub enum NodeShape {
+    /// Square corners (Mermaid `a[text]`).
+    #[default]
+    Rect,
+    /// Rounded corners (`a(text)`).
+    Rounded,
+    /// Fully rounded ends (`a([text])`).
+    Stadium,
+    /// A database drum (`a[(text)]`): an ellipse in plan, with a rim drawn on top.
+    Cylinder,
+    /// `a((text))`: an ellipse (a circle when the footprint is square).
+    Circle,
+    /// A decision (`a{text}`).
+    Diamond,
+    /// `a{{text}}`.
+    Hexagon,
+    /// Leaning right (`a[/text/]`).
+    Parallelogram,
+    /// Leaning left (`a[\text\]`).
+    ParallelogramAlt,
+    /// Wider at the bottom (`a[/text\]`).
+    Trapezoid,
+    /// Wider at the top (`a[\text/]`).
+    TrapezoidAlt,
+}
+
+impl NodeShape {
+    /// The name the spec uses.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Rect => "rect",
+            Self::Rounded => "rounded",
+            Self::Stadium => "stadium",
+            Self::Cylinder => "cylinder",
+            Self::Circle => "circle",
+            Self::Diamond => "diamond",
+            Self::Hexagon => "hexagon",
+            Self::Parallelogram => "parallelogram",
+            Self::ParallelogramAlt => "parallelogramAlt",
+            Self::Trapezoid => "trapezoid",
+            Self::TrapezoidAlt => "trapezoidAlt",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramEdge {
+    /// Node ids.
+    pub from: String,
+    pub to: String,
+    /// The routed path, at least two points: from the border of `from` to the border of `to`
+    /// (where the head's tip is). Drawn as a polyline, so a curve comes as many points.
+    #[cfg_attr(feature = "ts", tsify(type = "[number, number][]"))]
+    pub points: Vec<[f64; 2]>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<String>,
+    /// Where the label's centre goes. Default: halfway along the path.
+    #[cfg_attr(feature = "ts", tsify(optional, type = "[number, number]"))]
+    pub label_position: Option<[f64; 2]>,
+    /// Default: `"solid"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: EdgeStroke,
+    /// The end at `to`. Default: `"arrow"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub head: Option<EdgeEnd>,
+    /// The end at `from`. Default: `"none"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub tail: Option<EdgeEnd>,
+}
+
+impl DiagramEdge {
+    /// `(tail, head)` with the defaults filled in.
+    pub fn ends(&self) -> (EdgeEnd, EdgeEnd) {
+        (
+            self.tail.unwrap_or(EdgeEnd::None),
+            self.head.unwrap_or(EdgeEnd::Arrow),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum EdgeStroke {
+    /// `-->`
+    #[default]
+    Solid,
+    /// `-.->`
+    Dotted,
+    /// `==>`
+    Thick,
+}
+
+/// What an edge has at one of its ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum EdgeEnd {
+    None,
+    /// A filled triangle (`-->`).
+    Arrow,
+    /// A disc (`--o`).
+    Circle,
+    /// A cross (`--x`).
+    Cross,
 }

@@ -1,0 +1,4 @@
+flowchart TD
+    a1[Clicks] & a2[Views] & a3[Purchases] & a4[Searches] --> q[(Queue)]
+    q --> s1[Sessionize] & s2[Attribute] & s3[Aggregate]
+    s1 & s2 & s3 --> lake[(Data lake)]

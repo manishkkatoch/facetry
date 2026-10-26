@@ -129,10 +129,10 @@ pub fn pick_point(
 }
 
 /// The mark under pixel `px` of a 3D scene, in the scene's mark index space: the bars first,
-/// then the pie slices, then the line points. A visible line point within reach of the pointer
+/// then the pie slices, the diagram nodes, then the line points. A visible line point within reach of the pointer
 /// wins over what is behind it, as in 2D (see [`pick_point`]). Bars are hit anywhere on their box; a slice is hit **on its top
 /// face** only (the ray meets the plane of the top and the point lies on the slice's
-/// footprint), so the sides of an extruded pie are not pickable: from the elevations the
+/// footprint), and so is a diagram node, so the sides of an extruded pie are not pickable: from the elevations the
 /// camera allows, the top is nearly always what the pointer is over. The nearest hit wins.
 pub fn pick_scene(
     scene: &Scene3d,
@@ -141,7 +141,7 @@ pub fn pick_scene(
     px: (f32, f32),
 ) -> Option<usize> {
     if let Some((i, _)) = pick_point(scene, view_proj, viewport, px) {
-        return Some(scene.boxes.len() + scene.slices.len() + i);
+        return Some(scene.first_point() + i);
     }
     let ray = ray_through_pixel(view_proj, viewport, px)?;
     let bar = nearest_hit(&scene.boxes, &ray);
@@ -154,6 +154,13 @@ pub fn pick_scene(
             let p = ray.origin + ray.dir * t;
             s.contains(p.x, p.z).then_some((scene.boxes.len() + i, t))
         })
+        .chain(scene.prisms.iter().enumerate().filter_map(|(i, p)| {
+            // Diagram nodes, like slices, on their top face.
+            let t = ray_plane_y(&ray, p.top)?;
+            let q = ray.origin + ray.dir * t;
+            p.contains(q.x, q.z)
+                .then_some((scene.boxes.len() + scene.slices.len() + i, t))
+        }))
         .min_by(|a, b| a.1.total_cmp(&b.1));
     match (bar, slice) {
         (Some(b), Some(s)) => Some(if s.1 < b.1 { s.0 } else { b.0 }),

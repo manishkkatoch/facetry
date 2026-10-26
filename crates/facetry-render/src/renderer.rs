@@ -10,7 +10,7 @@ use glam::Vec3;
 use wgpu::util::DeviceExt as _;
 
 use crate::Error;
-use crate::camera::Camera;
+use crate::camera::{Camera, Projection};
 use crate::gpu::{self, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
@@ -623,7 +623,8 @@ impl Renderer {
         self.hover = None;
         self.mark_count = scene.mark_count();
         self.box_count = scene.boxes.len();
-        self.slice_count = scene.slices.len();
+        // Diagram nodes share the slices' pipeline and come after them.
+        self.slice_count = scene.slices.len() + scene.prisms.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(scene.size);
         if entering {
@@ -764,7 +765,10 @@ impl Renderer {
                 self.camera.azimuth,
                 self.camera.elevation,
                 self.camera.distance,
-                1.0,
+                match self.camera.projection {
+                    Projection::Perspective => 1.0,
+                    Projection::Orthographic => 0.0,
+                },
             ],
             light: Vec3::from(LIGHT_TO).normalize().extend(AMBIENT).to_array(),
             viewport: [w, h],

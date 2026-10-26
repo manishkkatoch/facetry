@@ -1,0 +1,14 @@
+flowchart TD
+    ticket[New ticket] --> kind{What kind?}
+    kind -->|Bug| repro{Can reproduce?}
+    kind -->|Question| docs[Link to docs]
+    kind -->|Feature request| backlog[Add to backlog]
+    kind -->|Billing| finance[Hand to finance]
+    repro -->|yes| issue[Open issue]
+    repro -->|no| more[Ask for details]
+    more --> repro
+    issue --> fixed[Fixed in release]
+    docs --> close([Close ticket])
+    backlog --> close
+    finance --> close
+    fixed --> close

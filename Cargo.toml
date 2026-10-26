@@ -12,6 +12,7 @@ publish = false
 facetry-core = { path = "crates/facetry-core" }
 facetry-render = { path = "crates/facetry-render" }
 facetry-font = { path = "crates/facetry-font" }
+facetry-diagrams = { path = "crates/facetry-diagrams" }
 wgpu = { version = "30.0.1", default-features = false }
 wasm-bindgen = "0.2.129"
 wasm-bindgen-futures = "0.4.79"

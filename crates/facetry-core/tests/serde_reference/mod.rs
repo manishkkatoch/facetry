@@ -43,6 +43,10 @@ pub struct ChartSpec {
     /// How the viewer may move the camera (3D only; ignored in 2D).
     #[serde(default)]
     pub interaction: Option<InteractionSpec>,
+    /// Not in the frozen parser (diagrams came later); always `None`, so that `Debug` prints
+    /// the same fields as the new `ChartSpec`.
+    #[serde(skip)]
+    pub diagram: Option<()>,
     /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
     /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
     /// spec's starting state without editing the user's spec. Not part of the JSON.

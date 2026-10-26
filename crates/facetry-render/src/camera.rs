@@ -22,10 +22,8 @@ pub const MAX_ELEVATION: f32 = 85.0;
 pub const MIN_DISTANCE: f32 = 1.3;
 pub const MAX_DISTANCE: f32 = 8.0;
 
-/// Looking at the plot box's exact centre leaves the bottom of the picture (axis titles hang
-/// below the front edge) cramped and the top empty, so the camera looks this far (in world
-/// units) below the centre, which lifts the box a little.
-const FRAMING_LIFT: f32 = 0.12;
+/// See [`facetry_core::scene3d::FRAMING_LIFT`].
+const FRAMING_LIFT: f32 = facetry_core::scene3d::FRAMING_LIFT as f32;
 
 /// Degrees of rotation per dragged pixel.
 const ORBIT_SPEED: f32 = 0.4;

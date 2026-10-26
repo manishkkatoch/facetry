@@ -33,6 +33,10 @@ pub const DEFAULT_ELEVATION: f64 = 25.0;
 pub const DEFAULT_DISTANCE: f64 = 2.7;
 /// Vertical field of view of the perspective camera, in degrees.
 pub const FOV_Y_DEGREES: f64 = 40.0;
+/// Looking at the plot box's exact centre leaves the bottom of the picture (axis titles hang
+/// below the front edge) cramped and the top empty, so the camera looks this far (in world
+/// units) below the centre, which lifts the box a little.
+pub const FRAMING_LIFT: f64 = 0.12;
 
 /// "Draw while the camera's azimuth is in `from..to` degrees": start inclusive, end
 /// exclusive, and a range with `from > to` wraps through 360 (`[270, 90)` is "in front").
@@ -160,6 +164,69 @@ impl SliceMark {
             self.center[1] - r * angle.cos(),
         ]
     }
+}
+
+/// A solid extruded straight up from a convex outline on the floor: a diagram node, or (in
+/// [`Scene3d::decor`]) an arrowhead. Heights `base..=top`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PrismMark {
+    pub key: String,
+    pub color: Color,
+    /// The footprint, `[x, z]` world units: a convex polygon, in either winding.
+    #[serde(serialize_with = "outline2")]
+    pub outline: Vec<[f32; 2]>,
+    #[serde(serialize_with = "w4")]
+    pub base: f32,
+    #[serde(serialize_with = "w4")]
+    pub top: f32,
+    /// The outline approximates a curve (a cylinder, a stadium's ends): its walls are shaded
+    /// smoothly instead of facet by facet.
+    pub smooth: bool,
+    /// The diagram node it draws (an index into `diagram.nodes`); what hover and click report.
+    #[serde(skip)]
+    pub node: usize,
+}
+
+impl PrismMark {
+    /// Whether the floor point `(x, z)` is inside the footprint.
+    pub fn contains(&self, x: f32, z: f32) -> bool {
+        let n = self.outline.len();
+        if n < 3 {
+            return false;
+        }
+        // Convex: inside when the point is on the same side of every edge.
+        let mut sign = 0.0f32;
+        for i in 0..n {
+            let [ax, az] = self.outline[i];
+            let [bx, bz] = self.outline[(i + 1) % n];
+            let cross = (bx - ax) * (z - az) - (bz - az) * (x - ax);
+            if cross.abs() < 1e-9 {
+                continue;
+            }
+            if sign == 0.0 {
+                sign = cross.signum();
+            } else if cross.signum() != sign {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// The middle of the outline (the average of its points), `[x, z]`.
+    pub fn centre(&self) -> [f32; 2] {
+        let n = self.outline.len().max(1) as f32;
+        let (x, z) = self
+            .outline
+            .iter()
+            .fold((0.0, 0.0), |(x, z), p| (x + p[0], z + p[1]));
+        [x / n, z / n]
+    }
+}
+
+fn outline2<S: Serializer>(v: &[[f32; 2]], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
+    let rounded: Vec<(f64, f64)> = v.iter().map(|p| (r(p[0]), r(p[1]))).collect();
+    rounded.serialize(s)
 }
 
 /// A line layer's series in 3D: runs of connected points in world space (a missing value ends
@@ -350,9 +417,37 @@ impl Scene3d {
     }
 
     /// Marks that hover and click can report, in one index space: the boxes, the pie slices,
-    /// then the line points.
+    /// the diagram nodes, then the line points.
     pub fn mark_count(&self) -> usize {
-        self.boxes.len() + self.slices.len() + self.points.len()
+        self.boxes.len() + self.slices.len() + self.prisms.len() + self.points.len()
+    }
+
+    /// Where the line points start in the mark index space.
+    pub fn first_point(&self) -> usize {
+        self.boxes.len() + self.slices.len() + self.prisms.len()
+    }
+
+    /// An empty scene of `viewport_px` on `background`, for builders to fill in.
+    pub fn empty(viewport_px: (u32, u32), background: Color, size: [f32; 3]) -> Self {
+        Self {
+            width: viewport_px.0,
+            height: viewport_px.1,
+            plot: None,
+            overlay: Overlay::default(),
+            background,
+            size,
+            halo_px: 1.0,
+            boxes: Vec::new(),
+            slices: Vec::new(),
+            prisms: Vec::new(),
+            decor: Vec::new(),
+            lines: Vec::new(),
+            polylines: Vec::new(),
+            points: Vec::new(),
+            pick_radius: 0.0,
+            texts: Vec::new(),
+            labels: Vec::new(),
+        }
     }
 
     /// The part of the canvas the plot is drawn in: `[x, y, width, height]`.
@@ -397,6 +492,13 @@ pub struct Scene3d {
     /// slices.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub slices: Vec<SliceMark>,
+    /// A diagram's nodes, drawn and lit like the slices. Hover and click index them after the
+    /// slices.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prisms: Vec<PrismMark>,
+    /// Solids that are not marks (a diagram's arrowheads): drawn like `prisms`, never picked.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub decor: Vec<PrismMark>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     /// Line layers' series, after the boxes and slices in draw order.

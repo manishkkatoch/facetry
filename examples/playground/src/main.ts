@@ -1,10 +1,27 @@
 import { Chart, FacetryError, type ChartOptions, type ChartSpec } from "facetry";
+import { diagram } from "facetry/diagrams";
 
 // The same files the Rust snapshot tests and the golden-image test use.
 const modules = import.meta.glob<ChartSpec>("../../specs/*.json", { eager: true, import: "default" });
-const examples = new Map(
-  Object.entries(modules).map(([path, spec]) => [path.replace(/^.*\/(.+)\.json$/, "$1"), spec]),
-);
+// Mermaid diagrams (the layout corpus of crates/facetry-diagrams), listed as `mermaid/<name>`.
+const mermaid = import.meta.glob<string>("../../diagrams/*/*.mmd", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+type Example = ChartSpec | string;
+const examples = new Map<string, Example>([
+  ...Object.entries(modules).map(
+    ([path, spec]) => [path.replace(/^.*\/(.+)\.json$/, "$1"), spec] as [string, Example],
+  ),
+  ...Object.entries(mermaid).map(
+    ([path, text]) => [path.replace(/^.*\/(.+)\.mmd$/, "mermaid/$1"), text] as [string, Example],
+  ),
+]);
+
+/** A spec as it is, or Mermaid text laid out by the diagrams add-on. */
+const toSpec = (example: Example): Promise<ChartSpec> =>
+  typeof example === "string" ? diagram.fromMermaid(example) : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
@@ -27,7 +44,15 @@ const root = document.documentElement;
 for (const name of examples.keys()) select.append(new Option(name, name));
 select.value = initial;
 
-const show = (spec: ChartSpec) => (textarea.value = JSON.stringify(spec, null, 2));
+const show = (example: Example) =>
+  (textarea.value = typeof example === "string" ? example : JSON.stringify(example, null, 2));
+/** Problems in the spec or in the Mermaid text, as `{ path, message }`. */
+function issuesOf(err: FacetryError) {
+  if (err.diagramIssues.length) {
+    return err.diagramIssues.map((i) => ({ path: `line ${i.line}:${i.column}`, message: i.message }));
+  }
+  return err.issues.length ? err.issues : [{ path: "", message: err.message }];
+}
 /** Lists problems under the editor; no argument clears them. */
 function showIssues(items: { path: string; message: string }[] = []) {
   issuesList.replaceChildren(
@@ -61,15 +86,15 @@ function showCamera(spec: ChartSpec) {
 let currentSpec: ChartSpec;
 
 let updates = 0;
-async function apply(spec: unknown) {
+async function apply(example: unknown) {
   try {
-    chart.update(spec as ChartSpec);
-    currentSpec = spec as ChartSpec;
+    const spec = await toSpec(example as Example);
+    chart.update(spec);
+    currentSpec = spec;
     showCamera(currentSpec);
     showIssues();
   } catch (e) {
-    const err = FacetryError.from(e);
-    showIssues(err.issues.length ? err.issues : [{ path: "", message: err.message }]);
+    showIssues(issuesOf(FacetryError.from(e)));
     return;
   }
   await nextFrames();
@@ -77,10 +102,10 @@ async function apply(spec: unknown) {
 }
 
 show(examples.get(initial)!);
-currentSpec = examples.get(initial)!;
 let chart: Chart;
 try {
-  chart = await Chart.create(canvas, examples.get(initial)!, { backend });
+  currentSpec = await toSpec(examples.get(initial)!);
+  chart = await Chart.create(canvas, currentSpec, { backend });
   await chart.firstFrame;
   status.textContent = `backend: ${chart.backend}, ${chart.msaaSamples}x MSAA`;
   root.dataset.msaa = String(chart.msaaSamples);
@@ -104,7 +129,7 @@ try {
   const err = FacetryError.from(e);
   status.textContent = `Error (${err.code}): ${err.message}`;
   root.dataset.error = err.code;
-  showIssues(err.issues);
+  showIssues(issuesOf(err));
   throw e;
 }
 
@@ -122,6 +147,11 @@ select.addEventListener("change", () => {
 });
 
 applyButton.addEventListener("click", () => {
+  // JSON is a chart spec; anything else is taken as Mermaid.
+  if (!textarea.value.trimStart().startsWith("{")) {
+    void apply(textarea.value);
+    return;
+  }
   let spec: unknown;
   try {
     spec = JSON.parse(textarea.value);

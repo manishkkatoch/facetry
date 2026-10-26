@@ -1,0 +1,8 @@
+graph LR
+    main((main)) --> feat[feature branch]
+    feat --> commit[commit] --> pr[open PR]
+    pr --> review{review}
+    review -->|changes requested| commit
+    review -->|approved| merge[merge]
+    merge --> main
+    merge --> tag[tag release]

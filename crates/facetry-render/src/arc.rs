@@ -8,7 +8,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::scene::ArcMark;
-use facetry_core::scene3d::SliceMark;
+use facetry_core::scene3d::{PrismMark, SliceMark};
 
 /// Widest angular step of a slice's rim.
 const MAX_STEP: f32 = 2.0 * std::f32::consts::PI / 180.0;
@@ -143,6 +143,73 @@ pub fn slice(s: &SliceMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
                 v(hi_t, normal),
             ]);
         }
+    }
+}
+
+/// Appends the triangles of a prism (a diagram node or arrowhead): the top face, a fan over
+/// the convex outline, and one wall per side. No bottom, as for slices.
+///
+/// Walls face away from the outline's centre whichever way it winds. A `smooth` prism (a
+/// curve cut into segments) gets per-vertex normals averaged from the two sides that meet
+/// there, so a cylinder shades round instead of faceted.
+pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
+    let n = p.outline.len();
+    if n < 3 || p.top <= p.base {
+        return;
+    }
+    let v = |pos: [f32; 3], normal: [f32; 3]| Vertex3 {
+        pos,
+        normal,
+        color,
+        hover: 0.0,
+    };
+    let at = |i: usize, y: f32| {
+        let [x, z] = p.outline[i % n];
+        [x, y, z]
+    };
+    let up = [0.0, 1.0, 0.0];
+    for i in 1..n - 1 {
+        out.extend([
+            v(at(0, p.top), up),
+            v(at(i, p.top), up),
+            v(at(i + 1, p.top), up),
+        ]);
+    }
+    let [cx, cz] = p.centre();
+    // The outward normal of side i (from point i to point i + 1).
+    let side = |i: usize| {
+        let ([ax, az], [bx, bz]) = (p.outline[i % n], p.outline[(i + 1) % n]);
+        let (dx, dz) = (bx - ax, bz - az);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-12);
+        let (mut nx, mut nz) = (dz / len, -dx / len);
+        let (mx, mz) = ((ax + bx) / 2.0 - cx, (az + bz) / 2.0 - cz);
+        if nx * mx + nz * mz < 0.0 {
+            (nx, nz) = (-nx, -nz);
+        }
+        [nx, 0.0, nz]
+    };
+    let blend = |a: [f32; 3], b: [f32; 3]| {
+        let (x, z) = (a[0] + b[0], a[2] + b[2]);
+        let len = (x * x + z * z).sqrt().max(1e-12);
+        [x / len, 0.0, z / len]
+    };
+    for i in 0..n {
+        let flat = side(i);
+        let (na, nb) = if p.smooth {
+            (blend(side(i + n - 1), flat), blend(flat, side(i + 1)))
+        } else {
+            (flat, flat)
+        };
+        let (b0, b1) = (at(i, p.base), at(i + 1, p.base));
+        let (t0, t1) = (at(i, p.top), at(i + 1, p.top));
+        out.extend([
+            v(b0, na),
+            v(b1, nb),
+            v(t0, na),
+            v(t0, na),
+            v(b1, nb),
+            v(t1, nb),
+        ]);
     }
 }
 

@@ -76,6 +76,8 @@ pub(crate) fn build_pie_3d(
         halo_px: s.round().max(1.0) as f32,
         boxes: Vec::new(),
         slices: Vec::new(),
+        prisms: Vec::new(),
+        decor: Vec::new(),
         lines: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),

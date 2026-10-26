@@ -1,0 +1,7 @@
+flowchart TD
+    req[Request] --> l1{In memory cache?}
+    l1 -->|hit| done([Return value])
+    l1 -->|miss| l2{In Redis?}
+    l2 -->|hit| fill1[Fill memory cache] --> done
+    l2 -->|miss| db[(Query database)]
+    db --> fill2[Fill Redis] --> fill1

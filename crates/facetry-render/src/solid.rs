@@ -452,14 +452,16 @@ impl BoxPipeline {
     }
 }
 
-/// The slices of an extruded pie: one lit mesh, drawn with depth testing like the bars. The
-/// vertices are kept on the CPU too, so hovering a slice can rewrite just its range.
+/// The slices of an extruded pie and a diagram's nodes and arrowheads: one lit mesh, drawn
+/// with depth testing like the bars. The vertices are kept on the CPU too, so hovering a slice
+/// or node can rewrite just its range.
 #[derive(Debug)]
 pub struct SlicePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     vertices: Vec<Vertex3>,
-    /// Each slice's vertices within `vertices`, in slice order.
+    /// Each slice's vertices within `vertices`, in slice order, then each diagram node's (the
+    /// arrowheads come last and have none: they are not marks).
     ranges: Vec<Range<usize>>,
     buffer: InstanceBuffer,
 }
@@ -524,10 +526,19 @@ impl SlicePipeline {
             crate::arc::slice(s, encode(s.color), &mut self.vertices);
             self.ranges.push(start..self.vertices.len());
         }
+        for p in &scene.prisms {
+            let start = self.vertices.len();
+            crate::arc::prism(p, encode(p.color), &mut self.vertices);
+            self.ranges.push(start..self.vertices.len());
+        }
+        for p in &scene.decor {
+            crate::arc::prism(p, encode(p.color), &mut self.vertices);
+        }
         self.buffer.set(device, queue, &self.vertices);
     }
 
-    /// Lights slice `index` up (or not): rewrites the hover flag of its vertices only.
+    /// Lights slice (or, after the slices, node) `index` up (or not): rewrites the hover flag of
+    /// its vertices only.
     pub fn set_hover(&mut self, queue: &wgpu::Queue, index: usize, on: bool) {
         let Some(range) = self.ranges.get(index).cloned() else {
             return;

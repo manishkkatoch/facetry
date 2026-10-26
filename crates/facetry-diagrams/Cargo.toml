@@ -1,0 +1,22 @@
+[package]
+name = "facetry-diagrams"
+description = "Mermaid diagrams for Facetry: parse a subset of Mermaid and lay it out into a diagram spec. CPU only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# For the spec types and node outlines (only what is used is linked) and the label metrics.
+facetry-core.workspace = true
+facetry-font.workspace = true
+
+[dev-dependencies]
+facetry-core = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true

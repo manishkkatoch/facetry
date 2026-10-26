@@ -1,0 +1,7 @@
+flowchart LR
+    new([New]) --> paid[Paid]
+    new --> cancelled([Cancelled])
+    paid --> packed[Packed] --> shipped[Shipped] --> delivered([Delivered])
+    paid --> refunded([Refunded])
+    shipped -.-> lost[Lost in transit] -.-> refunded
+    delivered -.-> returned[Returned] --> refunded

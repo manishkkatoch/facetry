@@ -50,7 +50,16 @@ fn vs_main(v: Vertex) -> Varying {
         return Varying(vec4<f32>(2.0, 2.0, 2.0, 1.0), vec2<f32>(0.0), v.color, v.rim, vec2<f32>(0.0));
     }
     let anchor = v.pos_size.xyz;
-    let world = anchor + normalize(globals.eye.xyz - anchor) * TOWARD_EYE;
+    // Toward the eye along the ray the anchor is seen on, so the nudge never moves it on
+    // screen: the line to the eye in perspective, the view direction (the same everywhere) for
+    // the orthographic lens (view.w = 0).
+    var toward = normalize(globals.eye.xyz - anchor);
+    if globals.view.w < 0.5 {
+        let az = radians(globals.view.x);
+        let el = radians(globals.view.y);
+        toward = vec3<f32>(sin(az) * cos(el), sin(el), cos(az) * cos(el));
+    }
+    let world = anchor + toward * TOWARD_EYE;
     let clip = globals.view_proj * vec4<f32>(world, 1.0);
     let radius = size * 0.5;
     // A pixel of margin for the antialiased edge.
