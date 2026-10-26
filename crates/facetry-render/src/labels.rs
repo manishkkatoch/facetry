@@ -42,6 +42,9 @@ const SECTOR_SLOTS: usize = SLOTS / 2;
 const OVERFLOW_SLOT: usize = SECTOR_SLOTS - 1;
 /// Value labels on boxes use `VALUE_SLOTS..SLOTS - 1`; the very last slot is the overflow.
 const VALUE_SLOTS: usize = SLOTS / 2;
+/// How far (world units) in front of a point a box may start and still leave the point
+/// visible.
+pub const POINT_SLACK: f32 = 0.02;
 /// How far (pixels) a label may be pushed to clear the box before it is given up on.
 const MAX_PUSH: i32 = 240;
 
@@ -107,12 +110,17 @@ pub struct LabelPlan {
     label_slots: Vec<f32>,
 }
 
-/// A value label printed on a box.
+/// A value label that is shown only while its anchor can be seen: a label printed on a box
+/// (`mark` is that box: it must be the first thing the camera sees there) or one hanging from
+/// a line's data point (`mark` is `None`: no box may be in front of the point).
 #[derive(Debug, Clone)]
 struct OnBox {
     slot: usize,
-    mark: usize,
+    mark: Option<usize>,
     anchor: Vec3,
+    /// A point's label also gives way to one already shown (see [`LabelPlan::states`]), so it
+    /// carries its size.
+    entry: Entry,
 }
 
 impl LabelPlan {
@@ -131,7 +139,7 @@ impl LabelPlan {
         for t in &scene.texts {
             let (class, rank) = match t.role {
                 // Always shown here (an `OnMark` label is a value label, planned below).
-                LabelRole::Fixed | LabelRole::OnMark(_) => {
+                LabelRole::Fixed | LabelRole::OnMark(_) | LabelRole::OnPoint => {
                     slots.push(NO_SLOT);
                     continue;
                 }
@@ -170,14 +178,31 @@ impl LabelPlan {
         let mut on_boxes = Vec::new();
         let mut label_slots = Vec::with_capacity(scene.labels.len());
         for l in &scene.labels {
-            match l.text.role {
-                LabelRole::OnMark(mark) if l.show == facetry_core::spec::LabelShow::Always => {
+            let mark = match l.text.role {
+                LabelRole::OnMark(mark) => Some(Some(mark as usize)),
+                LabelRole::OnPoint => Some(None),
+                _ => None,
+            };
+            match mark {
+                Some(mark) if l.show == facetry_core::spec::LabelShow::Always => {
                     let slot = (VALUE_SLOTS + on_boxes.len()).min(SLOTS - 1);
                     if slot < SLOTS - 1 {
                         on_boxes.push(OnBox {
                             slot,
-                            mark: mark as usize,
+                            mark,
                             anchor: Vec3::from(l.text.anchor),
+                            entry: Entry {
+                                slot,
+                                priority: (0, 0),
+                                range: None,
+                                anchor: Vec3::from(l.text.anchor),
+                                offset: Vec2::from(l.text.offset_px),
+                                align: l.text.align,
+                                valign: l.text.valign,
+                                width: font.text_width(&l.text.text, l.text.size_px),
+                                cap: font.cap_height * l.text.size_px,
+                                descent: -font.descender * l.text.size_px,
+                            },
                         });
                     }
                     label_slots.push(slot as f32);
@@ -273,7 +298,11 @@ impl LabelPlan {
             }
         }
         // A label printed on a box shows if the first box the camera sees through its anchor's
-        // pixel is that box: the same ray test as picking.
+        // pixel is that box: the same ray test as picking. A label hanging from a line's data
+        // point shows if no box is in front of the point, and then only if it does not touch
+        // one already shown, the points nearest the camera first (points of different series
+        // often land on the same pixels, and two numbers on top of each other say nothing).
+        let mut points: Vec<(f32, &OnBox, Vec2)> = Vec::new();
         for label in &self.on_boxes {
             let c = view_proj * label.anchor.extend(1.0);
             if c.w <= 0.0 {
@@ -292,7 +321,29 @@ impl LabelPlan {
                 .enumerate()
                 .filter_map(|(i, (min, max))| Some((i, ray_box(&ray, *min, *max)?)))
                 .min_by(|a, b| a.1.total_cmp(&b.1));
-            if first.is_some_and(|(i, _)| i == label.mark) {
+            match label.mark {
+                Some(mark) => {
+                    if first.is_some_and(|(i, _)| i == mark) {
+                        table[label.slot] = [1.0, 0.0, 0.0, 0.0];
+                    }
+                }
+                // A point is seen unless a box is entered before the camera reaches it
+                // (a hair of slack, so a point resting on a box's face is not "inside" it).
+                None => {
+                    let distance = (label.anchor - ray.origin).dot(ray.dir);
+                    if first.is_none_or(|(_, t)| t >= distance - POINT_SLACK) {
+                        points.push((distance, label, Vec2::new(px.0, px.1).round()));
+                    }
+                }
+            }
+        }
+        points.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let margin = self.gap / 2.0;
+        let mut kept: Vec<[f32; 4]> = Vec::new();
+        for (_, label, anchor_px) in points {
+            let rect = inflate(label.entry.rect(anchor_px), margin);
+            if !kept.iter().any(|k| rects_overlap(*k, rect)) {
+                kept.push(rect);
                 table[label.slot] = [1.0, 0.0, 0.0, 0.0];
             }
         }
@@ -754,6 +805,109 @@ mod tests {
                 assert_eq!(unique.len(), shown.len());
             }
         }
+    }
+
+    /// `line3d` with value labels on, optionally with the line values replaced.
+    fn labelled_lines(values: Option<&str>) -> Scene3d {
+        let json = include_str!("../../../examples/specs/line3d.json").replace(
+            r#""point": true,"#,
+            r#""point": true, "label": { "show": "always" },"#,
+        );
+        let json = match values {
+            Some(v) => {
+                let open = json.find(r#""visits": ["#).unwrap() + r#""visits": ["#.len();
+                let close = open + json[open..].find(']').unwrap();
+                format!("{}{v}{}", &json[..open], &json[close..])
+            }
+            None => json,
+        };
+        scene(&json)
+    }
+
+    /// The screen rectangles of the point labels shown from `camera`.
+    fn shown_point_rects(scene: &Scene3d, camera: Camera) -> Vec<[f32; 4]> {
+        let (plan, _) = LabelPlan::new(scene, FontMetrics::inter());
+        let viewport = (800.0, 500.0);
+        let vp = camera.plot_view_proj(scene.size, viewport);
+        let table = plan.states(vp, [viewport.0, viewport.1], camera.azimuth);
+        plan.on_boxes
+            .iter()
+            .filter(|l| table[l.slot][0] == 1.0)
+            .map(|l| {
+                let c = vp * l.anchor.extend(1.0);
+                let px = Vec2::new(
+                    (c.x / c.w * 0.5 + 0.5) * viewport.0,
+                    (0.5 - c.y / c.w * 0.5) * viewport.1,
+                );
+                l.entry.rect(px.round())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn point_labels_never_overlap_each_other_from_any_side() {
+        let s = labelled_lines(None);
+        assert_eq!(s.labels.len(), 18);
+        let mut most = 0;
+        for az in (0..360).step_by(15) {
+            for el in [10.0, 30.0, 60.0, 85.0] {
+                let rects = shown_point_rects(&s, camera(az as f32, el));
+                most = most.max(rects.len());
+                for (i, a) in rects.iter().enumerate() {
+                    for b in &rects[i + 1..] {
+                        assert!(!rects_overlap(*a, *b), "{az}/{el}: {a:?} {b:?}");
+                    }
+                }
+            }
+        }
+        // With room to spare, most of them show.
+        assert!(most >= 14, "{most}");
+    }
+
+    #[test]
+    fn point_labels_hide_while_a_bar_is_in_front_of_the_point() {
+        // The line's points are above every bar: all labels can show (minus overlaps).
+        let json = include_str!("../../../examples/specs/combo3d-bar-line.json").replace(
+            r#""point": true,"#,
+            r#""point": true, "label": { "show": "always" },"#,
+        );
+        let above = scene(&json);
+        assert!(
+            above
+                .labels
+                .iter()
+                .all(|l| l.text.role == LabelRole::OnPoint)
+        );
+        assert!(!shown_point_rects(&above, camera(30.0, 30.0)).is_empty());
+        // Points inside the bars (values far below them): from the front at a low elevation
+        // every point is in the bar of its own cell or behind another one, so none shows.
+        let open = json.find("\"target\": [").unwrap() + "\"target\": [".len();
+        let close = open + json[open..].find(']').unwrap();
+        let low = format!(
+            "{}{}{}",
+            &json[..open],
+            ["5"; 12].join(", "),
+            &json[close..]
+        );
+        let inside = scene(&low);
+        for (az, el) in [(0.0, 10.0), (30.0, 30.0), (200.0, 20.0), (90.0, 45.0)] {
+            assert!(
+                shown_point_rects(&inside, camera(az, el)).is_empty(),
+                "{az}/{el}"
+            );
+        }
+    }
+
+    #[test]
+    fn point_slots_stay_clear_of_the_axis_label_slots() {
+        let s = labelled_lines(None);
+        let (plan, text_slots) = LabelPlan::new(&s, FontMetrics::inter());
+        let axis_max = text_slots
+            .iter()
+            .filter(|s| **s >= 0.0)
+            .fold(0.0_f32, |a, b| a.max(*b));
+        let point_min = plan.label_slots().iter().fold(f32::MAX, |a, b| a.min(*b));
+        assert!((axis_max as usize) < SLOTS / 2 && (point_min as usize) >= SLOTS / 2);
     }
 
     #[test]

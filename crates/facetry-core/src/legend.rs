@@ -15,11 +15,16 @@
 //! The result is plain [`Rule`]s (swatches) and [`Text`]s in device pixels, so it is
 //! snapshotted, drawn and exported like everything else, in 2D and in 3D (where it is an
 //! overlay drawn after the 3D pass).
+//!
+//! **Hiding series.** An entry whose series is hidden (`ChartSpec::hidden_series`) stays in
+//! the legend, with its swatch and text drawn at 40% opacity, so it can be
+//! clicked back on. The legend also reports where each entry is ([`LegendHit`]), in the same
+//! device pixels, so the host can find the entry under the pointer without any GPU work.
 
 use crate::Color;
 use crate::Theme;
 use crate::scale::Ordinal;
-use crate::scene::{Anchor, Bounds, Rotation, Rule, RuleKind, Text};
+use crate::scene::{Anchor, Bounds, LegendHit, Rotation, Rule, RuleKind, Text};
 use crate::spec::{ChartSpec, LegendOrient, LegendSpec, Mark};
 use crate::text::TextMeasure;
 use crate::validate::{ColorSource, resolve_arc, resolve_layer};
@@ -41,6 +46,8 @@ const MAX_LABEL_ROW: f64 = 240.0;
 const LABEL_SIZE: f64 = 12.0;
 const TITLE_SIZE: f64 = 13.0;
 const ELLIPSIS: &str = "...";
+/// How much of its opacity a hidden series' entry keeps.
+const HIDDEN_OPACITY: f32 = 0.4;
 
 /// One legend entry.
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +56,8 @@ pub(crate) struct Entry {
     pub color: Color,
     /// A line swatch (line layers) instead of a square, and how thick, in CSS px.
     pub line: Option<f64>,
+    /// The series is hidden: the entry is drawn dimmed.
+    pub hidden: bool,
 }
 
 /// What the legend asks of the chart's layout, in device pixels.
@@ -56,6 +65,8 @@ pub(crate) struct Entry {
 pub(crate) struct Legend {
     pub rules: Vec<Rule>,
     pub texts: Vec<Text>,
+    /// Where each entry can be clicked; empty when the legend is not interactive.
+    pub hits: Vec<LegendHit>,
     /// How much of each side of the canvas the legend takes, padding included.
     pub left: f64,
     pub top: f64,
@@ -63,10 +74,10 @@ pub(crate) struct Legend {
     pub bottom: f64,
 }
 
-/// The legend's entries: the categories of every layer that colours by a field.
-pub(crate) fn entries(spec: &ChartSpec, theme: &Theme) -> Vec<Entry> {
-    // (categories, whether the layer is a line layer, line width) per layer, in layer order.
-    let mut sources: Vec<(Vec<String>, Option<f64>)> = Vec::new();
+/// The categories of every layer that colours by a field, layer by layer: (categories, line
+/// width when it is a line layer).
+fn sources(spec: &ChartSpec) -> Vec<(Vec<String>, Option<f64>)> {
+    let mut sources = Vec::new();
     for i in 0..spec.layers.len() {
         let layer = &spec.layers[i];
         if layer.mark == Mark::Arc {
@@ -86,7 +97,29 @@ pub(crate) fn entries(spec: &ChartSpec, theme: &Theme) -> Vec<Entry> {
             }
         }
     }
+    sources
+}
+
+/// The names of the series: every colour category of every layer, once, in the order they
+/// first appear (the legend's order). These are the names `legend.hidden` and
+/// `Chart.setSeriesVisible` take.
+pub fn series_names(spec: &ChartSpec) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for (dict, _) in sources(spec) {
+        for c in dict {
+            if !names.contains(&c) {
+                names.push(c);
+            }
+        }
+    }
+    names
+}
+
+/// The legend's entries: the categories of every layer that colours by a field.
+pub(crate) fn entries(spec: &ChartSpec, theme: &Theme) -> Vec<Entry> {
+    let sources = sources(spec);
     // The shared colour scale: first appearance across layers, as `build::color_scale` does.
+    // It is built from every category, hidden or not, so hiding never changes a colour.
     let mut domain: Vec<String> = Vec::new();
     for (dict, _) in &sources {
         for c in dict {
@@ -96,12 +129,14 @@ pub(crate) fn entries(spec: &ChartSpec, theme: &Theme) -> Vec<Entry> {
         }
     }
     let ordinal = Ordinal::new(&domain, theme.palette.to_vec());
+    let hidden = spec.hidden_series();
     let mut out: Vec<Entry> = Vec::new();
     for (dict, line) in sources {
         for c in dict {
             if !out.iter().any(|e| e.label == c) {
                 out.push(Entry {
                     color: ordinal.color(&c),
+                    hidden: hidden.contains(&c),
                     label: c,
                     line,
                 });
@@ -109,6 +144,69 @@ pub(crate) fn entries(spec: &ChartSpec, theme: &Theme) -> Vec<Entry> {
         }
     }
     out
+}
+
+/// Settles which series are hidden for a spec the host has just received, and stores it in
+/// `spec.hidden_override` (always `Some` afterwards).
+///
+/// `legend.hidden`, when the spec has it, is the answer. Otherwise `previous` (what the
+/// viewer had hidden before an update) is kept for the series that still exist. Names that
+/// are not a series are dropped, and so is a set that would hide every series (the new data
+/// has nothing else to show, so everything is shown).
+pub fn settle_hidden(spec: &mut ChartSpec, previous: Option<&[String]>) {
+    let explicit = match &spec.legend {
+        Some(LegendSpec::Config(c)) => c.hidden.clone(),
+        _ => None,
+    };
+    let wanted = explicit.or_else(|| previous.map(<[String]>::to_vec));
+    spec.hidden_override = None;
+    let names = series_names(spec);
+    let mut hidden: Vec<String> = names
+        .iter()
+        .filter(|n| wanted.as_ref().is_some_and(|w| w.contains(n)))
+        .cloned()
+        .collect();
+    if !names.is_empty() && hidden.len() == names.len() {
+        hidden.clear();
+    }
+    spec.hidden_override = Some(hidden);
+}
+
+/// Hides or shows one series of `spec` (in `spec.hidden_override`). Returns whether anything
+/// changed: `false` for a name that is not a series, a series already in that state, and an
+/// attempt to hide the last visible series (a blank chart helps nobody; the legend entry
+/// stays clickable, so nothing is ever stuck).
+pub fn set_series_visible(spec: &mut ChartSpec, name: &str, visible: bool) -> bool {
+    let names = series_names(spec);
+    if !names.iter().any(|n| n == name) {
+        return false;
+    }
+    let mut hidden: Vec<String> = spec.hidden_series().to_vec();
+    let is_hidden = hidden.iter().any(|h| h == name);
+    if is_hidden == !visible {
+        return false;
+    }
+    if visible {
+        hidden.retain(|h| h != name);
+    } else {
+        let shown = names.iter().filter(|n| !hidden.contains(n)).count();
+        if shown <= 1 {
+            return false;
+        }
+        hidden.push(name.to_owned());
+    }
+    // In legend order, so the list does not depend on the order of the clicks.
+    hidden = names.into_iter().filter(|n| hidden.contains(n)).collect();
+    spec.hidden_override = Some(hidden);
+    true
+}
+
+/// `color` at the opacity of a hidden entry.
+fn dimmed(color: Color) -> Color {
+    Color {
+        a: color.a * HIDDEN_OPACITY,
+        ..color
+    }
 }
 
 /// Cuts `text` so that it is at most `max` pixels wide, ending in `...` when it had to be cut.
@@ -253,6 +351,8 @@ pub(crate) fn layout(
 
     let mut rules = Vec::new();
     let mut texts = Vec::new();
+    let mut hits = Vec::new();
+    let interactive = spec.legend_interactive();
     if let Some(t) = title {
         let baseline = y0
             + title_asc
@@ -273,7 +373,8 @@ pub(crate) fn layout(
         });
     }
     for (i, x, y) in at {
-        let (entry, (text, _)) = (&entries[i], &sized[i]);
+        let (entry, (text, entry_w)) = (&entries[i], &sized[i]);
+        let fade = |c: Color| if entry.hidden { dimmed(c) } else { c };
         let (ex, ey) = (x0 + x, y0 + y);
         let mid = ey + row_h / 2.0;
         let sw = swatch_w(entry);
@@ -296,7 +397,7 @@ pub(crate) fn layout(
             key: format!("legend/swatch:{}", entry.label),
             kind: RuleKind::Swatch,
             bounds,
-            color: entry.color,
+            color: fade(entry.color),
         });
         texts.push(Text {
             key: format!("legend/label:{}", entry.label),
@@ -304,14 +405,29 @@ pub(crate) fn layout(
             x: (ex + sw + swatch_gap).round() as f32,
             y: (mid + cap / 2.0).round() as f32,
             size_px: label_size,
-            color: theme.text,
+            color: fade(theme.text),
             anchor: Anchor::Start,
             rotation: Rotation::None,
         });
+        if interactive {
+            // The entry's whole row cell, a little generous so it is easy to hit: the
+            // padding stays within the gaps between entries, so rectangles never overlap.
+            let (pad_x, pad_y) = ((item_gap / 4.0).floor(), (row_gap / 2.0).floor());
+            hits.push(LegendHit {
+                series: entry.label.clone(),
+                bounds: Bounds::new(
+                    ex.round() - pad_x,
+                    ey.round() - pad_y,
+                    entry_w.ceil() + 2.0 * pad_x,
+                    row_h + 2.0 * pad_y,
+                ),
+            });
+        }
     }
     Some(Legend {
         rules,
         texts,
+        hits,
         left,
         top,
         right,

@@ -30,7 +30,7 @@ struct Vertex {
     @location(0) corner: vec2<f32>,
     // Per instance:
     @location(1) a: vec4<f32>,       // xyz start, w width in pixels
-    @location(2) b: vec4<f32>,       // xyz end
+    @location(2) b: vec4<f32>,       // xyz end, w: 1 for square caps, 0 for flat ends
     @location(3) color: vec4<f32>,
     @location(4) show: vec2<f32>,    // azimuth range [from, to) in which to draw
 }
@@ -67,8 +67,8 @@ fn vs_main(v: Vertex) -> Varying {
     let normal = vec2<f32>(-dir.y, dir.x);
     let half_width = v.a.w * 0.5;
     // Square caps: stretch by half a width at both ends so lines that meet at a corner
-    // leave no notch.
-    let along = (v.corner.x * 2.0 - 1.0) * half_width;
+    // leave no notch. Data lines turn this off (b.w = 0): their joins are round discs.
+    let along = (v.corner.x * 2.0 - 1.0) * half_width * v.b.w;
     let across = (v.corner.y * 2.0 - 1.0) * half_width;
     let offset_px = dir * along + normal * across;
     // Interpolating in clip space keeps the depth perspective-correct. Pixels to ndc is

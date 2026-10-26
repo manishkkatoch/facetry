@@ -1,0 +1,6576 @@
+---
+source: crates/facetry-core/tests/scene_snapshots.rs
+expression: "scene3d_for(\"line3d\")"
+---
+{
+  "width": 800,
+  "height": 500,
+  "plot": [
+    0.0,
+    0.0,
+    730.99,
+    500.0
+  ],
+  "overlay": {
+    "rules": [
+      {
+        "key": "legend/swatch:North",
+        "kind": "swatch",
+        "x": 731.0,
+        "y": 18.0,
+        "w": 18.0,
+        "h": 3.0,
+        "color": "#4c78a8"
+      },
+      {
+        "key": "legend/swatch:South",
+        "kind": "swatch",
+        "x": 731.0,
+        "y": 39.0,
+        "w": 18.0,
+        "h": 3.0,
+        "color": "#f58518"
+      },
+      {
+        "key": "legend/swatch:West",
+        "kind": "swatch",
+        "x": 731.0,
+        "y": 60.0,
+        "w": 18.0,
+        "h": 3.0,
+        "color": "#e45756"
+      }
+    ],
+    "texts": [
+      {
+        "key": "legend/label:North",
+        "text": "North",
+        "x": 755.0,
+        "y": 24.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:South",
+        "text": "South",
+        "x": 755.0,
+        "y": 45.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      },
+      {
+        "key": "legend/label:West",
+        "text": "West",
+        "x": 755.0,
+        "y": 66.0,
+        "size_px": 12.0,
+        "color": "#1f2328",
+        "anchor": "start",
+        "rotation": "none"
+      }
+    ]
+  },
+  "background": "#ffffff",
+  "size": [
+    1.8,
+    1.0,
+    0.9
+  ],
+  "halo_px": 1.0,
+  "boxes": [],
+  "lines": [
+    {
+      "key": "wall:x0/y:10",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.25,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.25,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "wall:x0/y:20",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.5,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "wall:x0/y:30",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.75,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "wall:x0/y:40",
+      "kind": "grid",
+      "a": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "floor:x0",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "wall:x1/y:10",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.25,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.25,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "wall:x1/y:20",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.5,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.5,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "wall:x1/y:30",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.75,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.75,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "wall:x1/y:40",
+      "kind": "grid",
+      "a": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "floor:x1",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "wall:z0/y:10",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.25,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.25,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "wall:z0/y:20",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.5,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "wall:z0/y:30",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.75,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "wall:z0/y:40",
+      "kind": "grid",
+      "a": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "floor:z0",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "wall:z1/y:10",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.25,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.25,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "wall:z1/y:20",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.5,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.5,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "wall:z1/y:30",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.75,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.75,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "wall:z1/y:40",
+      "kind": "grid",
+      "a": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "floor:z1",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "wall:corner:x0z0",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 0.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "wall:corner:x0z1",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 90.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "wall:corner:x1z1",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 180.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "wall:corner:x1z0",
+      "kind": "grid",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8",
+      "azimuths": {
+        "from": 270.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "floor:x1",
+      "kind": "grid",
+      "a": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.3,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:x2",
+      "kind": "grid",
+      "a": [
+        0.6,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.6,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:x3",
+      "kind": "grid",
+      "a": [
+        0.9,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.9,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:x4",
+      "kind": "grid",
+      "a": [
+        1.2,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.2,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:x5",
+      "kind": "grid",
+      "a": [
+        1.5,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.5,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:z1",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.3
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.3
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "floor:z2",
+      "kind": "grid",
+      "a": [
+        0.0,
+        0.0,
+        0.6
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.6
+      ],
+      "width_px": 1.0,
+      "color": "#e1e4e8"
+    },
+    {
+      "key": "axis:x/line@000",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@000",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@000",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@000",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@000",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@000",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@000",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/line@000",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@000",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.75
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@000",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.45
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@000",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.15
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/line@000",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@000",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@000",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.25,
+        0.9
+      ],
+      "b": [
+        -0.03,
+        0.25,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@000",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.5,
+        0.9
+      ],
+      "b": [
+        -0.03,
+        0.5,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@000",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.75,
+        0.9
+      ],
+      "b": [
+        -0.03,
+        0.75,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@000",
+      "kind": "tick",
+      "a": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "b": [
+        -0.03,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/line@045",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@045",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@045",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@045",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@045",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@045",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@045",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/line@045",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@045",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.75
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@045",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.45
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@045",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.15
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/line@045",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@045",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@045",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.25,
+        0.9
+      ],
+      "b": [
+        0.0,
+        0.25,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@045",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.5,
+        0.9
+      ],
+      "b": [
+        0.0,
+        0.5,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@045",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.75,
+        0.9
+      ],
+      "b": [
+        0.0,
+        0.75,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@045",
+      "kind": "tick",
+      "a": [
+        0.0,
+        1.0,
+        0.9
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/line@090",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@090",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@090",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@090",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@090",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@090",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@090",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/line@090",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.75
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.45
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.15
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/line@090",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.25,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.25,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.5,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.5,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.75,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.75,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@090",
+      "kind": "tick",
+      "a": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/line@135",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@135",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@135",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@135",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@135",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@135",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@135",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/line@135",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.75
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.45
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.15
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/line@135",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.25,
+        0.9
+      ],
+      "b": [
+        1.83,
+        0.25,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.5,
+        0.9
+      ],
+      "b": [
+        1.83,
+        0.5,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.75,
+        0.9
+      ],
+      "b": [
+        1.83,
+        0.75,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@135",
+      "kind": "tick",
+      "a": [
+        1.8,
+        1.0,
+        0.9
+      ],
+      "b": [
+        1.83,
+        1.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/line@180",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@180",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@180",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@180",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@180",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@180",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@180",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/line@180",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@180",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.75
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@180",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.45
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@180",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.15
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/line@180",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@180",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.83,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@180",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.25,
+        0.0
+      ],
+      "b": [
+        1.83,
+        0.25,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@180",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.5,
+        0.0
+      ],
+      "b": [
+        1.83,
+        0.5,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@180",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.75,
+        0.0
+      ],
+      "b": [
+        1.83,
+        0.75,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@180",
+      "kind": "tick",
+      "a": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "b": [
+        1.83,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/line@225",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@225",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@225",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@225",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@225",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@225",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@225",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/line@225",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@225",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.75
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@225",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.45
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@225",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.15
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/line@225",
+      "kind": "axis",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@225",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@225",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.25,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.25,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@225",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.5,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.5,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@225",
+      "kind": "tick",
+      "a": [
+        1.8,
+        0.75,
+        0.0
+      ],
+      "b": [
+        1.8,
+        0.75,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@225",
+      "kind": "tick",
+      "a": [
+        1.8,
+        1.0,
+        0.0
+      ],
+      "b": [
+        1.8,
+        1.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/line@270",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@270",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@270",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@270",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@270",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@270",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@270",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/line@270",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.75
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.45
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.15
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/line@270",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.25,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.25,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.5,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.75,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@270",
+      "kind": "tick",
+      "a": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        -0.03
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/line@315",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.8,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jan@315",
+      "kind": "tick",
+      "a": [
+        0.15,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Feb@315",
+      "kind": "tick",
+      "a": [
+        0.45,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Mar@315",
+      "kind": "tick",
+      "a": [
+        0.75,
+        0.0,
+        0.9
+      ],
+      "b": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Apr@315",
+      "kind": "tick",
+      "a": [
+        1.05,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:May@315",
+      "kind": "tick",
+      "a": [
+        1.35,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/tick:Jun@315",
+      "kind": "tick",
+      "a": [
+        1.65,
+        0.0,
+        0.9
+      ],
+      "b": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/line@315",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        0.0,
+        0.9
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/tick:North@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.75
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/tick:South@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.45
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/tick:West@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.15
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/line@315",
+      "kind": "axis",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/tick:0@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "b": [
+        -0.03,
+        0.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/tick:10@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.25,
+        0.0
+      ],
+      "b": [
+        -0.03,
+        0.25,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/tick:20@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "b": [
+        -0.03,
+        0.5,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/tick:30@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "b": [
+        -0.03,
+        0.75,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/tick:40@315",
+      "kind": "tick",
+      "a": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "b": [
+        -0.03,
+        1.0,
+        0.0
+      ],
+      "width_px": 1.5,
+      "color": "#6e7781",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    }
+  ],
+  "polylines": [
+    {
+      "key": "layer0/North",
+      "color": "#4c78a8",
+      "width_px": 3.0,
+      "runs": [
+        [
+          [
+            0.15,
+            0.3,
+            0.75
+          ],
+          [
+            0.45,
+            0.45,
+            0.75
+          ],
+          [
+            0.75,
+            0.375,
+            0.75
+          ],
+          [
+            1.05,
+            0.6,
+            0.75
+          ],
+          [
+            1.35,
+            0.7,
+            0.75
+          ],
+          [
+            1.65,
+            0.875,
+            0.75
+          ]
+        ]
+      ]
+    },
+    {
+      "key": "layer0/South",
+      "color": "#f58518",
+      "width_px": 3.0,
+      "runs": [
+        [
+          [
+            0.15,
+            0.5,
+            0.45
+          ],
+          [
+            0.45,
+            0.4,
+            0.45
+          ],
+          [
+            0.75,
+            0.55,
+            0.45
+          ],
+          [
+            1.05,
+            0.475,
+            0.45
+          ],
+          [
+            1.35,
+            0.65,
+            0.45
+          ],
+          [
+            1.65,
+            0.6,
+            0.45
+          ]
+        ]
+      ]
+    },
+    {
+      "key": "layer0/West",
+      "color": "#e45756",
+      "width_px": 3.0,
+      "runs": [
+        [
+          [
+            0.15,
+            0.2,
+            0.15
+          ],
+          [
+            0.45,
+            0.275,
+            0.15
+          ],
+          [
+            0.75,
+            0.425,
+            0.15
+          ],
+          [
+            1.05,
+            0.35,
+            0.15
+          ],
+          [
+            1.35,
+            0.525,
+            0.15
+          ],
+          [
+            1.65,
+            0.75,
+            0.15
+          ]
+        ]
+      ]
+    }
+  ],
+  "points": [
+    {
+      "key": "layer0/Jan/North",
+      "pos": [
+        0.15,
+        0.3,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/North",
+      "pos": [
+        0.45,
+        0.45,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/North",
+      "pos": [
+        0.75,
+        0.375,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/North",
+      "pos": [
+        1.05,
+        0.6,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/North",
+      "pos": [
+        1.35,
+        0.7,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/North",
+      "pos": [
+        1.65,
+        0.875,
+        0.75
+      ],
+      "color": "#4c78a8",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jan/South",
+      "pos": [
+        0.15,
+        0.5,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/South",
+      "pos": [
+        0.45,
+        0.4,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/South",
+      "pos": [
+        0.75,
+        0.55,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/South",
+      "pos": [
+        1.05,
+        0.475,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/South",
+      "pos": [
+        1.35,
+        0.65,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/South",
+      "pos": [
+        1.65,
+        0.6,
+        0.45
+      ],
+      "color": "#f58518",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jan/West",
+      "pos": [
+        0.15,
+        0.2,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Feb/West",
+      "pos": [
+        0.45,
+        0.275,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Mar/West",
+      "pos": [
+        0.75,
+        0.425,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Apr/West",
+      "pos": [
+        1.05,
+        0.35,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/May/West",
+      "pos": [
+        1.35,
+        0.525,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    },
+    {
+      "key": "layer0/Jun/West",
+      "pos": [
+        1.65,
+        0.75,
+        0.15
+      ],
+      "color": "#e45756",
+      "size_px": 8.0,
+      "visible": true
+    }
+  ],
+  "texts": [
+    {
+      "key": "axis:x/label:Jan@000",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@000",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@000",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@000",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@000",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@000",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/title@000",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@000",
+      "text": "North",
+      "anchor": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@000",
+      "text": "South",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@000",
+      "text": "West",
+      "anchor": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:z/title@000",
+      "text": "Region",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        75.01,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@000",
+      "text": "0",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@000",
+      "text": "10",
+      "anchor": [
+        -0.03,
+        0.25,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@000",
+      "text": "20",
+      "anchor": [
+        -0.03,
+        0.5,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@000",
+      "text": "30",
+      "anchor": [
+        -0.03,
+        0.75,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@000",
+      "text": "40",
+      "anchor": [
+        -0.03,
+        1.0,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:y/title@000",
+      "text": "Visits (k)",
+      "anchor": [
+        -0.03,
+        0.5,
+        0.9
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 0.0,
+        "to": 45.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@045",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@045",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@045",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@045",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@045",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@045",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/title@045",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -66.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@045",
+      "text": "North",
+      "anchor": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@045",
+      "text": "South",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@045",
+      "text": "West",
+      "anchor": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:z/title@045",
+      "text": "Region",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@045",
+      "text": "0",
+      "anchor": [
+        0.0,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@045",
+      "text": "10",
+      "anchor": [
+        0.0,
+        0.25,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@045",
+      "text": "20",
+      "anchor": [
+        0.0,
+        0.5,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@045",
+      "text": "30",
+      "anchor": [
+        0.0,
+        0.75,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@045",
+      "text": "40",
+      "anchor": [
+        0.0,
+        1.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:y/title@045",
+      "text": "Visits (k)",
+      "anchor": [
+        0.0,
+        0.5,
+        0.93
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 45.0,
+        "to": 90.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@090",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@090",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@090",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@090",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@090",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@090",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/title@090",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        66.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@090",
+      "text": "North",
+      "anchor": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@090",
+      "text": "South",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@090",
+      "text": "West",
+      "anchor": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:z/title@090",
+      "text": "Region",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@090",
+      "text": "0",
+      "anchor": [
+        1.8,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@090",
+      "text": "10",
+      "anchor": [
+        1.8,
+        0.25,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@090",
+      "text": "20",
+      "anchor": [
+        1.8,
+        0.5,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@090",
+      "text": "30",
+      "anchor": [
+        1.8,
+        0.75,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@090",
+      "text": "40",
+      "anchor": [
+        1.8,
+        1.0,
+        0.93
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:y/title@090",
+      "text": "Visits (k)",
+      "anchor": [
+        1.8,
+        0.5,
+        0.93
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 90.0,
+        "to": 135.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@135",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@135",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@135",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@135",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@135",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@135",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/title@135",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@135",
+      "text": "North",
+      "anchor": [
+        1.83,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@135",
+      "text": "South",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@135",
+      "text": "West",
+      "anchor": [
+        1.83,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:z/title@135",
+      "text": "Region",
+      "anchor": [
+        1.83,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        -75.01,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@135",
+      "text": "0",
+      "anchor": [
+        1.83,
+        0.0,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@135",
+      "text": "10",
+      "anchor": [
+        1.83,
+        0.25,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@135",
+      "text": "20",
+      "anchor": [
+        1.83,
+        0.5,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@135",
+      "text": "30",
+      "anchor": [
+        1.83,
+        0.75,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@135",
+      "text": "40",
+      "anchor": [
+        1.83,
+        1.0,
+        0.9
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:y/title@135",
+      "text": "Visits (k)",
+      "anchor": [
+        1.83,
+        0.5,
+        0.9
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 135.0,
+        "to": 180.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@180",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@180",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@180",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@180",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@180",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@180",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/title@180",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@180",
+      "text": "North",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@180",
+      "text": "South",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@180",
+      "text": "West",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:z/title@180",
+      "text": "Region",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        75.01,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@180",
+      "text": "0",
+      "anchor": [
+        1.83,
+        0.0,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@180",
+      "text": "10",
+      "anchor": [
+        1.83,
+        0.25,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@180",
+      "text": "20",
+      "anchor": [
+        1.83,
+        0.5,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@180",
+      "text": "30",
+      "anchor": [
+        1.83,
+        0.75,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@180",
+      "text": "40",
+      "anchor": [
+        1.83,
+        1.0,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:y/title@180",
+      "text": "Visits (k)",
+      "anchor": [
+        1.83,
+        0.5,
+        0.0
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 180.0,
+        "to": 225.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@225",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@225",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@225",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@225",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@225",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@225",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/title@225",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -66.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@225",
+      "text": "North",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@225",
+      "text": "South",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@225",
+      "text": "West",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:z/title@225",
+      "text": "Region",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@225",
+      "text": "0",
+      "anchor": [
+        1.8,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@225",
+      "text": "10",
+      "anchor": [
+        1.8,
+        0.25,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@225",
+      "text": "20",
+      "anchor": [
+        1.8,
+        0.5,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@225",
+      "text": "30",
+      "anchor": [
+        1.8,
+        0.75,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@225",
+      "text": "40",
+      "anchor": [
+        1.8,
+        1.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:y/title@225",
+      "text": "Visits (k)",
+      "anchor": [
+        1.8,
+        0.5,
+        -0.03
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 225.0,
+        "to": 270.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@270",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@270",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@270",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@270",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@270",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@270",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/title@270",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        66.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "start",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@270",
+      "text": "North",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@270",
+      "text": "South",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@270",
+      "text": "West",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:z/title@270",
+      "text": "Region",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@270",
+      "text": "0",
+      "anchor": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@270",
+      "text": "10",
+      "anchor": [
+        0.0,
+        0.25,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@270",
+      "text": "20",
+      "anchor": [
+        0.0,
+        0.5,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@270",
+      "text": "30",
+      "anchor": [
+        0.0,
+        0.75,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@270",
+      "text": "40",
+      "anchor": [
+        0.0,
+        1.0,
+        -0.03
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:y/title@270",
+      "text": "Visits (k)",
+      "anchor": [
+        0.0,
+        0.5,
+        -0.03
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 270.0,
+        "to": 315.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jan@315",
+      "text": "Jan",
+      "anchor": [
+        0.15,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/label:Feb@315",
+      "text": "Feb",
+      "anchor": [
+        0.45,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/label:Mar@315",
+      "text": "Mar",
+      "anchor": [
+        0.75,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/label:Apr@315",
+      "text": "Apr",
+      "anchor": [
+        1.05,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/label:May@315",
+      "text": "May",
+      "anchor": [
+        1.35,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/label:Jun@315",
+      "text": "Jun",
+      "anchor": [
+        1.65,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        4.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:x/title@315",
+      "text": "Month",
+      "anchor": [
+        0.9,
+        0.0,
+        0.93
+      ],
+      "offset_px": [
+        0.0,
+        38.52
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "middle",
+      "valign": "top",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/label:North@315",
+      "text": "North",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.75
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/label:South@315",
+      "text": "South",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/label:West@315",
+      "text": "West",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.15
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:z/title@315",
+      "text": "Region",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.45
+      ],
+      "offset_px": [
+        -75.01,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/label:0@315",
+      "text": "0",
+      "anchor": [
+        -0.03,
+        0.0,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/label:10@315",
+      "text": "10",
+      "anchor": [
+        -0.03,
+        0.25,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/label:20@315",
+      "text": "20",
+      "anchor": [
+        -0.03,
+        0.5,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/label:30@315",
+      "text": "30",
+      "anchor": [
+        -0.03,
+        0.75,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/label:40@315",
+      "text": "40",
+      "anchor": [
+        -0.03,
+        1.0,
+        0.0
+      ],
+      "offset_px": [
+        -4.0,
+        0.0
+      ],
+      "size_px": 12.0,
+      "color": "#57606a",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    },
+    {
+      "key": "axis:y/title@315",
+      "text": "Visits (k)",
+      "anchor": [
+        -0.03,
+        0.5,
+        0.0
+      ],
+      "offset_px": [
+        -35.32,
+        0.0
+      ],
+      "size_px": 13.0,
+      "color": "#1f2328",
+      "align": "end",
+      "valign": "middle",
+      "azimuths": {
+        "from": 315.0,
+        "to": 360.0
+      }
+    }
+  ]
+}

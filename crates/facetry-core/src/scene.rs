@@ -206,6 +206,19 @@ pub fn sector_contains(dx: f32, up: f32, inner: f32, outer: f32, a0: f32, a1: f3
     (angle - a0).rem_euclid(std::f32::consts::TAU) <= sweep
 }
 
+/// Where a legend entry is on the canvas, for finding the entry under the pointer. `series`
+/// is the entry's category name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LegendHit {
+    pub series: String,
+    pub bounds: Bounds,
+}
+
+/// The entry under the pixel `(x, y)`, if any.
+pub fn legend_pick(hits: &[LegendHit], x: f32, y: f32) -> Option<&LegendHit> {
+    hits.iter().find(|h| h.bounds.contains(x, y))
+}
+
 /// What a rule is, which decides when it is drawn: gridlines go *behind* bars, axis lines
 /// and ticks in front.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -298,6 +311,10 @@ pub struct Scene {
     /// How close (device pixels) the pointer must be to a point to pick it.
     #[serde(skip)]
     pub pick_radius: f32,
+    /// Where the legend's entries can be clicked (empty without a legend, or with
+    /// `legend.interactive: false`). Not part of the snapshot: the legend's swatches are.
+    #[serde(skip)]
+    pub legend_hits: Vec<LegendHit>,
 }
 
 /// What hover and click need to know about a mark; see [`Scene::mark`].
@@ -327,7 +344,19 @@ impl Scene {
             points: Vec::new(),
             arcs: Vec::new(),
             pick_radius: 0.0,
+            legend_hits: Vec::new(),
         }
+    }
+
+    /// The series whose legend entry is under the pixel `(x, y)`.
+    pub fn legend_pick(&self, x: f32, y: f32) -> Option<&str> {
+        legend_pick(&self.legend_hits, x, y).map(|h| h.series.as_str())
+    }
+
+    /// The middle of the legend entry of `series`, in device pixels.
+    pub fn legend_center(&self, series: &str) -> Option<[f32; 2]> {
+        let b = self.legend_hits.iter().find(|h| h.series == series)?.bounds;
+        Some([b.x + b.w / 2.0, b.y + b.h / 2.0])
     }
 
     /// Marks that hover and click can report, in one index space: the bars (`rects`), then

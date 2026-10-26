@@ -42,9 +42,10 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub layers: Vec<LayerSpec>,
-    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "..." }`, `true`
-    /// for the defaults, or `false` for none. Absent: a legend on the right when any layer
-    /// colours by a field, none otherwise.
+    /// The legend: `{ "orient": "right" | "bottom" | "top" | "left", "title": "...",
+    /// "interactive": true, "hidden": ["series", ...] }`, `true` for the defaults, or `false`
+    /// for none. Absent: a legend on the right when any layer colours by a field, none
+    /// otherwise. Clicking an entry hides or shows its series (`interactive`, default on).
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub legend: Option<LegendSpec>,
@@ -56,9 +57,38 @@ pub struct ChartSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub interaction: Option<InteractionSpec>,
+    /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
+    /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
+    /// spec's starting state without editing the user's spec. Not part of the JSON.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", tsify(skip))]
+    pub hidden_override: Option<Vec<String>>,
 }
 
 impl ChartSpec {
+    /// The names of the series that are hidden: the run-time set if the host set one, else
+    /// `legend.hidden`. Names that are not a series of any layer are harmless: they hide
+    /// nothing.
+    pub fn hidden_series(&self) -> &[String] {
+        if let Some(h) = &self.hidden_override {
+            return h;
+        }
+        match &self.legend {
+            Some(LegendSpec::Config(c)) => c.hidden.as_deref().unwrap_or(&[]),
+            _ => &[],
+        }
+    }
+
+    /// Whether clicking a legend entry toggles its series: there is a legend and
+    /// `legend.interactive` is not `false`.
+    pub fn legend_interactive(&self) -> bool {
+        match &self.legend {
+            Some(LegendSpec::Shown(false)) => false,
+            Some(LegendSpec::Config(c)) => c.interactive.unwrap_or(true),
+            _ => true,
+        }
+    }
+
     /// Whether dragging/wheeling should move the camera: only in 3D, on unless
     /// `interaction.orbit` is `false`.
     pub fn orbit_enabled(&self) -> bool {
@@ -93,6 +123,17 @@ pub struct LegendConfig {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub title: Option<String>,
+    /// Click an entry to hide or show its series (every layer that colours by that
+    /// category). Default: `true`.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub interactive: Option<bool>,
+    /// Series that start hidden. A name that is not a series is ignored; hiding every
+    /// series is an error. The viewer's later clicks replace this set (see
+    /// `Chart.setSeriesVisible`); `Chart.update` keeps theirs unless this field is present.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub hidden: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -332,7 +373,8 @@ pub struct ScaleSpec {
 pub enum Mark {
     /// Rectangles from a baseline (see [`Position`] for how they share an x category).
     Bar,
-    /// One polyline per series (2D only).
+    /// One polyline per series, flat in 2D and in world space in 3D (where `encoding.z` puts a
+    /// series on a depth row).
     Line,
     /// Pie and donut slices (`encoding.theta`), flat in 2D and extruded in 3D. No axes.
     Arc,
@@ -370,7 +412,7 @@ pub struct LayerSpec {
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub position: Position,
     /// Line layers: markers on the data points, `true` or `{ "size": px }`. Default: none
-    /// (the points still react to hover).
+    /// (the points still react to hover). In 3D the markers are discs that face the viewer.
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub point: Option<PointSpec>,
@@ -431,6 +473,11 @@ pub struct StyleSpec {
     #[serde(default)]
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub stroke_width: Option<f64>,
+    /// Lines in 3D: a translucent vertical "curtain" from the line down to the baseline, which
+    /// helps read depth. 3D line layers only.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub area: Option<bool>,
     /// Arcs: the hole's radius as a fraction of the outer radius, `0` (a pie, the default) up
     /// to but not including `1`. Above 0 it is a donut.
     #[serde(default)]

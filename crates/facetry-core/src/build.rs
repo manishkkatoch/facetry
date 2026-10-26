@@ -47,7 +47,7 @@ const BAND_PADDING_OUTER: f64 = 0.1;
 /// Roughly one numeric x tick per this much plot width.
 const X_TICK_SPACING: f64 = 80.0;
 /// How near (CSS px) the pointer must be to a line's data point to hover it.
-const POINT_PICK_RADIUS: f64 = 12.0;
+pub(crate) const POINT_PICK_RADIUS: f64 = 12.0;
 /// Space between the bars of a `group` layer, as a fraction of one bar's slot.
 const GROUP_PADDING_INNER: f64 = 0.1;
 /// Between a bar's end and its value label.
@@ -160,9 +160,9 @@ pub fn build_scene_with_theme(
                 // Union of every bound layer's categories, in first-seen order.
                 let mut domain: Vec<String> = Vec::new();
                 for layer in layers.iter().filter(|l| l.x_axis == i) {
-                    for c in layer.x_dict {
-                        if !domain.contains(c) {
-                            domain.push(c.clone());
+                    for c in layer.x_categories() {
+                        if !domain.contains(&c) {
+                            domain.push(c);
                         }
                     }
                 }
@@ -373,6 +373,7 @@ pub fn build_scene_with_theme(
         points: Vec::new(),
         arcs: Vec::new(),
         pick_radius: (POINT_PICK_RADIUS * s) as f32,
+        legend_hits: Vec::new(),
     };
     let snap = |v: f64| v.round();
     let rule = |key: String, kind, x: f64, y: f64, w: f64, h: f64, color| Rule {
@@ -458,7 +459,9 @@ pub fn build_scene_with_theme(
         // keeps its slot at x values where it has no row).
         let slots = (layer.position == Position::Group).then(|| {
             Band::new(
-                (0..layer.series_count()).map(|i| i.to_string()).collect(),
+                (0..layer.visible_series().len())
+                    .map(|i| i.to_string())
+                    .collect(),
                 (0.0, band.bandwidth()),
                 GROUP_PADDING_INNER,
                 0.0,
@@ -879,6 +882,7 @@ pub fn build_scene_with_theme(
     if let Some(l) = legend {
         scene.rules.extend(l.rules);
         scene.texts.extend(l.texts);
+        scene.legend_hits = l.hits;
     }
     scene
 }
@@ -969,6 +973,8 @@ fn layer_bars(
             })
             .collect(),
     };
+    // A group slot is the series' place among the series that are shown.
+    let shown = layer.visible_series();
     cells
         .iter()
         .zip(&spans)
@@ -982,7 +988,9 @@ fn layer_bars(
             };
             Some(Bar {
                 band: band_index,
-                slot: (layer.position == Position::Group).then_some(cell.series),
+                slot: (layer.position == Position::Group)
+                    .then(|| shown.iter().position(|&s| s == cell.series))
+                    .flatten(),
                 y0: span.y0,
                 y1: span.y1,
                 row: cell.row,
@@ -1040,7 +1048,13 @@ pub(crate) fn x_domain<'a>(
 ) -> (f64, f64) {
     let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
     for layer in layers.filter(|l| l.x_numeric) {
-        for &v in layer.x_num.iter().filter(|v| v.is_finite()) {
+        // Rows of hidden series do not count: the axis fits what is drawn.
+        for (_, &v) in layer
+            .x_num
+            .iter()
+            .enumerate()
+            .filter(|&(row, v)| v.is_finite() && !layer.row_hidden(row))
+        {
             lo = lo.min(v);
             hi = hi.max(v);
         }

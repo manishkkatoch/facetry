@@ -162,6 +162,62 @@ impl SliceMark {
     }
 }
 
+/// A line layer's series in 3D: runs of connected points in world space (a missing value ends
+/// a run). It is drawn as thick screen-space segments with round joins, like the grid lines
+/// but depth-tested against the bars, so the width is `width_px` at any distance and angle.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Polyline3 {
+    pub key: String,
+    pub color: Color,
+    /// Device pixels.
+    #[serde(serialize_with = "px")]
+    pub width_px: f32,
+    #[serde(serialize_with = "runs3")]
+    pub runs: Vec<Vec<[f32; 3]>>,
+    /// `style.area`: the world height of the baseline the translucent curtain under the line
+    /// reaches down (or up) to, drawn at [`AREA_ALPHA`] of the colour.
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "opt_w4")]
+    pub area: Option<f32>,
+    #[serde(skip)]
+    pub layer: usize,
+}
+
+/// Opacity of the curtain under a 3D line (`style.area`).
+pub const AREA_ALPHA: f32 = 0.28;
+
+fn runs3<S: Serializer>(v: &[Vec<[f32; 3]>], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
+    let rounded: Vec<Vec<(f64, f64, f64)>> = v
+        .iter()
+        .map(|run| run.iter().map(|p| (r(p[0]), r(p[1]), r(p[2]))).collect())
+        .collect();
+    rounded.serialize(s)
+}
+
+fn opt_w4<S: Serializer>(v: &Option<f32>, s: S) -> Result<S::Ok, S::Error> {
+    v.map(|x| (f64::from(x) * 10_000.0).round() / 10_000.0)
+        .serialize(s)
+}
+
+/// A data point of a 3D line layer, anchored in the world. Every finite point exists (so it can
+/// be hovered and clicked) but only those of a layer with `point` markers are drawn, as discs
+/// that face the viewer.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PointMark3 {
+    pub key: String,
+    #[serde(serialize_with = "w4_3")]
+    pub pos: [f32; 3],
+    pub color: Color,
+    /// Marker diameter in device pixels (also the size the hover marker grows from).
+    #[serde(serialize_with = "px")]
+    pub size_px: f32,
+    pub visible: bool,
+    #[serde(skip)]
+    pub layer: usize,
+    #[serde(skip)]
+    pub row: usize,
+}
+
 /// A straight line segment in world space (gridline, axis edge or tick mark). It is drawn as
 /// a screen-space quad `width_px` wide, so it is as crisp as 2D lines whatever the angle.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -213,6 +269,8 @@ pub enum LabelRole {
     /// Printed on the middle of box `mark` (a stacked segment's value): drawn only while the
     /// camera can see that point, that is, no other box is in front of it.
     OnMark(u32),
+    /// Printed by a line's data point: drawn only while no box is in front of the point.
+    OnPoint,
 }
 
 /// Label groups: which axis a [`LabelRole`] belongs to.
@@ -258,6 +316,9 @@ fn is_true(v: &bool) -> bool {
 pub struct Overlay {
     pub rules: Vec<crate::scene::Rule>,
     pub texts: Vec<crate::scene::Text>,
+    /// Where the legend's entries can be clicked (canvas pixels).
+    #[serde(skip)]
+    pub hits: Vec<crate::scene::LegendHit>,
 }
 
 impl Overlay {
@@ -272,6 +333,28 @@ fn plot_rect<S: Serializer>(v: &Option<[f32; 4]>, s: S) -> Result<S::Ok, S::Erro
 }
 
 impl Scene3d {
+    /// The series whose legend entry is under the canvas pixel `(x, y)`.
+    pub fn legend_pick(&self, x: f32, y: f32) -> Option<&str> {
+        crate::scene::legend_pick(&self.overlay.hits, x, y).map(|h| h.series.as_str())
+    }
+
+    /// The middle of the legend entry of `series`, in canvas pixels.
+    pub fn legend_center(&self, series: &str) -> Option<[f32; 2]> {
+        let b = self
+            .overlay
+            .hits
+            .iter()
+            .find(|h| h.series == series)?
+            .bounds;
+        Some([b.x + b.w / 2.0, b.y + b.h / 2.0])
+    }
+
+    /// Marks that hover and click can report, in one index space: the boxes, the pie slices,
+    /// then the line points.
+    pub fn mark_count(&self) -> usize {
+        self.boxes.len() + self.slices.len() + self.points.len()
+    }
+
     /// The part of the canvas the plot is drawn in: `[x, y, width, height]`.
     pub fn plot_rect(&self) -> [f32; 4] {
         self.plot
@@ -316,6 +399,16 @@ pub struct Scene3d {
     pub slices: Vec<SliceMark>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
+    /// Line layers' series, after the boxes and slices in draw order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub polylines: Vec<Polyline3>,
+    /// Line layers' data points. Hover and click index the marks as boxes, then slices, then
+    /// points.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<PointMark3>,
+    /// How near (device pixels) the pointer must be to a point's projection to pick it.
+    #[serde(skip)]
+    pub pick_radius: f32,
     pub texts: Vec<Text3>,
     /// Value labels of the bars that have one.
     #[serde(skip_serializing_if = "Vec::is_empty")]

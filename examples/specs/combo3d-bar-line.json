@@ -1,0 +1,23 @@
+{
+  "dimension": "3d",
+  "data": {
+    "sales": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4"],
+      "region": ["North", "North", "North", "North", "South", "South", "South", "South", "West", "West", "West", "West"],
+      "revenue": [60, 45, 70, 55, 48, 36, 56, 44, 36, 27, 42, 33]
+    },
+    "targets": {
+      "quarter": ["Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4"],
+      "region": ["North", "North", "North", "North", "South", "South", "South", "South", "West", "West", "West", "West"],
+      "target": [95, 100, 105, 110, 90, 95, 100, 105, 85, 90, 95, 100]
+    }
+  },
+  "axes": [{ "id": "x", "orient": "bottom", "title": "Quarter" }, { "id": "y", "orient": "left", "title": "Revenue" }, { "id": "z", "orient": "depth", "title": "Region" }],
+  "layers": [{ "mark": "bar", "data": "sales", "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "revenue", "axis": "y" }, "z": { "field": "region", "axis": "z" }, "color": { "field": "region" } } }, { "mark": "line", "data": "targets", "point": true, "style": { "strokeWidth": 2.5 }, "encoding": { "x": { "field": "quarter", "axis": "x" }, "y": { "field": "target", "axis": "y" }, "z": { "field": "region", "axis": "z" }, "color": { "value": "#1f2328" } } }],
+  "camera": {
+    "type": "perspective",
+    "azimuth": 30,
+    "elevation": 30,
+    "distance": 2.6
+  }
+}

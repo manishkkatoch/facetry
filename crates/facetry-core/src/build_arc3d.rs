@@ -77,6 +77,9 @@ pub(crate) fn build_pie_3d(
         boxes: Vec::new(),
         slices: Vec::new(),
         lines: Vec::new(),
+        polylines: Vec::new(),
+        points: Vec::new(),
+        pick_radius: 0.0,
         texts: Vec::new(),
         labels: Vec::new(),
     };

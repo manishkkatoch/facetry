@@ -36,6 +36,7 @@ snapshot!(empty_data, "bar-empty");
 snapshot!(many_categories_thin_labels, "bar-many");
 snapshot!(value_labels_always, "bar-labels");
 snapshot!(stacked_bars, "bar-stacked");
+snapshot!(stacked_bars_with_a_series_hidden, "bar-stacked-hidden");
 snapshot!(normalized_bars, "bar-normalized");
 snapshot!(grouped_bars, "bar-grouped");
 snapshot!(basic_lines, "line-basic");
@@ -130,6 +131,8 @@ snapshot3d!(negative_values_3d, "bar3d-negative");
 snapshot3d!(value_labels_hover_3d, "bar3d-labels");
 snapshot3d!(stacked_3d, "bar3d-stacked");
 snapshot3d!(pie_3d, "pie3d");
+snapshot3d!(lines_3d, "line3d");
+snapshot3d!(combo_bars_and_lines_3d, "combo3d-bar-line");
 
 #[test]
 fn grid_bars_are_square_boxes_in_the_right_cells() {

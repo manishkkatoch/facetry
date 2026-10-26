@@ -115,6 +115,16 @@ mod shader_tests {
     }
 
     #[test]
+    fn point3d_shader_is_valid_and_webgl2_translatable() {
+        check("point3d", include_str!("shaders/point3d.wgsl"), 144);
+    }
+
+    #[test]
+    fn curtain3d_shader_is_valid_and_webgl2_translatable() {
+        check("curtain3d", include_str!("shaders/curtain3d.wgsl"), 144);
+    }
+
+    #[test]
     fn text3d_shader_is_valid_and_webgl2_translatable() {
         check("text3d", include_str!("shaders/text3d.wgsl"), 144);
     }
