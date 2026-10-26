@@ -330,6 +330,18 @@ struct Anim {
     start_ms: Option<f64>,
     elapsed: f32,
     origin: Origin,
+    /// The lines, markers and slices as of the last frame, kept so the next frame only rewrites
+    /// their numbers (see `Plan::fill_marks`).
+    marks: Marks,
+}
+
+/// What the CPU tessellates, kept from frame to frame.
+#[derive(Debug, Default)]
+enum Marks {
+    #[default]
+    None,
+    TwoD(Box<Scene>),
+    ThreeD(Box<Scene3d>),
 }
 
 /// Where a transition started, which decides whether a resize can lay it out again.
@@ -596,7 +608,11 @@ impl Chart {
             Origin::Mid => None,
         };
         if let Some(plan) = from.and_then(|from| Plans::diff(&from, &self.scene, timing)) {
-            self.anim = Some(Anim { plan, ..anim });
+            self.anim = Some(Anim {
+                plan,
+                marks: Marks::None,
+                ..anim
+            });
         }
         self.reload_scene();
     }
@@ -1027,6 +1043,7 @@ impl Chart {
             start_ms: None,
             elapsed: 0.0,
             origin: shown.1,
+            marks: Marks::None,
         });
         self.reload_scene();
     }
@@ -1043,6 +1060,7 @@ impl Chart {
                 start_ms: None,
                 elapsed: 0.0,
                 origin: Origin::Blank,
+                marks: Marks::None,
             });
             self.reload_scene();
         }
@@ -1103,19 +1121,30 @@ impl Chart {
     /// Hands the renderer what changes from frame to frame at the transition's current time:
     /// the clock the GPU mixes by and what the CPU tessellates (and in 3D the plot box's size).
     fn upload_frame(&mut self) {
-        let Some(anim) = &self.anim else { return };
-        self.renderer.set_time(anim.elapsed);
+        let Some(anim) = &mut self.anim else { return };
+        let elapsed = anim.elapsed;
+        self.renderer.set_time(elapsed);
         match &anim.plan {
             Plans::TwoD(plan) => {
                 if plan.has_marks() {
-                    self.renderer.set_marks(&plan.marks_at(anim.elapsed));
+                    let Marks::TwoD(marks) = &mut anim.marks else {
+                        anim.marks = Marks::TwoD(Box::new(plan.marks_at(elapsed)));
+                        return self.upload_frame();
+                    };
+                    plan.fill_marks(marks, elapsed);
+                    self.renderer.set_marks(marks);
                 }
             }
             Plans::ThreeD(plan) => {
                 self.renderer
-                    .set_view_3d(plan.size_at(anim.elapsed), plan.plot_at(anim.elapsed));
+                    .set_view_3d(plan.size_at(elapsed), plan.plot_at(elapsed));
                 if plan.has_marks() {
-                    self.renderer.set_marks_3d(&plan.marks_at(anim.elapsed));
+                    let Marks::ThreeD(marks) = &mut anim.marks else {
+                        anim.marks = Marks::ThreeD(Box::new(plan.marks_at(elapsed)));
+                        return self.upload_frame();
+                    };
+                    plan.fill_marks(marks, elapsed);
+                    self.renderer.set_marks_3d(marks);
                 }
             }
         }

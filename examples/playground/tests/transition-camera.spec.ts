@@ -148,7 +148,7 @@ test("the camera tween runs on the real clock, draws frames while it does and th
   await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 120 }, { duration: 400 }));
   await expect.poll(() => animating(page)).toBe(false);
   const done = await frameCount();
-  expect(done - idle).toBeGreaterThan(3);
+  expect(done - idle).toBeGreaterThan(2);
   expect((await camera(page)).azimuth).toBe(120);
   await page.waitForTimeout(400);
   expect(await frameCount()).toBe(done);

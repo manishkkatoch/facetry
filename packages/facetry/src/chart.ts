@@ -451,6 +451,22 @@ export class Chart {
   }
 
   /**
+   * Test hook: like {@link __animationClock} but reports what the frame cost, in milliseconds on
+   * this page's clock: `seek` is the CPU work of moving the transition (morphing the marks,
+   * tessellating lines and slices, uploading buffers) and `render` the time `render` took to
+   * record and submit the frame (the GPU's own time is not in it). Not part of the supported API.
+   */
+  __timeFrame(ms: number, repeats = 1): { seek: number; render: number } {
+    this.#manualClock = ms;
+    const t0 = performance.now();
+    for (let i = 0; i < repeats; i++) this.#inner.seek(ms);
+    const t1 = performance.now();
+    this.#draw();
+    // `seek` is the mean of `repeats` runs (the timer is coarse); `render` is one run.
+    return { seek: (t1 - t0) / repeats, render: performance.now() - t1 };
+  }
+
+  /**
    * Schedules a redraw on the next animation frame. Calls before that frame coalesce into
    * one. We draw only when something changed (resize, an update, a hover), never in a
    * continuous loop, so an idle chart costs no CPU/GPU and no battery. While a transition

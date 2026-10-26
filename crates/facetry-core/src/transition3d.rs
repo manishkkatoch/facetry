@@ -21,7 +21,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::anim::{lerp, lerp_angle, lerp_color};
-use crate::pathmorph::{keyed_runs, match_runs, mix_runs, reveal_runs};
+use crate::pathmorph::{keyed_runs, match_runs, mix_runs, mix_runs_into, reveal_runs};
 use crate::scene::{AxisMap, Base, Scene};
 use crate::scene3d::{
     BoxMark, Line3, MarkLabel3, Overlay, PointMark3, Polyline3, Scene3d, SliceMark, Text3,
@@ -626,28 +626,59 @@ impl Plan3 {
         scene
     }
 
-    fn fill_marks(&self, scene: &mut Scene3d, elapsed_ms: f32) {
+    /// Fills `scene`'s lines, slices, data lines and markers with their state `elapsed_ms` in.
+    /// When `scene` already holds this plan's (from an earlier call) only the numbers are
+    /// rewritten, so a frame allocates next to nothing (keys are not copied again).
+    pub fn fill_marks(&self, scene: &mut Scene3d, elapsed_ms: f32) {
         let t = |delay: f32| self.timing.eased(elapsed_ms, delay);
-        scene.lines = self
-            .lines
-            .iter()
-            .map(|p| morph_line(p, t(p.delay_ms)))
-            .collect();
-        scene.slices = self
-            .slices
-            .iter()
+        if scene.lines.len() == self.lines.len() {
+            for (l, p) in scene.lines.iter_mut().zip(&self.lines) {
+                let e = t(p.delay_ms);
+                l.a = std::array::from_fn(|i| lerp(p.from.a[i], p.to.a[i], e));
+                l.b = std::array::from_fn(|i| lerp(p.from.b[i], p.to.b[i], e));
+                l.width_px = lerp(p.from.width_px, p.to.width_px, e);
+                l.color = lerp_color(p.from.color, p.to.color, e);
+            }
+        } else {
+            scene.lines = (self.lines.iter())
+                .map(|p| morph_line(p, t(p.delay_ms)))
+                .collect();
+        }
+        scene.slices = (self.slices.iter())
             .map(|p| morph_slice(p, t(p.delay_ms)))
             .collect();
-        scene.polylines = self
-            .polylines
-            .iter()
-            .map(|p| morph_polyline(p, t(p.delay_ms)))
-            .collect();
-        scene.points = self
-            .points
-            .iter()
-            .map(|p| morph_point(p, t(p.delay_ms)))
-            .collect();
+        if scene.polylines.len() == self.polylines.len() {
+            for (l, p) in scene.polylines.iter_mut().zip(&self.polylines) {
+                let e = t(p.delay_ms);
+                mix_runs_into(&mut l.runs, &p.from.runs, &p.to.runs, e);
+                l.color = lerp_color(p.from.color, p.to.color, e);
+                l.width_px = lerp(p.from.width_px, p.to.width_px, e);
+                l.area = match (p.from.area, p.to.area) {
+                    (Some(a), Some(b)) => Some(lerp(a, b, e)),
+                    (_, b) => b.or(p.from.area),
+                };
+                let reveal = lerp(p.from.reveal, p.to.reveal, e);
+                if reveal < 1.0 {
+                    l.runs = reveal_runs(&l.runs, reveal);
+                }
+            }
+        } else {
+            scene.polylines = (self.polylines.iter())
+                .map(|p| morph_polyline(p, t(p.delay_ms)))
+                .collect();
+        }
+        if scene.points.len() == self.points.len() {
+            for (m, p) in scene.points.iter_mut().zip(&self.points) {
+                let e = t(p.delay_ms);
+                m.pos = std::array::from_fn(|i| lerp(p.from.pos[i], p.to.pos[i], e));
+                m.size_px = lerp(p.from.size_px, p.to.size_px, e).max(0.0);
+                m.color = lerp_color(p.from.color, p.to.color, e);
+            }
+        } else {
+            scene.points = (self.points.iter())
+                .map(|p| morph_point(p, t(p.delay_ms)))
+                .collect();
+        }
     }
 
     /// The scene as it looks `elapsed_ms` into the transition: every item mixed between its two

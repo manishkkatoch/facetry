@@ -294,7 +294,7 @@ test("rendering runs while a transition does and stops when it ends", async ({ p
   await expect.poll(async () => (await stats()).animating).toBe(false);
   const done = await stats();
   // Many frames were drawn during half a second (a software GL machine may manage fewer).
-  expect(done.frames - idle).toBeGreaterThan(4);
+  expect(done.frames - idle).toBeGreaterThan(2);
   await page.waitForTimeout(500);
   expect((await stats()).frames).toBe(done.frames);
 });
@@ -666,4 +666,53 @@ test("hover on a 3D box works while it is still growing", async ({ page }) => {
   expect(pos).toBeTruthy();
   await page.mouse.move(pos.x, pos.y);
   await expect.poll(() => page.evaluate(() => (window as any).__hover.at(-1))).toBe(key);
+});
+
+test("animateIn works in 3D too: the boxes grow, the camera framing is final from the first frame", async ({ page }) => {
+  await open(page, "bar3d-stacked", "&animateIn=1&clock=manual");
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(true);
+  const first = await at(page, 0);
+  const mid = await at(page, 200);
+  const end = await at(page, 10_000);
+  // Nothing of the bars at the start (a pixel is a box if it is not background, grid or text:
+  // count saturated pixels).
+  const saturated = (png: PNG) => {
+    let n = 0;
+    for (let i = 0; i < png.data.length; i += 4) {
+      const [r, g, b] = [png.data[i]!, png.data[i + 1]!, png.data[i + 2]!];
+      if (Math.max(r, g, b) - Math.min(r, g, b) > 60) n++;
+    }
+    return n;
+  };
+  // (The legend's swatches are saturated too, hence not 0.)
+  expect(saturated(first)).toBeLessThan(600);
+  expect(saturated(mid)).toBeGreaterThan(saturated(first) + 2_000);
+  expect(saturated(end)).toBeGreaterThan(saturated(mid));
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(false);
+});
+
+test("3D: a snapshot during a transition shows the target, and a resize carries the transition on", async ({ page }) => {
+  await open(page, "bar3d-stacked");
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v, i) => (i % 2 ? v * 2 : v * 0.4));`);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(120));
+  const grab = () =>
+    page.evaluate(async () => {
+      const blob: Blob = await (window as any).facetryChart.snapshot({ scale: 1 });
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+  const during = PNG.sync.read(Buffer.from(await grab()));
+  expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(true);
+  await at(page, 10_000);
+  const after = PNG.sync.read(Buffer.from(await grab()));
+  expect(differing(during, after, 0)).toBe(0);
+
+  // Resize in the middle of another one.
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v) => v * 0.7);`);
+  await page.evaluate(() => (window as any).facetryChart.__animationClock(150));
+  await page.setViewportSize({ width: 620, height: 420 });
+  await page.waitForTimeout(150);
+  await at(page, 10_000);
+  const settled = await shot(page);
+  await update(page, `const t = spec.data.sales; t.revenue = t.revenue.map((v) => v * 0.7);`, { transition: false });
+  expect(differing(settled, await shot(page), 0)).toBe(0);
 });

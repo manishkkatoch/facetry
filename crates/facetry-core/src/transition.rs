@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::Color;
 use crate::anim::{lerp, lerp_angle, lerp_bounds, lerp_color};
-use crate::pathmorph::{keyed_runs, match_runs, mix_runs, reveal_runs};
+use crate::pathmorph::{keyed_runs, match_runs, mix_runs, mix_runs_into, reveal_runs};
 use crate::scene::{
     ArcMark, AxisMap, Base, MarkLabel, PointMark, Polyline, Rect, Rule, Scene, Text, TickRef,
 };
@@ -88,18 +88,25 @@ pub(crate) enum Change {
 /// names) the n-th new item with it matches the n-th old one, and an old item is matched at
 /// most once, so nothing can move to two places.
 pub(crate) fn diff_keys<T>(old: &[T], new: &[T], key: impl Fn(&T) -> &str) -> Vec<Change> {
+    // One copy of the matching code for every kind of item (this is called for a dozen).
+    let old: Vec<&str> = old.iter().map(&key).collect();
+    let new: Vec<&str> = new.iter().map(&key).collect();
+    diff_str_keys(&old, &new)
+}
+
+fn diff_str_keys(old: &[&str], new: &[&str]) -> Vec<Change> {
     const NONE: usize = usize::MAX;
     // The old items of each key as a chain, in order: `head[key]` is the first one not yet
     // matched and `next[i]` the one after `i`.
     let mut head: HashMap<&str, usize> = HashMap::with_capacity(old.len());
     let mut next = vec![NONE; old.len()];
-    for (i, item) in old.iter().enumerate().rev() {
-        next[i] = head.insert(key(item), i).unwrap_or(NONE);
+    for (i, key) in old.iter().enumerate().rev() {
+        next[i] = head.insert(key, i).unwrap_or(NONE);
     }
     let mut used = vec![false; old.len()];
     let mut out = Vec::with_capacity(new.len());
-    for (n, item) in new.iter().enumerate() {
-        match head.get_mut(key(item)) {
+    for (n, key) in new.iter().enumerate() {
+        match head.get_mut(key) {
             Some(first) if *first != NONE => {
                 let o = *first;
                 *first = next[o];
@@ -764,21 +771,41 @@ impl Plan {
         scene
     }
 
-    fn fill_marks(&self, scene: &mut Scene, elapsed_ms: f32) {
+    /// Fills `scene`'s lines, markers and slices with their state `elapsed_ms` in. When `scene`
+    /// already holds this plan's (from an earlier call) only the numbers are rewritten, so a
+    /// frame allocates next to nothing (keys, for one, are not copied again).
+    pub fn fill_marks(&self, scene: &mut Scene, elapsed_ms: f32) {
         let t = |delay: f32| self.timing.eased(elapsed_ms, delay);
-        scene.polylines = self
-            .polylines
-            .iter()
-            .map(|p| morph_polyline(p, t(p.delay_ms)))
-            .collect();
-        scene.points = self
-            .points
-            .iter()
-            .map(|p| morph_point(p, t(p.delay_ms)))
-            .collect();
-        scene.arcs = self
-            .arcs
-            .iter()
+        if scene.polylines.len() == self.polylines.len() {
+            for (l, p) in scene.polylines.iter_mut().zip(&self.polylines) {
+                let e = t(p.delay_ms);
+                mix_runs_into(&mut l.runs, &p.from.runs, &p.to.runs, e);
+                l.color = lerp_color(p.from.color, p.to.color, e);
+                l.width = lerp(p.from.width, p.to.width, e);
+                let reveal = lerp(p.from.reveal, p.to.reveal, e);
+                if reveal < 1.0 {
+                    l.runs = reveal_runs(&l.runs, reveal);
+                }
+            }
+        } else {
+            scene.polylines = (self.polylines.iter())
+                .map(|p| morph_polyline(p, t(p.delay_ms)))
+                .collect();
+        }
+        if scene.points.len() == self.points.len() {
+            for (m, p) in scene.points.iter_mut().zip(&self.points) {
+                let e = t(p.delay_ms);
+                m.x = lerp(p.from.x, p.to.x, e);
+                m.y = lerp(p.from.y, p.to.y, e);
+                m.size = lerp(p.from.size, p.to.size, e).max(0.0);
+                m.color = lerp_color(p.from.color, p.to.color, e);
+            }
+        } else {
+            scene.points = (self.points.iter())
+                .map(|p| morph_point(p, t(p.delay_ms)))
+                .collect();
+        }
+        scene.arcs = (self.arcs.iter())
             .map(|p| morph_arc(p, t(p.delay_ms)))
             .collect();
     }

@@ -214,3 +214,23 @@ pub fn mix_runs<const N: usize>(
         })
         .collect()
 }
+
+/// [`mix_runs`] written into `out`, reusing its allocations when it already has the shape (the
+/// runs and points of `from` and `to`): what a frame-by-frame animation of a line does, to keep
+/// the allocator out of the loop.
+pub fn mix_runs_into<const N: usize>(
+    out: &mut Runs<N>,
+    from: &[Vec<[f32; N]>],
+    to: &[Vec<[f32; N]>],
+    e: f32,
+) {
+    out.resize_with(from.len().min(to.len()), Vec::new);
+    for ((o, a), b) in out.iter_mut().zip(from).zip(to) {
+        o.clear();
+        o.extend(
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| std::array::from_fn(|i| lerp(a[i], b[i], e))),
+        );
+    }
+}

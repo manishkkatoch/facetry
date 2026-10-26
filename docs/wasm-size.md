@@ -619,3 +619,37 @@ and Playwright suite pass unchanged. Deliberate differences, all listed in that 
 * Text after the first JSON value is still ignored by `parse_spec_json`, as before.
 * Floats parse correctly rounded; `serde_json`'s default can be one ULP off for inputs with many
   digits (the browser path never had that).
+
+## M5: animated transitions
+
+Gzip -9 sizes at each step (baseline is main at 1765804):
+
+| step | WebGPU | WebGL2 |
+|---|---:|---:|
+| baseline | 302,702 | 944,713 |
+| phase 1 (2D bars, axes, text, legend) | 317,317 (+14,615) | 959,160 (+14,447) |
+| phase 2 (2D lines and arcs, all 3D marks) | 343,092 (+25,775) | 985,206 (+26,046) |
+| phase 3 (camera tweens, legend toggle) | 347,025 (+3,933) | 988,566 (+3,360) |
+
+Final: WebGPU raw 775,644 / gzip 347,025 / brotli 284,781; WebGL2 raw 2,389,848 / gzip 988,566 /
+brotli 780,084. Total growth +44,323 B gzip (+14.6%) WebGPU and +43,853 (+4.6%) WebGL2.
+
+Where the bytes go (twiggy/rollup, WebGPU build): about 49 KB raw is the transition code of
+`facetry-core` (`Plan::diff` about 14 KB, `Plan3::diff` about 13.7 KB, the rest sampling, seams,
+easing and path morphing) and about 17 KB is wasm glue for the new `Chart` methods. The shaders
+are WGSL text and grow the data segment a little (the easing functions are shared through
+`ease.wgsl`). Micro-optimisations tried (splitting `diff_keys` into a non-generic
+`diff_str_keys`, scratch buffers) saved 250 B or less each; a second `wasm-opt` pass would save
+about 1.2 KB gzip but `scripts/build-wasm.sh` was left alone.
+
+Per-frame CPU cost (`examples/playground/tests/transition-cost.spec.ts`, WebGL2 in headless
+Chromium; `seek` is the morph, tessellation and buffer upload; render time on software GL is not
+meaningful):
+
+| chart | CPU per frame |
+|---|---|
+| 1000 bars, 250 x 4 stacked | under 0.01 ms |
+| 200-slice donut | about 0.1 ms |
+| 3D, 30 x 30 boxes | about 0.07 ms |
+| 4 x 250 lines with 1000 markers | 3.6 to 7 ms (p95 up to about 16 ms), nearly all marker discs |
+| the same lines without markers | about 0.2 ms |
