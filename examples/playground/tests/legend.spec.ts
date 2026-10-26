@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { PNG } from "pngjs";
 
 // The legend: drawn with the chart (and in PNG snapshots), laid out beside the plot, never
@@ -41,8 +43,15 @@ async function shot(page: Page) {
   expect(motion).toEqual({ reduced: true, animating: false });
   const bytes = await page.locator("#chart").screenshot();
   // Kept with the test's results so a failure can be compared pixel by pixel.
-  await test.info().attach(`screen-${++shots}`, { body: bytes, contentType: "image/png" });
+  keep(`screen-${++shots}.png`, bytes);
   return PNG.sync.read(bytes);
+}
+
+/** Writes a compared image into the test's output folder, which CI uploads when a test fails. */
+function keep(name: string, bytes: Buffer) {
+  const path = test.info().outputPath(name);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, bytes);
 }
 
 /** Pixels of `png` within `box` close to `want`. */
@@ -66,7 +75,7 @@ async function snapshotPng(page: Page, options?: object) {
     return btoa(binary);
   }, options);
   const bytes = Buffer.from(base64, "base64");
-  await test.info().attach(`snapshot-${++shots}`, { body: bytes, contentType: "image/png" });
+  keep(`snapshot-${++shots}.png`, bytes);
   return PNG.sync.read(bytes);
 }
 
