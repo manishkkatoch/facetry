@@ -44,8 +44,12 @@ struct Varying {
 @vertex
 fn vs_main(v: Vertex) -> Varying {
     let ambient = globals.light.w;
-    let lambert = max(dot(normalize(v.normal), globals.light.xyz), 0.0);
-    let shade = ambient + (1.0 - ambient) * lambert;
+    // A zero normal marks ink printed on a surface (a filled icon): its own colour, unlit.
+    var shade = 1.0;
+    if dot(v.normal, v.normal) > 0.25 {
+        let lambert = max(dot(normalize(v.normal), globals.light.xyz), 0.0);
+        shade = ambient + (1.0 - ambient) * lambert;
+    }
     let lit = mix(v.color.rgb * shade, vec3<f32>(1.0), 0.12 * v.hover);
     return Varying(globals.view_proj * vec4<f32>(v.pos, 1.0), lit, v.normal, v.pos, v.gloss);
 }

@@ -18,9 +18,10 @@
 import type { ChartSpec, DiagramStyle } from "../wasm/facetry_wasm.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
-import { iconPath, type IconPath, type IconSource } from "./icons.js";
+import { iconParts, type IconParts, type IconSource } from "./icons.js";
 
-export type { DiagramIssue, DiagramStyle, IconPath, IconSource };
+export type { DiagramIssue, DiagramStyle, IconSource };
+export type { FillRule, IconFillPath, IconParts, IconPath } from "./icons.js";
 export { iconFromSvg } from "./icons.js";
 
 export interface DiagramOptions {
@@ -44,9 +45,10 @@ export interface DiagramOptions {
   cards?: boolean;
   /**
    * Icons of your own, by name, for `@{ icon: "name" }` in the Mermaid text (they win over a
-   * built-in icon of the same name): SVG markup as an icon set ships it, bare path data in a
-   * 24 by 24 box, or `{ d, viewBox }`. They are drawn as lines, like the built-in icons, and
-   * travel inside the returned spec (`diagram.icons`), so it still draws on its own.
+   * built-in icon of the same name): SVG markup as an icon set ships it, bare path data of a
+   * filled shape in a 24 by 24 box, or `{ stroke?, fill?, fillRule?, viewBox? }`. Filled shapes
+   * are filled and stroked ones drawn as lines, in the style's ink. They travel inside the
+   * returned spec (`diagram.icons`), so it still draws on its own.
    *
    * ```ts
    * await diagram.fromMermaid('flowchart LR\n  a[Pump]@{ icon: "pump" }', {
@@ -83,7 +85,7 @@ export const diagram = {
    */
   async fromMermaid(source: string, options: DiagramOptions = {}): Promise<ChartSpec> {
     const icons = Object.entries(options.icons ?? {}).map(
-      ([name, source]): [string, IconPath] => [name, iconPath(name, source)],
+      ([name, source]): [string, IconParts] => [name, iconParts(name, source)],
     );
     const glue = await load();
     try {
@@ -92,7 +94,10 @@ export const diagram = {
         options.style,
         options.cards,
         icons.map(([name]) => name),
-        icons.map(([, icon]) => icon.d),
+        icons.map(([, icon]) => icon.stroke ?? ""),
+        new Uint32Array(icons.map(([, icon]) => icon.fill.length)),
+        icons.flatMap(([, icon]) => icon.fill.map((f) => f.d)),
+        new Uint8Array(icons.flatMap(([, icon]) => icon.fill.map((f) => (f.fillRule === "evenodd" ? 1 : 0)))),
         new Float64Array(icons.flatMap(([, icon]) => icon.viewBox ?? [NaN, NaN, NaN, NaN])),
       );
       return JSON.parse(json) as ChartSpec;

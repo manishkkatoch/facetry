@@ -13,10 +13,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramNode, DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding,
-    InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig,
-    LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
-    PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    DiagramNode, DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding, FillRule,
+    IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
+    LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig,
+    PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -551,9 +551,27 @@ fn read_custom_icons(v: Value) -> Read<Vec<(String, CustomIcon)>> {
 
 fn read_custom_icon(v: Value) -> Read<CustomIcon> {
     object!(v, "CustomIcon", CustomIcon {
-        d [req] = "d" => string,
+        stroke [def] = "stroke" => opt(string),
+        fill [def] = "fill" => list(read_icon_fill),
         view_box [def] = "viewBox" => opt(quad),
     })
+}
+
+fn read_icon_fill(v: Value) -> Read<IconFill> {
+    object!(v, "IconFill", IconFill {
+        d [req] = "d" => string,
+        fill_rule [def] = "fillRule" => read_fill_rule,
+    })
+}
+
+fn read_fill_rule(v: Value) -> Read<FillRule> {
+    variant(
+        v,
+        &[
+            ("nonzero", FillRule::NonZero),
+            ("evenodd", FillRule::EvenOdd),
+        ],
+    )
 }
 
 /// A fixed-size quadruple, read like [`pair`].

@@ -493,7 +493,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 104 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 106 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -529,21 +529,26 @@ const spec = await diagram.fromMermaid('flowchart LR\n  p[Pump station]@{ icon: 
   style: "schematic",
   icons: {
     pump: await (await fetch("/icons/pump.svg")).text(), // SVG markup, as an icon set ships it
-    valve: "M4 8l16 8V8L4 16z",                          // bare path data, in a 24 x 24 box
-    tank: { d: "M64 32h384v448H64z", viewBox: [0, 0, 512, 512] },
+    valve: "M4 8l16 8V8L4 16z",                          // a filled path, in a 24 x 24 box
+    tank: { stroke: "M64 32h384v448H64z", fill: "M128 320h256v128H128z", viewBox: [0, 0, 512, 512] },
   },
 });
 ```
 
-An icon is SVG markup, the path data of a `<path d="...">` drawn in a 24 by 24 box, or
-`{ d, viewBox }`. Markup is read in the browser: every `path`, `circle`, `ellipse`, `rect`
-(rounded too), `line`, `polyline` and `polygon`, inside the `<svg>`'s `viewBox` (or its `width` and
-`height`); shapes painted neither filled nor stroked (an icon set's invisible bounding box) are
+An icon is SVG markup; bare path data, which is filled (that is how filled icon sets such as
+Material Design Icons, Simple Icons and Font Awesome publish their paths) in a 24 by 24 box; or
+`{ stroke?, fill?, fillRule?, viewBox? }`, path data drawn as lines and path data filled. Markup
+is read in the browser: every `path`, `circle`, `ellipse`, `rect` (rounded too), `line`,
+`polyline` and `polygon` inside the `<svg>`'s `viewBox` (or its `width` and `height`) is filled
+and/or drawn as lines as SVG would paint it (`fill`, `stroke` and `fill-rule`, inherited, as
+attributes or in `style`); shapes painted neither way (an icon set's invisible bounding box) are
 left out, and `transform`, `<use>`, `<text>` and `<image>` are refused (flatten transforms first,
-e.g. with SVGO). Path data takes every SVG command, curves and arcs included. Icons are drawn as
-lines in the style's ink, like the built-in ones: line-icon sets (Lucide, Tabler, Feather, ...)
-look as designed, filled ones show their outlines. The icons travel inside the returned spec
-(`diagram.icons`, path data and viewBox only), so it still draws on its own; `iconFromSvg(markup)`
+e.g. with SVGO). Path data takes every SVG command, curves and arcs included. Both kinds of
+icon set look as designed: line icons (Lucide, Tabler, Feather, ...) as lines, filled ones
+filled, holes and both fill rules included; lines and fills are in the style's ink, as the
+built-in icons are, whatever colours the SVG names. The icons travel inside the returned spec
+(`diagram.icons`: `{ stroke?, fill?: [{ d, fillRule? }], viewBox? }`, each filled shape kept
+apart as SVG fills each element on its own), so it still draws on its own; `iconFromSvg(markup)`
 from `facetry/diagrams` does the conversion for a spec written by hand. A broken icon rejects
 with `code: "invalid-options"`, naming the icon and where its path goes wrong; an icon over
 4,000 points (once curves are cut into steps) is refused as too detailed. The playground passes
@@ -619,7 +624,7 @@ and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 
 **Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
 `nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor?, icon?,
-card? }]`, `icons?: { <name>: { d, viewBox? } }`
+card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }`
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
 "cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
@@ -840,9 +845,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 789,075 B (771 KiB) | 352,785 B (345 KiB) | 291,619 B (285 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,396,504 B (2340 KiB) | 995,193 B (972 KiB) | 787,506 B (769 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 240,143 B (235 KiB) | 104,079 B (102 KiB) | 89,231 B (87 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 799,930 B (781 KiB) | 356,628 B (348 KiB) | 294,559 B (288 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,407,405 B (2351 KiB) | 999,485 B (976 KiB) | 790,255 B (772 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 244,536 B (239 KiB) | 105,706 B (103 KiB) | 90,692 B (89 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -860,7 +865,10 @@ equipment, pipes, signs and upright printed text); the add-on only learned its n
 your own added 6,489 B gzip to the WebGPU module, 6,135 to the WebGL2 one and 6,225 to the
 add-on, about half of it the SVG path reader (its own number reader, as `str::parse` would
 link the standard one); they are kept as a list of pairs rather than a map, which saved about
-3 KB in each module.
+3 KB in each module. Filled icons then added 3,843 B gzip to the WebGPU module, 4,292 to the
+WebGL2 one and 1,627 to the add-on (which checks icons but never triangulates them); the
+triangulation is under 1 KB since it sorts with a small insertion sort of its own (the
+standard library's sorts had cost 5 KB).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

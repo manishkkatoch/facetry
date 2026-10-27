@@ -10,7 +10,9 @@
 
 use crate::Color;
 use crate::Theme;
-use crate::diagram::{ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length};
+use crate::diagram::{
+    ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length, push_icon_shape,
+};
 use crate::diagram_glossy::{push_shadow_with, rgb};
 use crate::diagram_isometric::{along, darken, outline};
 use crate::scene::Anchor;
@@ -535,33 +537,24 @@ fn push_sign(
     if let Some(name) = icon {
         let icon_size = SIGN_ICON * size;
         let k = icon_size / 24.0;
-        let runs = plan
-            .icon(name)
-            .iter()
-            .map(|stroke| {
-                stroke
-                    .iter()
-                    .map(|p| {
-                        // In the board's plane: x along `right`, y (down in the icon) down.
-                        let u = plan.len(left + p[0] * k);
-                        let v = plan.len(icon_size / 2.0 - p[1] * k);
-                        [
-                            anchor[0] + (u * right[0]) as f32,
-                            anchor[1] + v as f32,
-                            anchor[2] + (u * right[1]) as f32,
-                        ]
-                    })
-                    .collect()
-            })
-            .collect();
-        scene.polylines.push(Polyline3 {
-            key: format!("{key}/sign/icon"),
-            color: flow_color(),
-            width_px: (1.6 * s) as f32,
-            runs,
-            area: None,
-            layer: 0,
-        });
+        // In the board's plane: x along `right`, y (down in the icon) down.
+        let place = |p: [f64; 2]| {
+            let u = plan.len(left + p[0] * k);
+            let v = plan.len(icon_size / 2.0 - p[1] * k);
+            [
+                anchor[0] + (u * right[0]) as f32,
+                anchor[1] + v as f32,
+                anchor[2] + (u * right[1]) as f32,
+            ]
+        };
+        push_icon_shape(
+            scene,
+            &format!("{key}/sign/icon"),
+            &plan.icon(name),
+            place,
+            flow_color(),
+            1.6 * s,
+        );
     }
     let step = size * LINE_HEIGHT;
     for (k, line) in lines.iter().enumerate() {

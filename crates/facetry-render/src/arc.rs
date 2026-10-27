@@ -8,7 +8,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::scene::ArcMark;
-use facetry_core::scene3d::{PrismMark, RibbonMark, ShadowMark, SliceMark, Stand};
+use facetry_core::scene3d::{FillMark, PrismMark, RibbonMark, ShadowMark, SliceMark, Stand};
 
 /// Widest angular step of a slice's rim.
 const MAX_STEP: f32 = 2.0 * std::f32::consts::PI / 180.0;
@@ -147,6 +147,19 @@ pub fn slice(s: &SliceMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
             ]);
         }
     }
+}
+
+/// Appends the triangles of a fill (ink printed on a surface): as given, with a zero normal,
+/// which the shader draws unlit in the fill's own colour.
+pub fn fill(f: &FillMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
+    let usable = f.triangles.len() / 3 * 3;
+    out.extend(f.triangles[..usable].iter().map(|&pos| Vertex3 {
+        pos,
+        normal: [0.0; 3],
+        color,
+        hover: 0.0,
+        gloss: 0.0,
+    }));
 }
 
 /// How far short of a standing prism's faces its walls stop, as a share of its depth.

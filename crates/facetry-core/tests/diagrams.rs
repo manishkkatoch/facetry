@@ -539,7 +539,7 @@ fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
     // A diagonal across a 48-wide viewBox: fitted into the 24 box, centred.
     let json = with_icons(
         "slash",
-        r#""slash": { "d": "M0 0 L48 24", "viewBox": [0, 0, 48, 24] }"#,
+        r#""slash": { "stroke": "M0 0 L48 24", "viewBox": [0, 0, 48, 24] }"#,
     );
     let s = spec(&json);
     assert_eq!(validate(&s), vec![]);
@@ -559,7 +559,7 @@ fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
             .find(|p| p.key == "a/icon")
             .unwrap()
     };
-    let own = star(&with_icons("star", r#""star": { "d": "M2 2 H22" }"#));
+    let own = star(&with_icons("star", r#""star": { "stroke": "M2 2 H22" }"#));
     assert_eq!(own.runs.len(), 1);
     assert_eq!(own.runs[0].len(), 2);
     assert!(star(&with_icons("star", "")).runs[0].len() > 2);
@@ -579,18 +579,36 @@ fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
 
 #[test]
 fn broken_custom_icons_are_reported_where_they_are() {
-    let got = issues(&with_icons("pump", r#""pump": { "d": "M0 0 L 5" }"#));
+    let got = issues(&with_icons("pump", r#""pump": { "stroke": "M0 0 L 5" }"#));
     assert_eq!(got.len(), 1);
-    assert_eq!(got[0].path, "/diagram/icons/pump/d");
+    assert_eq!(got[0].path, "/diagram/icons/pump/stroke");
     assert_eq!(got[0].message, "expected a number at the end of the path");
+    // A filled shape's path is reported at its place in the list.
     let got = issues(&with_icons(
         "pump",
-        r#""pump": { "d": "M0 0 L5 5", "viewBox": [0, 0, 0, 24] }"#,
+        r#""pump": { "fill": [{ "d": "M0 0h4v4z" }, { "d": "M0 0 K" }] }"#,
+    ));
+    assert_eq!(got[0].path, "/diagram/icons/pump/fill/1/d");
+    let got = issues(&with_icons(
+        "pump",
+        r#""pump": { "fill": [{ "d": "M0 0h4v4z", "fillRule": "odd" }] }"#,
+    ));
+    assert_eq!(got[0].path, "/diagram/icons/pump/fill/0/fillRule");
+    // An icon with neither lines nor fills.
+    let got = issues(&with_icons(
+        "pump",
+        r#""pump": { "viewBox": [0, 0, 24, 24] }"#,
+    ));
+    assert_eq!(got[0].path, "/diagram/icons/pump");
+    assert_eq!(got[0].message, "an icon needs `stroke` or `fill` path data");
+    let got = issues(&with_icons(
+        "pump",
+        r#""pump": { "stroke": "M0 0 L5 5", "viewBox": [0, 0, 0, 24] }"#,
     ));
     assert_eq!(got[0].path, "/diagram/icons/pump/viewBox");
     let got = issues(&with_icons(
         "pump",
-        r#""pump": { "d": "M0 0 L5 5", "viewBox": [0, 0, 24] }"#,
+        r#""pump": { "stroke": "M0 0 L5 5", "viewBox": [0, 0, 24] }"#,
     ));
     assert_eq!(got[0].path, "/diagram/icons/pump/viewBox");
     assert!(
@@ -598,14 +616,73 @@ fn broken_custom_icons_are_reported_where_they_are() {
         "{got:?}"
     );
     // A name with a slash is escaped in the pointer.
-    let got = issues(&with_icons("a/b", r#""a/b": { "d": "Q" }"#));
-    assert_eq!(got[0].path, "/diagram/icons/a~1b/d");
+    let got = issues(&with_icons("a/b", r#""a/b": { "stroke": "Q" }"#));
+    assert_eq!(got[0].path, "/diagram/icons/a~1b/stroke");
     // A node may only name an icon that exists.
-    let got = issues(&with_icons("pumpp", r#""pump": { "d": "M0 0 L5 5" }"#));
+    let got = issues(&with_icons("pumpp", r#""pump": { "stroke": "M0 0 L5 5" }"#));
     assert_eq!(got[0].path, "/diagram/nodes/0/icon");
     assert!(
         got[0]
             .message
             .starts_with("no icon \"pumpp\": it is not in the diagram's `icons`")
     );
+}
+
+#[test]
+fn filled_icons_are_printed_as_flat_triangles_with_their_holes() {
+    // A 20 by 20 square with an 8 by 8 hole (even-odd), and a dot in the hole (its own shape).
+    let json = with_icons(
+        "frame",
+        r#""frame": { "fill": [
+            { "d": "M2 2h20v20H2z M8 8v8h8V8z", "fillRule": "evenodd" },
+            { "d": "M11 11h2v2h-2z" }
+        ], "stroke": "M2 23 H22" }"#,
+    );
+    let s = spec(&json);
+    assert_eq!(validate(&s), vec![]);
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let fill = scene
+            .fills
+            .iter()
+            .find(|f| f.key.ends_with("icon"))
+            .expect(style);
+        assert_eq!(fill.triangles.len() % 3, 0);
+        // Its lines are drawn too, under the same key.
+        assert!(scene.polylines.iter().any(|p| p.key == fill.key), "{style}");
+        if style == "schematic" {
+            continue;
+        }
+        // Lying on the node's top: the area is (400 - 64 + 4) / 576 of the icon's square.
+        let area: f32 = fill
+            .triangles
+            .chunks_exact(3)
+            .map(|t| {
+                let (a, b, c) = (t[0], t[1], t[2]);
+                ((b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2])).abs() / 2.0
+            })
+            .sum();
+        let side = scene
+            .polylines
+            .iter()
+            .find(|p| p.key == fill.key)
+            .unwrap()
+            .runs[0]
+            .windows(2)
+            .map(|w| (w[1][0] - w[0][0]).abs())
+            .sum::<f32>()
+            / 20.0
+            * 24.0;
+        let want = side * side * 340.0 / 576.0;
+        assert!(
+            (area - want).abs() < want * 1e-3,
+            "{style}: {area} vs {want}"
+        );
+        assert!(
+            fill.triangles
+                .iter()
+                .all(|p| (p[1] - fill.triangles[0][1]).abs() < 1e-6)
+        );
+    }
 }

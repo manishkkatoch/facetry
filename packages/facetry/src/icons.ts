@@ -1,29 +1,52 @@
 import { FacetryError } from "./errors.js";
 
-/** An icon as SVG path data drawn in `viewBox` (`[minX, minY, width, height]`, default `[0, 0, 24, 24]`). */
-export interface IconPath {
+export type FillRule = "nonzero" | "evenodd";
+
+/** One filled shape of an icon: path data and its fill rule (default `"nonzero"`, as in SVG). */
+export interface IconFillPath {
   d: string;
+  fillRule?: FillRule;
+}
+
+/**
+ * An icon as SVG path data drawn in `viewBox` (`[minX, minY, width, height]`, default
+ * `[0, 0, 24, 24]`): `stroke`, path data drawn as lines, and `fill`, filled shapes (one path
+ * data string, or a list of shapes each filled on its own). At least one of the two.
+ */
+export interface IconPath {
+  stroke?: string;
+  fill?: string | IconFillPath[];
+  /** For a `fill` given as one string. */
+  fillRule?: FillRule;
   viewBox?: [number, number, number, number];
 }
 
 /**
  * An icon for `DiagramOptions.icons`: SVG markup (`"<svg ...>...</svg>"`, as an icon set ships
- * it), bare path data (the `d` of a `<path>`, in a 24 by 24 box), or path data with its
- * viewBox. Icons are drawn as lines, like the built-in ones: line icons (Lucide, Tabler,
- * Feather, ...) look as designed, filled ones show their outlines.
+ * it), bare path data (the `d` of a filled `<path>` in a 24 by 24 box, as Material Design
+ * Icons, Simple Icons or Font Awesome publish it), or an {@link IconPath}. Filled shapes are
+ * filled and stroked ones drawn as lines, both in the style's ink.
  */
 export type IconSource = string | IconPath;
+
+/** An icon in the form the diagrams module takes: lines, and filled shapes one by one. */
+export interface IconParts {
+  stroke?: string;
+  fill: IconFillPath[];
+  viewBox?: [number, number, number, number];
+}
 
 const SKIPPED = new Set(["defs", "title", "desc", "metadata", "clipPath", "mask", "symbol", "style"]);
 
 /**
- * Converts SVG markup into one path: every `path`, `circle`, `ellipse`, `rect`, `line`,
- * `polyline` and `polygon`, with the `viewBox` (or `width` and `height`) of the `<svg>`.
- * Shapes painted neither filled nor stroked (an icon set's invisible bounding box) are left
- * out. Throws a `FacetryError` (`"invalid-options"`) for what it cannot place exactly:
- * `transform`s, `<use>`, `<text>` and `<image>`.
+ * Converts SVG markup into path data: every `path`, `circle`, `ellipse`, `rect`, `line`,
+ * `polyline` and `polygon`, filled where SVG would fill it (`fill` and `fill-rule`, inherited,
+ * from attributes or the `style` attribute) and drawn as lines where it would stroke it, with
+ * the `viewBox` (or `width` and `height`) of the `<svg>`. Shapes painted neither way (an icon
+ * set's invisible bounding box) are left out. Throws a `FacetryError` (`"invalid-options"`)
+ * for what it cannot place exactly: `transform`s, `<use>`, `<text>` and `<image>`.
  */
-export function iconFromSvg(markup: string, name = "icon"): IconPath {
+export function iconFromSvg(markup: string, name = "icon"): IconParts {
   const fail = (why: string): never => {
     throw new FacetryError("invalid-options", `icon \`${name}\`: ${why}`);
   };
@@ -36,8 +59,16 @@ export function iconFromSvg(markup: string, name = "icon"): IconPath {
     const v = parseFloat(el.getAttribute(attr) ?? "0");
     return Number.isFinite(v) ? v : 0;
   };
-  const parts: string[] = [];
-  const visit = (el: Element, fill: string, stroke: string) => {
+  // A presentation property: from the `style` attribute, else the attribute of that name.
+  const paint = (el: Element, prop: string): string | undefined => {
+    const style = el.getAttribute("style") ?? "";
+    const m = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(style);
+    return m ? m[1]!.trim() : (el.getAttribute(prop) ?? undefined);
+  };
+  type Paint = { fill: string; stroke: string; rule: string };
+  const strokes: string[] = [];
+  const fills: IconFillPath[] = [];
+  const visit = (el: Element, inherited: Paint) => {
     const tag = el.localName;
     if (SKIPPED.has(tag)) return;
     if (el.hasAttribute("transform")) {
@@ -46,25 +77,34 @@ export function iconFromSvg(markup: string, name = "icon"): IconPath {
     if (tag === "use" || tag === "text" || tag === "image") fail(`<${tag}> is not supported`);
     // Paint is inherited: `fill="none"` on the <svg> of a line icon, `stroke="none"` on a
     // filled icon, and both on a bounding box that is not meant to show.
-    fill = el.getAttribute("fill") ?? fill;
-    stroke = el.getAttribute("stroke") ?? stroke;
-    const painted = fill !== "none" || stroke !== "none";
-    const d = painted ? shape(el, tag, num) : undefined;
-    if (d) parts.push(d);
-    for (const child of Array.from(el.children)) visit(child, fill, stroke);
+    const p: Paint = {
+      fill: paint(el, "fill") ?? inherited.fill,
+      stroke: paint(el, "stroke") ?? inherited.stroke,
+      rule: paint(el, "fill-rule") ?? inherited.rule,
+    };
+    const d = shape(el, tag, num);
+    if (d) {
+      // A line has no inside to fill.
+      if (p.fill !== "none" && tag !== "line") {
+        fills.push(p.rule === "evenodd" ? { d, fillRule: "evenodd" } : { d });
+      }
+      if (p.stroke !== "none") strokes.push(d);
+    }
+    for (const child of Array.from(el.children)) visit(child, p);
   };
-  visit(svg, "black", "none");
-  if (parts.length === 0) fail("the SVG draws no shapes");
+  visit(svg, { fill: "black", stroke: "none", rule: "nonzero" });
+  if (strokes.length === 0 && fills.length === 0) fail("the SVG draws no shapes");
   const box = svg.getAttribute("viewBox");
-  let viewBox: [number, number, number, number] | undefined;
+  const out: IconParts = { fill: fills };
+  if (strokes.length > 0) out.stroke = strokes.join(" ");
   if (box) {
     const v = box.trim().split(/[\s,]+/).map(Number);
     if (v.length !== 4 || v.some((x) => !Number.isFinite(x))) fail(`bad viewBox "${box}"`);
-    viewBox = v as [number, number, number, number];
+    out.viewBox = v as [number, number, number, number];
   } else if (svg.hasAttribute("width") && svg.hasAttribute("height")) {
-    viewBox = [0, 0, num(svg, "width"), num(svg, "height")];
+    out.viewBox = [0, 0, num(svg, "width"), num(svg, "height")];
   }
-  return viewBox ? { d: parts.join(" "), viewBox } : { d: parts.join(" ") };
+  return out;
 }
 
 /** One shape element as path data; undefined for anything that is not a shape. */
@@ -113,8 +153,17 @@ function shape(el: Element, tag: string, num: (el: Element, a: string) => number
   }
 }
 
-/** `source` as path data and viewBox. */
-export function iconPath(name: string, source: IconSource): IconPath {
-  if (typeof source !== "string") return source;
-  return source.trimStart().startsWith("<") ? iconFromSvg(source, name) : { d: source };
+/** `source` in the form the diagrams module takes. */
+export function iconParts(name: string, source: IconSource): IconParts {
+  if (typeof source === "string") {
+    return source.trimStart().startsWith("<") ? iconFromSvg(source, name) : { fill: [{ d: source }] };
+  }
+  const fill =
+    typeof source.fill === "string"
+      ? [source.fillRule === "evenodd" ? { d: source.fill, fillRule: source.fillRule } : { d: source.fill }]
+      : (source.fill ?? []);
+  const out: IconParts = { fill };
+  if (source.stroke !== undefined) out.stroke = source.stroke;
+  if (source.viewBox !== undefined) out.viewBox = source.viewBox;
+  return out;
 }

@@ -501,18 +501,45 @@ pub struct DiagramSpec {
     pub icons: Vec<(String, CustomIcon)>,
 }
 
-/// An icon brought by the user: SVG path data, drawn as lines like the built-in icons (the
-/// outline of a filled shape, the strokes of a line icon).
+/// An icon brought by the user, as SVG path data: lines drawn like the built-in icons'
+/// strokes, filled shapes, or both. At least one of `stroke` and `fill`.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
 #[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
 pub struct CustomIcon {
-    /// SVG path data, as in a `<path d="...">`.
-    pub d: String,
+    /// Path data drawn as lines (the `d` of a line icon's stroked paths, run together).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: Option<String>,
+    /// Filled shapes, each filled on its own (as separate SVG elements are), in the ink colour.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub fill: Vec<IconFill>,
     /// The area the path is drawn in, `[minX, minY, width, height]` as in an SVG `viewBox`;
     /// default `[0, 0, 24, 24]`. The icon is fitted into its node's icon square, centred.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub view_box: Option<[f64; 4]>,
+}
+
+/// One filled shape of a [`CustomIcon`]: path data and its fill rule.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct IconFill {
+    pub d: String,
+    /// `"nonzero"` (the default, as in SVG) or `"evenodd"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub fill_rule: FillRule,
+}
+
+/// Which parts of overlapping contours are inside, as SVG's `fill-rule`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum FillRule {
+    /// Inside where the contours wind round a point a non-zero number of times (SVG's default).
+    #[default]
+    NonZero,
+    /// Inside where a ray from the point crosses the contours an odd number of times.
+    EvenOdd,
 }
 
 /// A diagram's visual style.

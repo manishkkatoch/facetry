@@ -209,6 +209,23 @@ fn is_zero(v: &f32) -> bool {
     *v == 0.0
 }
 
+/// Flat triangles printed on a surface in one colour, unlit, like ink: a filled icon. Not a
+/// mark: never picked.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FillMark {
+    pub key: String,
+    pub color: Color,
+    /// World positions, three per triangle.
+    #[serde(serialize_with = "points3")]
+    pub triangles: Vec<[f32; 3]>,
+}
+
+fn points3<S: Serializer>(v: &[[f32; 3]], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
+    let rounded: Vec<(f64, f64, f64)> = v.iter().map(|p| (r(p[0]), r(p[1]), r(p[2]))).collect();
+    rounded.serialize(s)
+}
+
 /// A thick edge lying on the floor: a band `width` wide along `path` (`[x, z]` world units),
 /// heights `base..=top`, lit like the prisms. Not a mark: never picked.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -505,6 +522,7 @@ impl Scene3d {
             decor: Vec::new(),
             ribbons: Vec::new(),
             shadows: Vec::new(),
+            fills: Vec::new(),
             lines: Vec::new(),
             polylines: Vec::new(),
             points: Vec::new(),
@@ -569,6 +587,9 @@ pub struct Scene3d {
     /// Soft shadows on the floor, drawn translucent over it after the solids.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub shadows: Vec<ShadowMark>,
+    /// Filled icons, printed on the surfaces they belong to.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fills: Vec<FillMark>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     /// Line layers' series, after the boxes and slices in draw order.

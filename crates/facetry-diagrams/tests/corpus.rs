@@ -172,19 +172,30 @@ fn cards_take_room_of_their_own() {
 
 #[test]
 fn the_users_icons_travel_in_the_spec_and_draw() {
-    use facetry_core::spec::CustomIcon;
+    use facetry_core::spec::{CustomIcon, FillRule, IconFill};
     let icons = vec![
         (
             "a b/c".to_owned(),
             CustomIcon {
-                d: "M0 0 L48 24".into(),
+                stroke: Some("M0 0 L48 24".into()),
+                fill: Vec::new(),
                 view_box: Some([0.0, 0.0, 48.5, 24.25]),
             },
         ),
         (
             "pump".to_owned(),
             CustomIcon {
-                d: "M2 2h20".into(),
+                stroke: None,
+                fill: vec![
+                    IconFill {
+                        d: "M2 2h20v20H2z M8 8v8h8V8z".into(),
+                        fill_rule: FillRule::EvenOdd,
+                    },
+                    IconFill {
+                        d: "M10 10h4v4h-4z".into(),
+                        fill_rule: FillRule::NonZero,
+                    },
+                ],
                 view_box: None,
             },
         ),

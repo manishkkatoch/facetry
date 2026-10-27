@@ -188,20 +188,39 @@ test("your own icons: SVG markup becomes path data in the spec, and broken ones 
   const ok = await run(node, { pump: tabler });
   const icon = ok.spec.diagram.icons.pump;
   expect(icon.viewBox).toEqual([0, 0, 24, 24]);
-  expect(icon.d).not.toContain("M0 0h24v24H0z");
-  expect(icon.d).toMatch(/^M3 12 A9 9 0 1 0 21 12/);
+  expect(icon.stroke).not.toContain("M0 0h24v24H0z");
+  expect(icon.stroke).toMatch(/^M3 12 A9 9 0 1 0 21 12/);
+  expect(icon.fill).toBeUndefined();
   expect(ok.spec.diagram.nodes[0].icon).toBe("pump");
-  // Bare path data, and { d, viewBox }.
-  expect((await run(node, { pump: "M2 2h20" })).spec.diagram.icons.pump).toEqual({ d: "M2 2h20" });
-  const boxed = await run(node, { pump: { d: "M0 0L96 48", viewBox: [0, 0, 96, 48] } });
-  expect(boxed.spec.diagram.icons.pump.viewBox).toEqual([0, 0, 96, 48]);
+  // A filled set's markup: shapes are filled by SVG's rules (inherited, from `style` too), a
+  // stroked one beside them drawn as lines, each filled shape kept apart with its fill rule.
+  const filled =
+    '<svg viewBox="0 0 512 512"><path fill-rule="evenodd" d="M0 0H512V512H0Z M128 128V384H384V128Z"/>' +
+    '<g style="fill: none; stroke: #000"><circle cx="256" cy="256" r="64"/></g><rect x="240" y="240" width="32" height="32"/></svg>';
+  const parts = (await run(node, { pump: filled })).spec.diagram.icons.pump;
+  expect(parts.viewBox).toEqual([0, 0, 512, 512]);
+  expect(parts.fill).toEqual([
+    { d: "M0 0H512V512H0Z M128 128V384H384V128Z", fillRule: "evenodd" },
+    { d: "M240 240 H272 V272 H240 Z" },
+  ]);
+  expect(parts.stroke).toMatch(/^M192 256 A64 64/);
+  // Bare path data is a filled shape (as filled icon sets publish it); and the object form.
+  expect((await run(node, { pump: "M2 2h20v20z" })).spec.diagram.icons.pump).toEqual({
+    fill: [{ d: "M2 2h20v20z" }],
+  });
+  const boxed = await run(node, { pump: { stroke: "M0 0L96 48", fill: "M0 0h9v9z", fillRule: "evenodd", viewBox: [0, 0, 96, 48] } });
+  expect(boxed.spec.diagram.icons.pump).toEqual({
+    stroke: "M0 0L96 48",
+    fill: [{ d: "M0 0h9v9z", fillRule: "evenodd" }],
+    viewBox: [0, 0, 96, 48],
+  });
   // What cannot be drawn is refused, naming the icon.
   const transformed = await run(node, { pump: '<svg viewBox="0 0 24 24"><g transform="scale(2)"><path d="M1 1h4"/></g></svg>' });
   expect(transformed.code).toBe("invalid-options");
   expect(transformed.message).toContain("icon `pump`: transforms are not supported");
   const broken = await run(node, { pump: "M0 0 L 5" });
   expect(broken.code).toBe("invalid-options");
-  expect(broken.message).toBe("icon `pump`: expected a number at the end of the path");
+  expect(broken.message).toBe("icon `pump`, fill/0/d: expected a number at the end of the path");
   const unknown = await run(node, { valve: "M0 0h4" });
   expect(unknown.code).toBe("invalid-diagram");
   expect(unknown.message).toContain("nor among the icons given: valve");

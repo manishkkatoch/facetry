@@ -12,6 +12,8 @@
 //! Names follow common icon sets, and Mermaid-style prefixed names (`fa:lightbulb`) are read by
 //! dropping the prefix and looking the rest up among the names and aliases.
 
+use crate::spec::{CustomIcon, FillRule};
+
 /// `(name, path)`, sorted by name.
 const ICONS: &[(&str, &str)] = &[
     (
@@ -184,24 +186,79 @@ pub fn digit_strokes(d: char) -> Vec<Vec<[f64; 2]>> {
         .map_or_else(Vec::new, |k| path_strokes(DIGITS[k as usize]))
 }
 
-/// The strokes of a custom icon, fitted into the same 24 by 24 box as a built-in one: path
-/// data `d` drawn in `view_box` (`[min x, min y, width, height]`, default `[0, 0, 24, 24]`),
-/// scaled to fit and centred. Or what is wrong with it.
-pub fn custom_strokes(d: &str, view_box: Option<[f64; 4]>) -> Result<Vec<Vec<[f64; 2]>>, String> {
-    let [x0, y0, w, h] = view_box.unwrap_or([0.0, 0.0, 24.0, 24.0]);
+/// An icon ready to draw, in the icons' 24 by 24 box (y down): lines, and filled triangles.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct IconShape {
+    pub lines: Vec<Vec<[f64; 2]>>,
+    pub triangles: Vec<[[f64; 2]; 3]>,
+}
+
+/// A custom icon fitted into the same 24 by 24 box as a built-in one: its path data drawn in
+/// its viewBox (`[min x, min y, width, height]`, default `[0, 0, 24, 24]`), scaled to fit and
+/// centred, the filled shapes cut into triangles. Or what is wrong with it: the path to the
+/// field at fault within the icon (`["fill", "0", "d"]`) and why.
+pub fn custom_shape(icon: &CustomIcon) -> Result<IconShape, (Vec<String>, String)> {
+    let (lines, fills) = read_custom(icon)?;
+    let mut triangles = Vec::new();
+    for (contours, rule) in fills {
+        triangles.extend(crate::fill::triangulate(&contours, rule));
+    }
+    Ok(IconShape { lines, triangles })
+}
+
+/// Whether [`custom_shape`] can draw `icon`, without cutting its fills into triangles (the
+/// diagrams add-on checks icons this way and never links the triangulation).
+pub fn check_custom(icon: &CustomIcon) -> Result<(), (Vec<String>, String)> {
+    read_custom(icon).map(|_| ())
+}
+
+/// An icon's contours fitted into the 24 box: its lines, and each filled shape's contours.
+type Fitted = (Vec<Vec<[f64; 2]>>, Vec<(Vec<Vec<[f64; 2]>>, FillRule)>);
+
+fn read_custom(icon: &CustomIcon) -> Result<Fitted, (Vec<String>, String)> {
+    let at = |parts: &[&str], why: String| (parts.iter().map(|p| (*p).to_owned()).collect(), why);
+    let [x0, y0, w, h] = icon.view_box.unwrap_or([0.0, 0.0, 24.0, 24.0]);
     if !(w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite() && x0.is_finite() && y0.is_finite()) {
-        return Err("viewBox must be finite, with a positive width and height".into());
+        let why = "viewBox must be finite, with a positive width and height".to_owned();
+        return Err(at(&["viewBox"], why));
+    }
+    if icon.stroke.is_none() && icon.fill.is_empty() {
+        return Err(at(
+            &[],
+            "an icon needs `stroke` or `fill` path data".to_owned(),
+        ));
     }
     let k = 24.0 / w.max(h);
     let (dx, dy) = ((24.0 - w * k) / 2.0, (24.0 - h * k) / 2.0);
-    Ok(crate::svg_path::flatten(d)?
-        .into_iter()
-        .map(|run| {
-            run.into_iter()
-                .map(|p| [(p[0] - x0) * k + dx, (p[1] - y0) * k + dy])
-                .collect()
-        })
-        .collect())
+    let mut points = 0;
+    let mut fit = |runs: Vec<Vec<[f64; 2]>>| -> Vec<Vec<[f64; 2]>> {
+        points += runs.iter().map(Vec::len).sum::<usize>();
+        runs.into_iter()
+            .map(|run| {
+                run.into_iter()
+                    .map(|p| [(p[0] - x0) * k + dx, (p[1] - y0) * k + dy])
+                    .collect()
+            })
+            .collect()
+    };
+    let mut lines = Vec::new();
+    if let Some(d) = &icon.stroke {
+        lines = fit(crate::svg_path::flatten(d).map_err(|e| at(&["stroke"], e))?);
+    }
+    let mut fills = Vec::new();
+    for (i, fill) in icon.fill.iter().enumerate() {
+        let n = i.to_string();
+        let runs = crate::svg_path::flatten(&fill.d).map_err(|e| at(&["fill", &n, "d"], e))?;
+        fills.push((fit(runs), fill.fill_rule));
+    }
+    if points > crate::svg_path::MAX_POINTS {
+        let why = format!(
+            "the icon is too detailed (over {} points once curves are cut into steps)",
+            crate::svg_path::MAX_POINTS
+        );
+        return Err(at(&[], why));
+    }
+    Ok((lines, fills))
 }
 
 /// The strokes of icon `name` (already resolved), in its 24 by 24 box.

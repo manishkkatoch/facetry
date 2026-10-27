@@ -213,7 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
-| **Icons** (done) | Icons of the user's own: `diagram.icons` (SVG path data and viewBox) in the spec, `icons` in `fromMermaid` taking SVG markup, path data or `{ d, viewBox }`; drawn like the built-in icons in every style |
+| **Icons** (done) | Icons of the user's own: `diagram.icons` (stroked and filled SVG path data, viewBox) in the spec, `icons` in `fromMermaid` taking SVG markup, path data or an object; line icons drawn as lines and filled icons filled (holes, both fill rules), in every style |
 | **S4** (done) | The schematic style after the cement-plant reference: equipment modelled per shape with drawn edges, pipes and conveyors on supports with flow marks, signs standing on posts with upright printed text, a floor grid |
 | **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered with standing 3D digits, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
@@ -345,9 +345,17 @@ a company's own symbols), so icons can be brought as SVG, the format every icon 
   ellipses as two arcs, rounded rects with corner arcs, polylines), unpainted shapes such as an
   icon set's bounding box are dropped, and what cannot be placed exactly without more code
   (`transform`, `<use>`, `<text>`, `<image>`) is refused with a remedy.
-* **Drawn as lines**, like the built-in icons: line-icon sets look as designed, filled icons
-  show their outlines. Filling them would need polygon triangulation with holes, which can come
-  later if filled sets matter.
+* **Lines and fills.** An icon has `stroke` path data, drawn as lines like the built-in
+  icons, and `fill`, a list of shapes each filled on its own (SVG fills each element apart, and
+  joining them into one path would let opposite windings cut holes), with SVG's fill rules.
+  The markup reader sorts every shape by how SVG would paint it; bare path data counts as a
+  fill, since the sets that publish bare paths are filled ones.
+* **Filling** (`fill.rs`): the plane is cut into bands at every vertex's height; within a band
+  the crossing edges are ordered and the fill rule picks the inside spans, each a trapezoid.
+  No ear clipping and no special cases for holes or touching contours. The fills are flat
+  triangles printed on the surface (`Scene3d.fills`), drawn by the lit-mesh pipeline with a zero
+  normal, which the shader takes as unlit ink. The diagrams add-on only checks that an icon's
+  paths read; the triangulation lives in the core.
 
 **Moving around (S2).** Diagrams are maps more than objects, so orbit alone is not enough: the
 camera got a pan (the point looked at moves across the floor, clamped to the plot box) and zoom

@@ -270,6 +270,7 @@ pub fn build_scene_3d_with_theme(
         decor: Vec::new(),
         ribbons: Vec::new(),
         shadows: Vec::new(),
+        fills: Vec::new(),
         lines: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),

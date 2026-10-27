@@ -11,6 +11,7 @@ pub mod diagram;
 mod diagram_glossy;
 mod diagram_isometric;
 mod diagram_schematic;
+pub mod fill;
 pub mod icons;
 mod legend;
 pub mod scale;

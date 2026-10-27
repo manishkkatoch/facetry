@@ -544,6 +544,9 @@ impl SlicePipeline {
         for r in &scene.ribbons {
             crate::arc::ribbon(r, encode(r.color), &mut self.vertices);
         }
+        for f in &scene.fills {
+            crate::arc::fill(f, encode(f.color), &mut self.vertices);
+        }
         self.buffer.set(device, queue, &self.vertices);
     }
 

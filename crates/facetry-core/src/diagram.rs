@@ -19,9 +19,11 @@
 use crate::Color;
 use crate::Theme;
 use crate::framing_radius;
+use crate::icons::IconShape;
 use crate::scene::{Anchor, RuleKind};
 use crate::scene3d::{
-    FOV_Y_DEGREES, FRAMING_LIFT, LabelRole, Line3, Polyline3, PrismMark, Scene3d, Text3, VAlign,
+    FOV_Y_DEGREES, FRAMING_LIFT, FillMark, LabelRole, Line3, Polyline3, PrismMark, Scene3d, Text3,
+    VAlign,
 };
 use crate::spec::{
     CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
@@ -151,20 +153,16 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
     }
     for (name, icon) in &diagram.icons {
         let name = name.as_str();
-        let at = |field: &str| pointer(&["diagram", "icons", name, field]);
         if name.is_empty() || name.contains(['"', '\n']) {
             issues.push(Issue::new(
                 pointer(&["diagram", "icons", name]),
                 "an icon's name must not be empty or hold a quote or a line break",
             ));
         }
-        if let Err(e) = crate::icons::custom_strokes(&icon.d, icon.view_box) {
-            let field = if e.starts_with("viewBox") {
-                "viewBox"
-            } else {
-                "d"
-            };
-            issues.push(Issue::new(at(field), e));
+        if let Err((field, why)) = crate::icons::custom_shape(icon) {
+            let mut parts = vec!["diagram", "icons", name];
+            parts.extend(field.iter().map(String::as_str));
+            issues.push(Issue::new(pointer(&parts), why));
         }
     }
     for (i, node) in diagram.nodes.iter().enumerate() {
@@ -377,7 +375,7 @@ pub(crate) struct Plan {
     /// Node height, in font sizes.
     node_height: f64,
     /// The diagram's own icons that draw, read once: strokes in the icons' 24 box.
-    icons: Vec<(String, Vec<Vec<[f64; 2]>>)>,
+    icons: Vec<(String, IconShape)>,
 }
 
 impl Plan {
@@ -424,19 +422,21 @@ impl Plan {
                 .icons
                 .iter()
                 .filter_map(|(name, icon)| {
-                    let strokes = crate::icons::custom_strokes(&icon.d, icon.view_box).ok()?;
-                    Some((name.clone(), strokes))
+                    Some((name.clone(), crate::icons::custom_shape(icon).ok()?))
                 })
                 .collect(),
         }
     }
 
-    /// The strokes of icon `name`, in the icons' 24 by 24 box: the diagram's own icon of that
-    /// name, or else the built-in one it names; none if neither.
-    pub(crate) fn icon(&self, name: &str) -> Vec<Vec<[f64; 2]>> {
+    /// Icon `name`, in the icons' 24 by 24 box: the diagram's own icon of that name, or else
+    /// the built-in one it names; empty if neither.
+    pub(crate) fn icon(&self, name: &str) -> IconShape {
         match self.icons.iter().find(|(n, _)| n == name) {
-            Some((_, strokes)) => strokes.clone(),
-            None => crate::icons::resolve(name).map_or_else(Vec::new, crate::icons::strokes),
+            Some((_, shape)) => shape.clone(),
+            None => IconShape {
+                lines: crate::icons::resolve(name).map_or_else(Vec::new, crate::icons::strokes),
+                triangles: Vec::new(),
+            },
         }
     }
 
@@ -859,8 +859,8 @@ pub fn card_layout(
 /// Width of an icon's strokes, CSS px.
 const ICON_STROKE: f64 = 1.6;
 
-/// Draws built-in icon `name` (unknown names draw nothing; validation reports them) centred at
-/// `at` (layout units), `size` across, lying on the surface at world height `y`.
+/// Draws icon `name` (unknown names draw nothing; validation reports them) centred at `at`
+/// (layout units), `size` across, lying on the surface at world height `y`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn push_icon(
     scene: &mut Scene3d,
@@ -875,27 +875,47 @@ pub(crate) fn push_icon(
 ) {
     let k = size / 24.0;
     let lift = y + plan.len(0.3);
-    let runs: Vec<Vec<[f32; 3]>> = plan
-        .icon(name)
-        .into_iter()
-        .map(|stroke| {
-            stroke
-                .iter()
-                .map(|q| plan.world([at[0] + (q[0] - 12.0) * k, at[1] + (q[1] - 12.0) * k], lift))
-                .collect()
-        })
-        .collect();
-    if runs.is_empty() {
-        return;
-    }
-    scene.polylines.push(Polyline3 {
-        key: format!("{key}/icon"),
+    push_icon_shape(
+        scene,
+        &format!("{key}/icon"),
+        &plan.icon(name),
+        |q| plan.world([at[0] + (q[0] - 12.0) * k, at[1] + (q[1] - 12.0) * k], lift),
         color,
-        width_px: (ICON_STROKE * s) as f32,
-        runs,
-        area: None,
-        layer: 0,
-    });
+        ICON_STROKE * s,
+    );
+}
+
+/// Draws `shape` (an icon in its 24 by 24 box) where `place` puts each of its points: its lines
+/// `width_px` wide and its filled parts, both in `color`.
+pub(crate) fn push_icon_shape(
+    scene: &mut Scene3d,
+    key: &str,
+    shape: &IconShape,
+    place: impl Fn([f64; 2]) -> [f32; 3],
+    color: Color,
+    width_px: f64,
+) {
+    if !shape.lines.is_empty() {
+        scene.polylines.push(Polyline3 {
+            key: key.to_owned(),
+            color,
+            width_px: width_px as f32,
+            runs: shape
+                .lines
+                .iter()
+                .map(|run| run.iter().map(|&q| place(q)).collect())
+                .collect(),
+            area: None,
+            layer: 0,
+        });
+    }
+    if !shape.triangles.is_empty() {
+        scene.fills.push(FillMark {
+            key: key.to_owned(),
+            color,
+            triangles: shape.triangles.iter().flat_map(|t| t.map(&place)).collect(),
+        });
+    }
 }
 
 /// A node's colour from the spec, if it gave a valid one.

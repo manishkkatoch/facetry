@@ -1,7 +1,7 @@
 //! The laid-out diagram as a Facetry `ChartSpec`, in JSON: what the add-on hands to the core
 //! module. Written by hand (no serde in the wasm), in a fixed key order, numbers to a tenth.
 
-use facetry_core::spec::{DiagramSpec, DiagramStyle, EdgeEnd, EdgeStroke};
+use facetry_core::spec::{DiagramSpec, DiagramStyle, EdgeEnd, EdgeStroke, FillRule};
 
 /// `{"dimension":"3d","diagram":{...}}`.
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
@@ -145,8 +145,29 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
                 out.push(',');
             }
             string(&mut out, name);
-            out.push_str(":{\"d\":");
-            string(&mut out, &icon.d);
+            out.push_str(":{");
+            let mut sep = "";
+            if let Some(stroke) = &icon.stroke {
+                out.push_str("\"stroke\":");
+                string(&mut out, stroke);
+                sep = ",";
+            }
+            if !icon.fill.is_empty() {
+                out.push_str(sep);
+                out.push_str("\"fill\":[");
+                for (k, fill) in icon.fill.iter().enumerate() {
+                    if k > 0 {
+                        out.push(',');
+                    }
+                    out.push_str("{\"d\":");
+                    string(&mut out, &fill.d);
+                    if fill.fill_rule == FillRule::EvenOdd {
+                        out.push_str(",\"fillRule\":\"evenodd\"");
+                    }
+                    out.push('}');
+                }
+                out.push(']');
+            }
             if let Some(view_box) = icon.view_box {
                 // Exactly, unlike layout numbers: the path's own coordinates.
                 out.push_str(",\"viewBox\":[");
