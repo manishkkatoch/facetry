@@ -1,0 +1,13 @@
+flowchart TD
+    classDef default fill:#eef2f8,stroke:#9aa4b2,color:#1f2328
+    classDef start fill:#22c55e,stroke:#15803d,color:#fff
+    classDef stop fill:#ef4444,stroke:#b91c1c,color:#fff
+    classDef warn fill:#f59e0b,color:#1f2328
+    begin([Order received]):::start --> check{In stock?}
+    check -->|yes| pick[Pick and pack]
+    check -->|no| backorder[Backorder]:::warn
+    backorder --> notify[Email the customer]
+    pick --> ship[Ship]
+    ship --> done([Delivered]):::stop
+    notify --> done
+    style check fill:#6366f1,color:#fff,stroke-width:2px

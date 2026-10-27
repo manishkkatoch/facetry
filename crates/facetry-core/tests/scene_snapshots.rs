@@ -272,3 +272,16 @@ fn tiny_viewports_do_not_panic_in_3d() {
         assert_eq!(scene.boxes.len(), 12);
     }
 }
+
+// A hand-laid-out diagram: prisms of four shapes, rims, edges (one dotted, so in dashes) with
+// arrowheads, node and edge labels.
+snapshot3d!(diagram_3d, "diagram-basic");
+
+// The same diagram in the glossy style: glossy prisms, ribbons for edges, solid arrowheads,
+// label cards, soft shadows and printed labels.
+snapshot3d!(diagram_glossy_3d, "diagram-glossy");
+
+// And in the isometric style: pedestals (plate, body, cap, inset), roads with chevrons, cards,
+// long shadows, printed labels.
+snapshot3d!(diagram_isometric_3d, "diagram-isometric");
+snapshot3d!(diagram_schematic_3d, "diagram-schematic");

@@ -3,7 +3,13 @@ import { PNG } from "pngjs";
 
 test.use({ viewport: { width: 800, height: 500 }, deviceScaleFactor: 1 });
 
-type Camera = { type: string; azimuth: number; elevation: number; distance: number };
+type Camera = {
+  type: string;
+  azimuth: number;
+  elevation: number;
+  distance: number;
+  pan: [number, number];
+};
 
 async function open(page: Page, example: string) {
   await page.goto(`/?backend=webgl2&ui=0&example=${example}`);
@@ -69,7 +75,13 @@ test("double-click resets the camera to the spec's", async ({ page }) => {
   await drag(page, 100, 30);
   expect((await camera(page)).azimuth).not.toBe(35);
   await page.locator("#chart").dblclick({ position: { x: 400, y: 250 } });
-  await expect.poll(() => camera(page)).toEqual({ type: "perspective", azimuth: 35, elevation: 25, distance: 2.7 });
+  await expect.poll(() => camera(page)).toEqual({
+    type: "perspective",
+    azimuth: 35,
+    elevation: 25,
+    distance: 2.7,
+    pan: [0, 0],
+  });
   // The pointer is over a bar, which is highlighted; move it off the chart's bars to compare.
   await page.mouse.move(2, 2);
   await expect.poll(async () => changedPixels(initial, await pixels(page))).toBe(0);
@@ -89,7 +101,7 @@ test("setCamera moves the camera and clamps it; bad values are typed errors", as
   await open(page, "bar3d-grid");
   await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 200, elevation: 400, distance: 0.1 }));
   const c = await camera(page);
-  expect(c).toEqual({ type: "perspective", azimuth: 200, elevation: 85, distance: 1.3 });
+  expect(c).toEqual({ type: "perspective", azimuth: 200, elevation: 85, distance: 1.3, pan: [0, 0] });
   await page.evaluate(() => (window as any).facetryChart.setCamera({ type: "orthographic" }));
   expect((await camera(page)).type).toBe("orthographic");
   await page.evaluate(() => (window as any).facetryChart.resetCamera());

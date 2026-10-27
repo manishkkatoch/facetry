@@ -1,0 +1,9 @@
+flowchart LR
+    build[Build image] --> canary[Canary 5%]
+    canary --> watch{Error rate<br>below 1%?}
+    watch -->|yes| half[50% of traffic]
+    watch -->|no| rollback[Roll back]
+    half --> watch2{Still healthy?}
+    watch2 -->|yes| full[100%]
+    watch2 -->|no| rollback
+    rollback --> alert[Alert on-call]

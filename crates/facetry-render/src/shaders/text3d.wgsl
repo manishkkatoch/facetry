@@ -1,6 +1,7 @@
 // MSDF text anchored in the world. Every glyph of a label shares one world-space anchor; the
 // vertex shader projects it to the screen and lays the glyph out around that pixel, so labels
-// always face the viewer and keep their pixel size however the camera moves. The fragment
+// always face the viewer and keep their pixel size however the camera moves. Printed text
+// (`flat` > 0) is instead laid flat on the horizontal plane through the anchor, in world units. The fragment
 // half is the same as text.wgsl (keep them in sync).
 //
 // Like lines, labels carry an azimuth range; see line3d.wgsl.
@@ -57,6 +58,8 @@ struct Vertex {
     @location(10) from_origin: vec2<f32>,
     @location(11) from_color: vec4<f32>,
     @location(12) delay: f32,
+    @location(13) flat: f32,          // > 0: printed on the floor plane, world units per pixel
+    @location(14) upright: vec2<f32>, // non-zero: printed upright instead, reading along [x, z]
 }
 
 struct Varying {
@@ -78,6 +81,20 @@ fn in_range(show: vec2<f32>) -> bool {
 fn vs_main(v: Vertex) -> Varying {
     if !in_range(v.show) {
         return Varying(vec4<f32>(2.0, 2.0, 2.0, 1.0), vec2<f32>(0.0), v.color);
+    }
+    let uv = mix(v.uv.xy, v.uv.zw, v.corner);
+    // Printed text: the glyph's quad, laid out in pixels, lies on the horizontal plane through
+    // the anchor (pixel x along world x, pixel y down along world z) and is projected like any
+    // surface, depth and all. Upright text stands in the vertical plane through the anchor
+    // instead: pixel x along `upright`, pixel y down.
+    if v.flat > 0.0 {
+        let p = v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
+        var across = vec3<f32>(p.x, 0.0, p.y);
+        if dot(v.upright, v.upright) > 0.0 {
+            across = vec3<f32>(p.x * v.upright.x, -p.y, p.x * v.upright.y);
+        }
+        let world = v.anchor + across * v.flat;
+        return Varying(globals.view_proj * vec4<f32>(world, 1.0), uv, v.color);
     }
     var nudge = vec2<f32>(0.0);
     if v.slot >= 0.0 {
@@ -104,7 +121,6 @@ fn vs_main(v: Vertex) -> Varying {
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,
     );
-    let uv = mix(v.uv.xy, v.uv.zw, v.corner);
     return Varying(vec4<f32>(out_clip, 0.0, 1.0), uv, color);
 }
 

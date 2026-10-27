@@ -1,0 +1,11 @@
+flowchart TD
+    client([Client]) --> lb[Load balancer]
+    lb --> gw[API gateway]
+    gw --> auth{Authenticated?}
+    auth -- no --> deny[401 Unauthorized]
+    auth -- yes --> rate{Under rate limit?}
+    rate -- no --> slow[429 Too many requests]
+    rate -- yes --> svc[Service]
+    svc --> cache[(Cache)]
+    svc --> db[(Database)]
+    svc --> resp[200 OK]

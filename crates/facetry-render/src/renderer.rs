@@ -12,7 +12,7 @@ use glam::Vec3;
 use wgpu::util::DeviceExt as _;
 
 use crate::Error;
-use crate::camera::Camera;
+use crate::camera::{Camera, Projection};
 use crate::gpu::{self, ANIM_IDLE, DEPTH_FORMAT, Globals, Globals3};
 use crate::image::{self, ReadbackFormat};
 use crate::labels::{LabelPlan, SLOTS};
@@ -718,6 +718,7 @@ impl Renderer {
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
         // The glyphs that get an outline (labels printed on a bar or slice do not).
         let mut outlined: Vec<Glyph3Instance> = Vec::new();
+        let mut printed: Vec<Glyph3Instance> = Vec::new();
         self.hover_labels.clear();
         self.hover_labels_3d.clear();
         match plan {
@@ -737,6 +738,11 @@ impl Renderer {
                 let format = self.config.format;
                 let enc = move |t: &Text3| encode_color(format, t.color);
                 for p in &plan.texts {
+                    // Printed text (on a diagram's surfaces) does not move: its end state.
+                    if p.to.flat.is_some() {
+                        text::layout_glyphs_3d(&p.to, enc(&p.to), NO_SLOT, font, &mut printed);
+                        continue;
+                    }
                     let slot = match p.phase {
                         Phase::Exit => NO_SLOT,
                         _ => text_slots.get(&p.to.key).copied().unwrap_or(NO_SLOT),
@@ -788,6 +794,10 @@ impl Renderer {
             }
             None => {
                 for (t, &slot) in scene.texts.iter().zip(&slots) {
+                    if t.flat.is_some() {
+                        text::layout_glyphs_3d(t, encode(t.color), NO_SLOT, font, &mut printed);
+                        continue;
+                    }
                     let from = glyphs.len();
                     text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
                     if t.halo {
@@ -828,6 +838,7 @@ impl Renderer {
             .text
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
+        solid.text.set_printed(&self.device, &self.queue, &printed);
         // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
         // buffers a 3D chart does not otherwise use).
         let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
@@ -873,7 +884,8 @@ impl Renderer {
         self.hover = None;
         self.mark_count = scene.mark_count();
         self.box_count = scene.boxes.len();
-        self.slice_count = scene.slices.len();
+        // Diagram nodes share the slices' pipeline and come after them.
+        self.slice_count = scene.slices.len() + scene.prisms.len();
         let entering = self.box_size.is_none();
         self.box_size = Some(plan.map_or(scene.size, |p| p.size_at(0.0)));
         // Everything the CPU tessellates: the plan's start, or the scene itself.
@@ -998,6 +1010,23 @@ impl Renderer {
         pick::project(vp, (w, h), Vec3::from(point)).map(|(x, y)| [x + ox, y + oy])
     }
 
+    /// The point of the horizontal plane through the point looked at that is under pixel
+    /// `(x, y)` of the surface right now (for zooming toward the pointer). `None` in a 2D
+    /// chart or where the ray misses the plane.
+    pub fn plane_point_3d(&self, x: f32, y: f32) -> Option<[f32; 3]> {
+        let size = self.box_size?;
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
+        let vp = self.camera.plot_view_proj(size, (w, h));
+        let ray = pick::ray_through_pixel(vp, (w, h), (x - ox, y - oy))?;
+        let t = pick::ray_plane_y(&ray, self.camera.target(size).y)?;
+        Some((ray.origin + ray.dir * t).to_array())
+    }
+
+    /// The plot box of the 3D scene shown, `None` in 2D.
+    pub fn box_size(&self) -> Option<[f32; 3]> {
+        self.box_size
+    }
+
     /// The largest width or height a surface or snapshot may have.
     pub fn max_dimension(&self) -> u32 {
         self.max_dimension
@@ -1005,10 +1034,10 @@ impl Renderer {
 
     /// The globals for a frame drawn into a target of `target` pixels, from the camera.
     fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
-        let (centre, radius) = Camera::plot_frame(size);
+        let radius = Camera::plot_frame(size).1;
         // The plot is drawn in its own part of the canvas (see `plot_viewport`).
         let [_, _, w, h] = self.plot_viewport(target);
-        let eye = self.camera.eye(centre, radius);
+        let eye = self.camera.eye(self.camera.target(size), radius);
         let font = FontMetrics::inter();
         Globals3 {
             view_proj: self.camera.plot_view_proj(size, (w, h)).to_cols_array_2d(),
@@ -1017,7 +1046,10 @@ impl Renderer {
                 self.camera.azimuth,
                 self.camera.elevation,
                 self.camera.distance,
-                1.0,
+                match self.camera.projection {
+                    Projection::Perspective => 1.0,
+                    Projection::Orthographic => 0.0,
+                },
             ],
             light: Vec3::from(LIGHT_TO).normalize().extend(AMBIENT).to_array(),
             viewport: [w, h],
@@ -1135,6 +1167,8 @@ impl Renderer {
                 // Line layers: the curtains first (translucent, under everything of the
                 // line), then the segments, then the round joins and the markers on top.
                 solid.curtains.draw(&mut pass);
+                // Text printed on surfaces, hidden by what stands in front of it.
+                solid.text.draw_printed(&mut pass, &self.quad);
                 solid.data_lines.draw(&mut pass, &self.quad);
                 solid.points.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,

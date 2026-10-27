@@ -1,0 +1,12 @@
+flowchart LR
+    quarry[Quarry] ==> crusher{{Crusher}}
+    crusher ==> raw[(Raw meal silo)]
+    fuel((Fuel tank)) -.-> valve{Valve}
+    raw --> kiln([Rotary kiln])
+    valve -.-> kiln
+    kiln ==> mill{{Cement mill}}
+    gypsum[(Gypsum)] --> mill
+    mill --> cement[(Cement silo)]
+    cement --> packing[Packing plant]
+    cement -->|bulk| dispatch[Dispatch]
+    packing -->|bags| dispatch

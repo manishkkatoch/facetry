@@ -1,0 +1,12 @@
+flowchart LR
+    data[(Dataset)] --> split{Split}
+    split -->|80%| train[Train]
+    split -->|10%| val[Validate]
+    split -->|10%| test[Test]
+    train --> model[Model]
+    model --> val
+    val -->|tune| train
+    model --> test --> report[Metrics report]
+    report --> ship{Good enough?}
+    ship -->|yes| registry[(Model registry)]
+    ship -->|no| data

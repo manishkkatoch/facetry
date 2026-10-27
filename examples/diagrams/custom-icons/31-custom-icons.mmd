@@ -1,0 +1,6 @@
+flowchart LR
+    well((Well))@{ icon: "drop" } --> pump[Pump station]@{ icon: "pump" }
+    pump ==> plant{{Treatment}}@{ icon: "flask" }
+    boiler[Boiler]@{ icon: "flame" } -.-> plant
+    plant --> tank[(Clean water)]@{ icon: "drop" }
+    tank --> city[Factory]@{ icon: "factory" }

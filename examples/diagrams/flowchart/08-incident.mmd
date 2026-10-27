@@ -1,0 +1,12 @@
+flowchart TD
+    alert[Alert fires] --> ack{Acknowledged<br>within 5 min?}
+    ack -->|no| escalate[Page secondary]
+    escalate --> ack
+    ack -->|yes| triage[Triage]
+    triage --> sev{Severity}
+    sev -->|SEV1| war[Open war room]
+    sev -->|SEV2| fix[Fix in business hours]
+    sev -->|SEV3| ticket[File a ticket]
+    war --> mitigate[Mitigate] --> resolve[Resolve]
+    fix --> resolve
+    resolve --> pm[Write postmortem]

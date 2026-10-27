@@ -379,6 +379,12 @@ pub struct Glyph3Instance {
     pub from_origin: [f32; 2],
     pub from_color: [f32; 4],
     pub delay: f32,
+    /// Printed text (see `Text3::flat`): world units per pixel of the quad, which then lies on
+    /// the horizontal plane through `anchor`. 0 for text that faces the viewer.
+    pub flat: f32,
+    /// Printed upright (see `Text3::upright`): the horizontal reading direction `[x, z]` of
+    /// the vertical plane the quad stands in; zero for text printed on the floor plane.
+    pub upright: [f32; 2],
 }
 
 /// The `slot` of a label that is not managed per frame.
@@ -424,6 +430,8 @@ pub fn layout_glyphs_3d(
         color: g.color,
         show,
         slot,
+        flat: text.flat.unwrap_or(0.0),
+        upright: text.upright.unwrap_or([0.0; 2]),
         from_anchor: text.anchor,
         from_origin: g.origin,
         from_color: g.color,
@@ -493,8 +501,12 @@ pub fn halo_instances(
 #[derive(Debug)]
 pub struct Text3dPipeline {
     pipeline: wgpu::RenderPipeline,
+    /// The same shader with depth testing, for printed text (hidden behind what stands in
+    /// front of the surface it is printed on).
+    printed_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     instances: InstanceBuffer,
+    printed: InstanceBuffer,
     /// Like [`TextPipeline`]'s overlay: the hovered bar's label.
     overlay: InstanceBuffer,
 }
@@ -516,37 +528,43 @@ impl Text3dPipeline {
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x3, 2 => Float32x2, 3 => Float32x2, 4 => Float32x2, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x2, 8 => Float32,
-            9 => Float32x3, 10 => Float32x2, 11 => Float32x4, 12 => Float32
+            9 => Float32x3, 10 => Float32x2, 11 => Float32x4, 12 => Float32, 13 => Float32,
+            14 => Float32x2
         ];
-        let pipeline = pipeline(
-            device,
-            &PipelineDesc {
-                label: "text3d pipeline",
-                module: &module,
-                layout: &layout,
-                buffers: &[
-                    Some(QUAD_LAYOUT),
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Glyph3Instance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &instance_attrs,
-                    }),
-                ],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                cull_mode: None,
-                // Labels ignore depth: they sit outside the box and must stay readable even
-                // when a bar is in the way (see `Renderer::render`).
-                depth_write: false,
-                depth_compare: wgpu::CompareFunction::Always,
-                blend: wgpu::BlendState::ALPHA_BLENDING,
-            },
-            format,
-            samples,
-        );
+        let buffers = [
+            Some(QUAD_LAYOUT),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Glyph3Instance>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &instance_attrs,
+            }),
+        ];
+        let make = |label, depth_compare| {
+            pipeline(
+                device,
+                &PipelineDesc {
+                    label,
+                    module: &module,
+                    layout: &layout,
+                    buffers: &buffers,
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    cull_mode: None,
+                    depth_write: false,
+                    depth_compare,
+                    blend: wgpu::BlendState::ALPHA_BLENDING,
+                },
+                format,
+                samples,
+            )
+        };
         Self {
-            pipeline,
+            // Labels ignore depth: they sit outside the box and must stay readable even when a
+            // bar is in the way (see `Renderer::render`).
+            pipeline: make("text3d pipeline", wgpu::CompareFunction::Always),
+            printed_pipeline: make("printed text pipeline", wgpu::CompareFunction::LessEqual),
             bind_group,
             instances: InstanceBuffer::new("glyph3 instances"),
+            printed: InstanceBuffer::new("printed glyph instances"),
             overlay: InstanceBuffer::new("glyph3 overlay"),
         }
     }
@@ -568,6 +586,28 @@ impl Text3dPipeline {
         items: &[Glyph3Instance],
     ) {
         self.overlay.set(device, queue, items);
+    }
+
+    /// Replaces the printed glyphs (`flat` > 0).
+    pub fn set_printed(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        items: &[Glyph3Instance],
+    ) {
+        self.printed.set(device, queue, items);
+    }
+
+    /// Draws the printed text, depth-tested against the solids drawn before it.
+    pub fn draw_printed<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, quad: &'a wgpu::Buffer) {
+        let Some((buffer, count)) = self.printed.bound() else {
+            return;
+        };
+        pass.set_pipeline(&self.printed_pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, quad.slice(..));
+        pass.set_vertex_buffer(1, buffer.slice(..));
+        pass.draw(0..4, 0..count);
     }
 
     /// Draws the text, then the overlay; `overlay: false` skips it (snapshots).
@@ -688,6 +728,8 @@ mod tests {
             role: Default::default(),
             halo: true,
             tick: None,
+            flat: None,
+            upright: None,
         }
     }
 

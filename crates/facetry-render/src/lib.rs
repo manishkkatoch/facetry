@@ -20,7 +20,9 @@ mod solid;
 pub mod stroke;
 mod text;
 
-pub use camera::{Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection};
+pub use camera::{
+    CLOSE_UP_DISTANCE, Camera, MAX_DISTANCE, MAX_ELEVATION, MIN_DISTANCE, MIN_ELEVATION, Projection,
+};
 pub use error::Error;
 pub use renderer::{BackendPreference, Renderer, Snapshot};
 

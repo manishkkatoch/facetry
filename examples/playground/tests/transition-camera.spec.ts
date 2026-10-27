@@ -61,7 +61,7 @@ test("a camera tween turns the camera over time and ends exactly on the target",
   expect(cam.distance).toBeCloseTo((start.distance + 3.5) / 2, 2);
   expect(differing(mid, still)).toBeGreaterThan(3_000);
   const end = await at(page, 600);
-  expect(await camera(page)).toEqual({ type: "perspective", azimuth: 120, elevation: 50, distance: 3.5 });
+  expect(await camera(page)).toEqual({ type: "perspective", azimuth: 120, elevation: 50, distance: 3.5, pan: [0, 0] });
   expect(await animating(page)).toBe(false);
   // The same picture as jumping there.
   await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 120, elevation: 50, distance: 3.5 }));
@@ -169,7 +169,7 @@ test("a new camera in the spec moves the camera with the update's transition", a
   expect(mid.azimuth).toBeGreaterThan(40);
   expect(mid.azimuth).toBeLessThan(140);
   await at(page, 400);
-  expect(await camera(page)).toEqual({ type: "perspective", azimuth: 150, elevation: 20, distance: 3 });
+  expect(await camera(page)).toEqual({ type: "perspective", azimuth: 150, elevation: 20, distance: 3, pan: [0, 0] });
 });
 
 // --- legend toggles ----------------------------------------------------------------------------

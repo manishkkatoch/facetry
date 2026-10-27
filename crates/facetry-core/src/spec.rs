@@ -56,6 +56,11 @@ pub struct ChartSpec {
     /// it for one call.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub transition: Option<TransitionSpec>,
+    /// A laid-out diagram (nodes and routed edges) instead of `layers`. Usually written by
+    /// `facetry/diagrams` from Mermaid text rather than by hand. Needs `dimension: "3d"`; a
+    /// diagram spec has no `data`, `axes`, `layers` or `legend`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub diagram: Option<DiagramSpec>,
     /// Series the host has hidden at run time (`Chart.setSeriesVisible`, a legend click).
     /// When `Some`, it **replaces** `legend.hidden`, so the host's state wins over the
     /// spec's starting state without editing the user's spec. Not part of the JSON.
@@ -561,4 +566,276 @@ pub struct ThetaEncoding {
 #[cfg_attr(feature = "ts", derive(Tsify))]
 pub struct KeyEncoding {
     pub field: String,
+}
+
+/// A diagram whose layout is already done: every node has its place and size and every edge
+/// its path, in **layout units** on a plan seen from above (x to the right, y down the page,
+/// as in an SVG; 1 unit is about a CSS pixel at the label size). The renderer extrudes the
+/// nodes into solids standing on that plan and draws the edges just above the floor.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramSpec {
+    pub nodes: Vec<DiagramNode>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub edges: Vec<DiagramEdge>,
+    /// The size the labels were measured at, in layout units (default 14). Labels are drawn at
+    /// the matching screen size for the starting camera, so they fit their nodes.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub font_size: Option<f64>,
+    /// How the diagram looks: `"flat"` (the default), `"glossy"`, `"isometric"` or
+    /// `"schematic"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub style: DiagramStyle,
+    /// Icons of the diagram's own, by name, for nodes' `icon` (a custom icon wins over a
+    /// built-in one of the same name). A JSON object; kept as pairs in its order, a name
+    /// given twice keeping its last icon. (A list rather than a map: there are a handful, and
+    /// a map type of its own would add kilobytes to the wasm.)
+    #[cfg_attr(feature = "ts", tsify(optional, type = "Record<string, CustomIcon>"))]
+    pub icons: Vec<(String, CustomIcon)>,
+}
+
+/// An icon brought by the user, as SVG path data: lines drawn like the built-in icons'
+/// strokes, filled shapes, or both. At least one of `stroke` and `fill`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct CustomIcon {
+    /// Path data drawn as lines (the `d` of a line icon's stroked paths, run together).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: Option<String>,
+    /// Filled shapes, each filled on its own (as separate SVG elements are), in the ink colour.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub fill: Vec<IconFill>,
+    /// The area the path is drawn in, `[minX, minY, width, height]` as in an SVG `viewBox`;
+    /// default `[0, 0, 24, 24]`. The icon is fitted into its node's icon square, centred.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub view_box: Option<[f64; 4]>,
+}
+
+/// One filled shape of a [`CustomIcon`]: path data and its fill rule.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct IconFill {
+    pub d: String,
+    /// `"nonzero"` (the default, as in SVG) or `"evenodd"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub fill_rule: FillRule,
+}
+
+/// Which parts of overlapping contours are inside, as SVG's `fill-rule`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum FillRule {
+    /// Inside where the contours wind round a point a non-zero number of times (SVG's default).
+    #[default]
+    NonZero,
+    /// Inside where a ray from the point crosses the contours an odd number of times.
+    EvenOdd,
+}
+
+/// A diagram's visual style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum DiagramStyle {
+    /// Light blocks with a crisp rim, thin edges over the node tops, labels facing the viewer;
+    /// seen square on from an orthographic camera.
+    #[default]
+    Flat,
+    /// Glossy coloured slabs (coloured by shape unless the node says otherwise) with soft
+    /// shadows, thick arrows on the floor routed at right angles, and labels printed on the
+    /// slabs; seen at an angle through a perspective camera.
+    Glossy,
+    /// An isometric infographic: each node a layered pedestal (a plate, a white body, a
+    /// coloured cap with a white inset the label is printed on), coloured in turn from a
+    /// palette, joined by grey roads on the floor with chevrons showing the way, under long
+    /// soft shadows; seen through an orthographic lens from 45 degrees round.
+    Isometric,
+    /// A plant schematic in the same isometric view: each node a piece of equipment modelled
+    /// after its shape (building, silo, tank, valve, reactor, drum) in pale greys with dark
+    /// outlines, edges pipes on supports with flow marks (thick edges conveyors), and labels
+    /// on signs standing above the equipment, over a faint floor grid.
+    Schematic,
+}
+
+/// Default label size of a diagram, in layout units.
+pub const DEFAULT_DIAGRAM_FONT_SIZE: f64 = 14.0;
+/// Largest `diagram.fontSize` accepted.
+pub const MAX_DIAGRAM_FONT_SIZE: f64 = 200.0;
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramNode {
+    /// Unique among the nodes; what edges, hover and click refer to.
+    pub id: String,
+    /// The text on the node. Default: the id. `""` for none.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<String>,
+    /// Default: `"rect"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub shape: NodeShape,
+    /// The centre of the node's footprint.
+    pub x: f64,
+    pub y: f64,
+    /// The footprint's size (the shape is fitted into this rectangle).
+    pub width: f64,
+    pub height: f64,
+    /// Fill colour, `#rrggbb`. Default: the style's colour for the shape.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub color: Option<String>,
+    /// Outline colour, `#rrggbb`: the rim round the top face. Default: the style's (the flat
+    /// style draws a rim, the glossy one none).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: Option<String>,
+    /// Rim width in CSS px (0 to 20). Default: the style's.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke_width: Option<f64>,
+    /// Label colour, `#rrggbb`. Default: dark or white, whichever reads better on the fill.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text_color: Option<String>,
+    /// A built-in icon (`"bulb"`, `"gear"`, `"database"`, ...; `fa:`-style prefixes and common
+    /// aliases are understood), drawn as a line drawing: on the node's card if it has one, else
+    /// on its top above the label (the layout leaves room for it there).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub icon: Option<String>,
+    /// A card lying on the floor beside the node, with a title, a description and the icon
+    /// (isometric style only).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub card: Option<NodeCard>,
+}
+
+/// A node's card: a rectangle on the floor (layout units, like the node), its title printed in
+/// the node's colour and its text, if any, below it in grey.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+pub struct NodeCard {
+    /// The card's centre and size.
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub title: String,
+    /// Lines separated by `\n`, already wrapped to the card.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text: Option<String>,
+}
+
+/// Widest node rim accepted, CSS px.
+pub const MAX_NODE_STROKE_WIDTH: f64 = 20.0;
+
+/// The outline a node is extruded from. All are convex, fitted into the node's rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub enum NodeShape {
+    /// Square corners (Mermaid `a[text]`).
+    #[default]
+    Rect,
+    /// Rounded corners (`a(text)`).
+    Rounded,
+    /// Fully rounded ends (`a([text])`).
+    Stadium,
+    /// A database drum (`a[(text)]`): an ellipse in plan, with a rim drawn on top.
+    Cylinder,
+    /// `a((text))`: an ellipse (a circle when the footprint is square).
+    Circle,
+    /// A decision (`a{text}`).
+    Diamond,
+    /// `a{{text}}`.
+    Hexagon,
+    /// Leaning right (`a[/text/]`).
+    Parallelogram,
+    /// Leaning left (`a[\text\]`).
+    ParallelogramAlt,
+    /// Wider at the bottom (`a[/text\]`).
+    Trapezoid,
+    /// Wider at the top (`a[\text/]`).
+    TrapezoidAlt,
+}
+
+impl NodeShape {
+    /// The name the spec uses.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Rect => "rect",
+            Self::Rounded => "rounded",
+            Self::Stadium => "stadium",
+            Self::Cylinder => "cylinder",
+            Self::Circle => "circle",
+            Self::Diamond => "diamond",
+            Self::Hexagon => "hexagon",
+            Self::Parallelogram => "parallelogram",
+            Self::ParallelogramAlt => "parallelogramAlt",
+            Self::Trapezoid => "trapezoid",
+            Self::TrapezoidAlt => "trapezoidAlt",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramEdge {
+    /// Node ids.
+    pub from: String,
+    pub to: String,
+    /// The routed path, at least two points: from the border of `from` to the border of `to`
+    /// (where the head's tip is). Drawn as a polyline, so a curve comes as many points.
+    #[cfg_attr(feature = "ts", tsify(type = "[number, number][]"))]
+    pub points: Vec<[f64; 2]>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<String>,
+    /// Where the label's centre goes. Default: halfway along the path.
+    #[cfg_attr(feature = "ts", tsify(optional, type = "[number, number]"))]
+    pub label_position: Option<[f64; 2]>,
+    /// Default: `"solid"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: EdgeStroke,
+    /// The end at `to`. Default: `"arrow"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub head: Option<EdgeEnd>,
+    /// The end at `from`. Default: `"none"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub tail: Option<EdgeEnd>,
+}
+
+impl DiagramEdge {
+    /// `(tail, head)` with the defaults filled in.
+    pub fn ends(&self) -> (EdgeEnd, EdgeEnd) {
+        (
+            self.tail.unwrap_or(EdgeEnd::None),
+            self.head.unwrap_or(EdgeEnd::Arrow),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum EdgeStroke {
+    /// `-->`
+    #[default]
+    Solid,
+    /// `-.->`
+    Dotted,
+    /// `==>`
+    Thick,
+}
+
+/// What an edge has at one of its ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum EdgeEnd {
+    None,
+    /// A filled triangle (`-->`).
+    Arrow,
+    /// A disc (`--o`).
+    Circle,
+    /// A cross (`--x`).
+    Cross,
 }

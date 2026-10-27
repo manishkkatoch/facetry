@@ -16,6 +16,12 @@ click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Clic
 hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)). Updates, legend toggles
 and camera moves animate (see [Animated transitions](#animated-transitions)).
 
+**Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
+small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
+extruded nodes with edges and labels, flat, glossy (thick arrows, shadows, printed labels) or
+isometric (pedestals joined by roads) or schematic (equipment joined by pipes) (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
+the design in [docs/diagrams-3d.md](docs/diagrams-3d.md)).
+
 ```ts
 import { Chart, FacetryError, type ChartSpec } from "facetry";
 
@@ -478,7 +484,9 @@ stacked bars and 3D boxes (1000 marks): under 0.1 ms (the GPU does the work); a 
 slices 0.1 ms; the worst case, 4 lines of 250 points with a marker on each (2000 marks), 4 to 7
 ms, almost all of it the markers' discs being tessellated again. Limits: values do not count up
 (a changed label cross-fades), a change between 2D and 3D jumps, an update that changes nothing
-does not animate, and `transition` cannot be turned on for a single mark.
+does not animate, and `transition` cannot be turned on for a single mark. Diagrams do not
+animate yet (milestone D5): an update to, from or within a diagram jumps to the new picture,
+while a new starting camera still moves there with the transition.
 
 ### 3D charts
 
@@ -519,14 +527,25 @@ const spec: ChartSpec = {
   validation errors in 2D (with paths such as `/layers/0/encoding/z`). Right axes are not
   supported in 3D yet.
 
-**Camera controls.** In a 3D chart (with `interaction.orbit` not `false`) drag to orbit, use the
-wheel to zoom and double-click to reset. From code:
+**Camera controls.** In a 3D chart or diagram (with `interaction.orbit` not `false`):
+
+| | mouse | touch |
+|---|---|---|
+| orbit | drag | drag one finger |
+| pan | right-drag, or Shift+drag | drag two fingers |
+| zoom | wheel, toward the pointer (what is under it stays under it) | pinch, toward the fingers |
+| reset | double-click | double-tap, where the browser turns it into a double-click |
+
+Panning moves the point looked at across the floor, never beyond the plot box. Diagrams may
+zoom in to 0.15 box radii (a big diagram is read a corner at a time); charts stop at 1.3. A right
+press never opens the context menu over an interactive chart, and neither a drag nor a right
+press clicks. From code:
 
 ```ts
-chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance
+chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance/pan
 chart.setCamera({ azimuth: 120 }, { duration: 800 });   // the same as a tween (see "Animated transitions")
-chart.camera;                                      // { type, azimuth, elevation, distance }
-chart.resetCamera();                               // back to the spec's camera
+chart.camera;                                      // { type, azimuth, elevation, distance, pan: [x, z] }
+chart.resetCamera();                               // back to the spec's camera, unpanned
 ```
 
 The camera lives in Rust and moving it only rewrites one uniform and asks for a frame: the
@@ -561,6 +580,181 @@ over bars, and an axis with more than about 100 categories is labelled every n-t
 The TypeScript types are generated from the Rust definitions, so they cannot drift.
 Example specs live in `examples/specs/` and are shared by the Rust snapshot tests, the
 playground and the golden-image test.
+
+## Diagrams from Mermaid
+
+`facetry/diagrams` turns Mermaid text into a chart spec; `Chart` draws it in 3D like any other
+spec (hover, click, orbit and PNG snapshots included):
+
+```ts
+import { Chart, FacetryError } from "facetry";
+import { diagram } from "facetry/diagrams";
+
+try {
+  const spec = await diagram.fromMermaid(`flowchart TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great!]
+    B -->|No| D[Debug] --> B`);
+  const chart = await Chart.create(canvas, spec);
+  chart.on("click", (mark) => console.log(mark?.key)); // a node's id, e.g. "C"
+} catch (e) {
+  const err = FacetryError.from(e);
+  if (err.code === "invalid-diagram") {
+    for (const { line, column, message } of err.diagramIssues) console.log(`${line}:${column} ${message}`);
+  }
+}
+```
+
+The add-on is a separate wasm module of about 106 KB gzip (the parser and the layout, no GPU
+code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
+it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
+that can be stored and drawn later without the add-on.
+
+**Supported Mermaid (`flowchart`, also written `graph`):**
+
+- directions `TB`/`TD`, `BT`, `LR`, `RL`; statements on lines or separated by `;`; `%%` comments;
+- node shapes `[rect]`, `(rounded)`, `([stadium])`, `[(cylinder)]`, `((circle))`, `{diamond}`,
+  `{{hexagon}}`, `[/parallelogram/]`, `[\alt\]`, `[/trapezoid\]`, `[\alt/]`, with quoted labels,
+  `<br>` line breaks and the `#quot;`-style entities;
+- links `-->`, `---`, `-.->`, `-.-`, `==>`, `===`, circle and cross heads (`--o`, `--x`), two-headed
+  links (`<-->`, `o--o`, `x--x`), longer links (`--->` spans an extra rank), and labels
+  (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
+- chains (`a --> b --> c`) and groups (`a & b --> c & d`);
+- colours: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
+  `classDef default ...`, which applies to every node), `class a,b name`, `a:::name`, and
+  `style a fill:#f96`. Properties `fill`, `stroke`, `stroke-width` (px, up to 20) and `color`
+  (the label), with `#rgb`/`#rrggbb` colours or common CSS names. Classes apply in the order
+  written, `style` over classes; a class may be defined after the nodes that use it;
+- icons: `a[Checkout]@{ icon: "cart" }` draws a built-in line icon above the label (on the card,
+  with cards). The icons are `alert`, `bars`, `bolt`, `bulb`, `calendar`, `cart`, `chart`,
+  `check`, `clock`, `cloud`, `code`, `database`, `disk`, `file`, `flag`, `gear`, `globe`, `heart`,
+  `home`, `lock`, `mail`, `money`, `phone`, `rocket`, `search`, `server`, `shield`, `star`,
+  `target`, `truck`, `user` and `users`; a prefix such as `fa:` is dropped and a few common
+  names map onto them (`cog`, `envelope`, `lightbulb`, `warning`, `shopping-cart`, ...). An
+  unknown icon, or any `@{ }` key but `icon`, is an error.
+
+**Your own icons.** Pass them by name as `icons`, and `@{ icon: "<name>" }` can use them (one
+named like a built-in icon replaces it):
+
+```ts
+const spec = await diagram.fromMermaid('flowchart LR\n  p[Pump station]@{ icon: "pump" } --> t[Tank]', {
+  style: "schematic",
+  icons: {
+    pump: await (await fetch("/icons/pump.svg")).text(), // SVG markup, as an icon set ships it
+    valve: "M4 8l16 8V8L4 16z",                          // a filled path, in a 24 x 24 box
+    tank: { stroke: "M64 32h384v448H64z", fill: "M128 320h256v128H128z", viewBox: [0, 0, 512, 512] },
+  },
+});
+```
+
+An icon is SVG markup; bare path data, which is filled (that is how filled icon sets such as
+Material Design Icons, Simple Icons and Font Awesome publish their paths) in a 24 by 24 box; or
+`{ stroke?, fill?, fillRule?, viewBox? }`, path data drawn as lines and path data filled. Markup
+is read in the browser: every `path`, `circle`, `ellipse`, `rect` (rounded too), `line`,
+`polyline` and `polygon` inside the `<svg>`'s `viewBox` (or its `width` and `height`) is filled
+and/or drawn as lines as SVG would paint it (`fill`, `stroke` and `fill-rule`, inherited, as
+attributes or in `style`); shapes painted neither way (an icon set's invisible bounding box) are
+left out, and `transform`, `<use>`, `<text>` and `<image>` are refused (flatten transforms first,
+e.g. with SVGO). Path data takes every SVG command, curves and arcs included. Both kinds of
+icon set look as designed: line icons (Lucide, Tabler, Feather, ...) as lines, filled ones
+filled, holes and both fill rules included; lines and fills are in the style's ink, as the
+built-in icons are, whatever colours the SVG names. The icons travel inside the returned spec
+(`diagram.icons`: `{ stroke?, fill?: [{ d, fillRule? }], viewBox? }`, each filled shape kept
+apart as SVG fills each element on its own), so it still draws on its own; `iconFromSvg(markup)`
+from `facetry/diagrams` does the conversion for a spec written by hand. A broken icon rejects
+with `code: "invalid-options"`, naming the icon and where its path goes wrong; an icon over
+4,000 points (once curves are cut into steps) is refused as too detailed. The playground passes
+the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-icons`).
+
+Everything else is an `invalid-diagram` error naming the feature and its line and column
+(subgraphs, other style properties such as `stroke-dasharray` or `font-size`, `click`,
+`linkStyle`, invisible `~~~` links, the
+`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
+markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
+never drawn with parts silently missing. Sequence and architecture diagrams are planned
+(milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
+covers printable ASCII; other characters draw as `?`.
+
+**Layout** is layered, like Mermaid's (dagre): cycles are broken depth-first in the order the
+text declares them, ranks are assigned by network simplex (shortest edges), every edge gets a rank
+of its own for its label, nodes are ordered within ranks by barycenter sweeps plus transposition to
+avoid crossings, and Brandes-Köpf assigns coordinates (long edges straight, parents centred over
+children). Edges leave and enter through the real node outline and are smoothed with the same
+B-spline Mermaid uses. Spacing follows Mermaid's defaults (50 between nodes and between ranks). The
+same text always gives the same layout.
+
+**Styles.** `diagram.fromMermaid(text, { style })` picks how the diagram looks (and, for the
+glossy style, how its edges are routed):
+
+- `"flat"` (the default): light blocks with a rim, thin curved edges, labels that face the
+  viewer; square on through an orthographic lens. Described below.
+- `"glossy"`: polished coloured slabs (by shape unless `classDef`/`style` say otherwise: red
+  start and end, blue steps, magenta decisions, amber stores, green preparation, violet
+  input/output) with a sheen and a light catch-light along their top edge, soft shadows on the
+  floor, thick arrows lying on the floor with solid heads, routed at right angles with rounded
+  corners and stopping short of the nodes, edge labels on small cards, and every label printed
+  on its surface (so it turns and zooms with the scene and hides behind what stands in front);
+  seen in perspective from 28 degrees round and 40 degrees up. Square-cornered routing gives
+  each edge its own port along a node's side and its own track where several turn in the same
+  gap, ordered so that turns do not cross needlessly.
+- `"isometric"`: an infographic in the classic isometric view (orthographic, 45 degrees round,
+  35.26 up). Every node is a layered pedestal of its shape: a pale plate on the floor, a white
+  body, a coloured cap (the colours of a palette in turn, unless `classDef`/`style` set `fill`)
+  and a white inset on top where the label is printed in a deep shade of the cap's colour. Edges
+  are light grey roads on the floor, routed at right angles like the glossy style's, with
+  chevrons along them pointing the way and a darker one before the head (the pedestal hides the
+  road's end); edge labels sit on cards on the roads; long soft shadows fall toward the viewer's
+  right. A node's `color` is used for its label only if it reads on the white inset.
+  With `{ style: "isometric", cards: true }` (the playground's **Cards** box, or `?cards=1`) each
+  node gets a white card lying on the floor beside it, as in an infographic timeline: the first
+  line of its label is the card's title, the rest wrapped text under it, and its icon sits at the
+  card's outer edge; the pedestal then shows the node's number (1, 2, ... in the order the text
+  declares the nodes) as solid digits standing on it, in the node's colour, turned to face the
+  isometric view. The layout reserves room for each card, which goes to alternate sides
+  rank by rank, and no edge runs over a card. `cards` is ignored by the other styles.
+- `"schematic"`: a plant schematic in the same isometric view, after isometric illustrations of
+  industrial plants. Every node is a piece of equipment modelled after its shape, in pale greys
+  with dark drawn edges: a rectangle a building with a roof slab and a roof unit, a cylinder a
+  silo on a square plinth, a circle a banded tank, a diamond a valve with its hand wheel, a
+  hexagon a reactor with a chimney, a stadium a drum with bands. Edges are pipes raised on
+  supports, with green flow marks along their tops and a darker one before the head; thick
+  edges are dark conveyors, dotted ones dashed pipes. Labels (and edge labels, smaller) are
+  printed on white signs in a dark frame, standing on posts above the equipment and turned to
+  face the isometric view; a node's icon goes on its sign. A faint grid covers the floor. A
+  node's `color` fills its equipment, `stroke`/`stroke-width` draw its edges, and its text
+  colour is used if it reads on the white sign. Signs of nodes that stand close together can
+  cover each other in the starting view (orbiting separates them).
+
+**Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
+run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
+it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
+orthographic camera looking square on and 50 degrees down, at a distance that fits the diagram
+to the canvas but never draws a layout unit (about a CSS pixel) at more than 1.15 pixels, so a
+small diagram is not blown up; labels are sized for that starting view. A spec `camera` overrides
+any of this, and orbit, zoom and `setCamera` work as for charts. Hover lightens a node; `hover`
+and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
+
+**Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
+`nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor?, icon?,
+card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }`
+(centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
+label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
+"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
+`examples/specs/diagram-glossy.json`). `icon` names one of the diagram's `icons` or a built-in
+icon; `card: { x, y, width, height,
+title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
+(`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
+
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (30 flowcharts in the
+style of real documentation) is laid out in both styles, and in the isometric style with cards, by
+`crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
+deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
+for each style: edge crossings, edges through nodes, label overlaps, bends, total edge length and
+size. Any change to the layout shows in those snapshots' diffs, diagram by diagram. Today: no node
+or label overlaps and no edge through a node in either style, and with cards no card overlapping
+a node or another card and no edge over a card; 9 crossings in the whole corpus with
+curved edges and 15 with square-cornered ones (right angles cannot always slip past each other the
+way curves do).
 
 ## Value labels, hover and click
 
@@ -684,13 +878,13 @@ tested against the bars, none writing depth), then text; a legend adds a second 
 
 ```sh
 pnpm install
-pnpm build:wasm            # both modules: wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints sizes
+pnpm build:wasm            # all three modules: wasm-pack + wasm-opt -Oz -> packages/facetry/wasm, prints sizes
 pnpm -r build              # tsc for the package, tsc + vite build for the playground
 pnpm dev                   # playground dev server; add ?backend=webgl2 to force the fallback
 
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p facetry-core -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+cargo clippy -p facetry-core -p facetry-font -p facetry-render -p facetry-wasm -p facetry-diagrams -p facetry-diagrams-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
 cargo clippy -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl -- -D warnings
 cargo test --workspace     # unit, property (proptest) and snapshot (insta) tests
 
@@ -721,12 +915,17 @@ checkbox turns the animation of updates on and off, and **Spin** (3D charts) tur
 quarter turn as a tween. URL parameters:
 `?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
-`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...), `?ui=0` (only the chart), `?seed=1` (a reproducible sequence of Randomize clicks), `?animateIn=1`
+`combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
+and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
+`mermaid/01-decision`), `?style=glossy`, `?style=isometric` or `?style=schematic` (draw Mermaid in that style; also a **Style**
+dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the chart), `?seed=1` (a reproducible sequence of Randomize clicks), `?animateIn=1`
 and `?clock=manual` (the animation clock is held until a test moves it with
-`facetryChart.__animationClock(ms)`). 3D examples show the
+`facetryChart.__animationClock(ms)`). The editor takes Mermaid text as well as JSON
+(anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
+their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
-console.
+console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
 
 ### Snapshots and golden images
 
@@ -736,7 +935,12 @@ console.
   `INSTA_UPDATE=no`, so any difference fails.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
-  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`): Playwright screenshots these examples (3D ones at their
+  `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
+  the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision`,
+  `diagram-glossy-26-styled`, `diagram-isometric-27-timeline`, `diagram-isometric-01-decision`,
+  `diagram-isometric-29-icons`, `diagram-isometric-cards-28-roadmap`, `diagram-schematic-30-plant`
+  `diagram-schematic-29-icons`, and `diagram-schematic-31-custom-icons` and
+  `diagram-isometric-cards-31-custom-icons` with the example icons of your own): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -762,13 +966,41 @@ the glyph widths.
 
 ## Bundle size
 
-The package ships two wasm modules built from the same source (`scripts/build-wasm.sh`, release
-profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`); `scripts/wasm-size.sh` prints these numbers:
+The package ships two chart wasm modules built from the same source, plus the diagrams add-on
+(`scripts/build-wasm.sh`, release profile `opt-level = "z"` + LTO, then `wasm-opt -Oz`);
+`scripts/wasm-size.sh` prints these numbers:
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 669,204 B (654 KiB) | 302,702 B (296 KiB) | 251,204 B (245 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,284,087 B (2231 KiB) | 944,713 B (923 KiB) | 747,655 B (730 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 909,155 B (888 KiB) | 401,702 B (392 KiB) | 329,259 B (322 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,516,311 B (2457 KiB) | 1,043,769 B (1019 KiB) | 822,503 B (803 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 244,536 B (239 KiB) | 105,707 B (103 KiB) | 90,648 B (89 KiB) | only when `facetry/diagrams` lays out a diagram |
+
+Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
+they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
+WebGL2 one (988,566 to 1,043,769, +5.6%). The step-by-step numbers below were measured before
+the rebase, against the module as it was then.
+
+Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
+spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
+319,196 B gzip (+16,529, +5.5%), WebGL2 944,952 to 961,769 (+16,817, +1.8%), measured against the
+previous commit with the same toolchain (rustc 1.99). The parser and the layout live in the
+add-on only. The glossy style (S1) added 7,916 B gzip to the WebGPU module (ribbons, shadows,
+gloss, printed text) and 12,833 to the add-on (styling and square-cornered routing), after
+replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser. The
+isometric style and panning (S2) added 3,820 B gzip to the WebGPU module. Cards and icons (S3)
+added 7,799 B gzip to the WebGPU module (the 32 icons, card layout and printed card text), 7,731
+to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement);
+the standing numerals then added 1,715 to the WebGPU module and 1,442 to the WebGL2 one. The
+schematic style (S4) added 5,850 B gzip to the WebGPU module and 6,235 to the WebGL2 one (the
+equipment, pipes, signs and upright printed text); the add-on only learned its name. Icons of
+your own added 6,489 B gzip to the WebGPU module, 6,135 to the WebGL2 one and 6,225 to the
+add-on, about half of it the SVG path reader (its own number reader, as `str::parse` would
+link the standard one); they are kept as a list of pairs rather than a map, which saved about
+3 KB in each module. Filled icons then added 3,843 B gzip to the WebGPU module, 4,292 to the
+WebGL2 one and 1,627 to the add-on (which checks icons but never triangulates them); the
+triangulation is under 1 KB since it sorts with a small insertion sort of its own (the
+standard library's sorts had cost 5 KB).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

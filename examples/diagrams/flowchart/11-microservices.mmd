@@ -1,0 +1,16 @@
+flowchart TD
+    web[Web app] --> api[API gateway]
+    mobile[Mobile app] --> api
+    api --> users[Users service]
+    api --> orders[Orders service]
+    api --> catalog[Catalog service]
+    orders --> payments[Payments service]
+    orders --> inventory[Inventory service]
+    catalog --> inventory
+    users --> udb[(Users DB)]
+    orders --> odb[(Orders DB)]
+    catalog --> search[(Search index)]
+    payments --> stripe{{Payment provider}}
+    orders -.-> bus[/Event bus/]
+    bus -.-> inventory
+    bus -.-> email[Email service]

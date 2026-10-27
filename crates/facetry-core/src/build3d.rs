@@ -96,6 +96,9 @@ pub fn build_scene_3d_with_theme(
     measure: &dyn TextMeasure,
     theme: &Theme,
 ) -> Scene3d {
+    if spec.diagram.is_some() {
+        return crate::diagram::build_diagram_3d(spec, viewport_px, dpr, measure, theme);
+    }
     // An extruded pie is a chart of its own: no axes, no walls.
     if let Some(i) = spec
         .layers
@@ -263,6 +266,11 @@ pub fn build_scene_3d_with_theme(
         halo_px: s.round().max(1.0) as f32,
         boxes: Vec::new(),
         slices: Vec::new(),
+        prisms: Vec::new(),
+        decor: Vec::new(),
+        ribbons: Vec::new(),
+        shadows: Vec::new(),
+        fills: Vec::new(),
         lines: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),
@@ -418,6 +426,8 @@ pub fn build_scene_3d_with_theme(
             },
             halo: !pending.inside,
             tick: None,
+            flat: None,
+            upright: None,
         };
         scene.labels.push(MarkLabel3 {
             mark: pending.mark,
@@ -552,7 +562,7 @@ pub fn build_scene_3d_with_theme(
                     };
                     let gap = (VALUE_LABEL_GAP * s) as f32 + radius;
                     scene.labels.push(MarkLabel3 {
-                        mark: scene.boxes.len() + scene.slices.len() + scene.points.len(),
+                        mark: scene.first_point() + scene.points.len(),
                         show: label.show,
                         text: Text3 {
                             key: format!("{key}/label"),
@@ -568,6 +578,8 @@ pub fn build_scene_3d_with_theme(
                             role: LabelRole::OnPoint,
                             halo: true,
                             tick: None,
+                            flat: None,
+                            upright: None,
                         },
                     });
                 }
@@ -791,6 +803,8 @@ pub fn build_scene_3d_with_theme(
             role,
             halo: true,
             tick,
+            flat: None,
+            upright: None,
         });
     };
 

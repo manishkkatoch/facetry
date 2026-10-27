@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Prints the raw, gzip -9 and brotli -q 11 size of both built .wasm files.
+# Prints the raw, gzip -9 and brotli -q 11 size of the built .wasm files.
 # (brotli comes from the `brotli` CLI if installed, else Node's zlib.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-for name in facetry_wasm facetry_wasm_gl; do
+for name in facetry_wasm facetry_wasm_gl facetry_diagrams; do
   wasm=packages/facetry/wasm/${name}_bg.wasm
   raw=$(wc -c <"$wasm")
   gz=$(gzip -9 -c "$wasm" | wc -c)

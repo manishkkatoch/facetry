@@ -76,6 +76,11 @@ pub(crate) fn build_pie_3d(
         halo_px: s.round().max(1.0) as f32,
         boxes: Vec::new(),
         slices: Vec::new(),
+        prisms: Vec::new(),
+        decor: Vec::new(),
+        ribbons: Vec::new(),
+        shadows: Vec::new(),
+        fills: Vec::new(),
         lines: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),
@@ -174,6 +179,8 @@ pub(crate) fn build_pie_3d(
             role: LabelRole::Fixed,
             halo,
             tick: None,
+            flat: None,
+            upright: None,
         };
         let top = height as f32;
         let t3 = if fits {

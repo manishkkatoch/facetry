@@ -12,10 +12,12 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
-    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, Dimension, Easing,
-    Encoding, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
-    LegendConfig, LegendOrient, LegendSpec, Mark, Orient, PointConfig, PointSpec, Position,
-    PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding, TransitionConfig, TransitionSpec,
+    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
+    DiagramNode, DiagramSpec, DiagramStyle, Dimension, Easing, EdgeEnd, EdgeStroke, Encoding,
+    FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
+    LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig,
+    PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -276,7 +278,8 @@ fn read_chart_spec(v: Value) -> Read<ChartSpec> {
         legend [def] = "legend" => opt(read_legend),
         camera [def] = "camera" => opt(read_camera),
         interaction [def] = "interaction" => opt(read_interaction),
-        transition [def] = "transition" => opt(read_transition);
+        transition [def] = "transition" => opt(read_transition),
+        diagram [def] = "diagram" => opt(read_diagram);
         hidden_override = None
     })
 }
@@ -558,6 +561,171 @@ fn read_key(v: Value) -> Read<KeyEncoding> {
     object!(v, "KeyEncoding", KeyEncoding {
         field [req] = "field" => string,
     })
+}
+
+// --- diagrams -------------------------------------------------------------------------------
+
+fn read_diagram(v: Value) -> Read<DiagramSpec> {
+    object!(v, "DiagramSpec", DiagramSpec {
+        nodes [req] = "nodes" => list(read_diagram_node),
+        edges [def] = "edges" => list(read_diagram_edge),
+        font_size [def] = "fontSize" => opt(number),
+        style [def] = "style" => read_diagram_style,
+        icons [def] = "icons" => read_custom_icons,
+    })
+}
+
+/// The diagram's icons: an object read into pairs, in order, a repeated name keeping its last
+/// icon (as [`map`] does).
+fn read_custom_icons(v: Value) -> Read<Vec<(String, CustomIcon)>> {
+    let mut out: Vec<(String, CustomIcon)> = Vec::new();
+    for (key, value) in entries(v, "a map")? {
+        let icon = read_custom_icon(value).map_err(|e| e.at_key(&key))?;
+        out.retain(|(name, _)| *name != key);
+        out.push((key, icon));
+    }
+    Ok(out)
+}
+
+fn read_custom_icon(v: Value) -> Read<CustomIcon> {
+    object!(v, "CustomIcon", CustomIcon {
+        stroke [def] = "stroke" => opt(string),
+        fill [def] = "fill" => list(read_icon_fill),
+        view_box [def] = "viewBox" => opt(quad),
+    })
+}
+
+fn read_icon_fill(v: Value) -> Read<IconFill> {
+    object!(v, "IconFill", IconFill {
+        d [req] = "d" => string,
+        fill_rule [def] = "fillRule" => read_fill_rule,
+    })
+}
+
+fn read_fill_rule(v: Value) -> Read<FillRule> {
+    variant(
+        v,
+        &[
+            ("nonzero", FillRule::NonZero),
+            ("evenodd", FillRule::EvenOdd),
+        ],
+    )
+}
+
+/// A fixed-size quadruple, read like [`pair`].
+fn quad(v: Value) -> Read<[f64; 4]> {
+    const EXPECTED: &str = "an array of length 4";
+    let Value::Array(items) = v else {
+        return Err(bad_type(&v, EXPECTED));
+    };
+    let len = items.len();
+    let mut out = [0.0; 4];
+    for (i, item) in items.into_iter().take(4).enumerate() {
+        out[i] = number(item).map_err(|e| e.under(format!("/{i}")))?;
+    }
+    if len == 4 {
+        Ok(out)
+    } else {
+        Err(Fail::new(format!(
+            "invalid length {len}, expected {EXPECTED}"
+        )))
+    }
+}
+
+fn read_diagram_style(v: Value) -> Read<DiagramStyle> {
+    variant(
+        v,
+        &[
+            ("flat", DiagramStyle::Flat),
+            ("glossy", DiagramStyle::Glossy),
+            ("isometric", DiagramStyle::Isometric),
+            ("schematic", DiagramStyle::Schematic),
+        ],
+    )
+}
+
+fn read_diagram_node(v: Value) -> Read<DiagramNode> {
+    object!(v, "DiagramNode", DiagramNode {
+        id [req] = "id" => string,
+        label [def] = "label" => opt(string),
+        shape [def] = "shape" => read_node_shape,
+        x [req] = "x" => number,
+        y [req] = "y" => number,
+        width [req] = "width" => number,
+        height [req] = "height" => number,
+        color [def] = "color" => opt(string),
+        stroke [def] = "stroke" => opt(string),
+        stroke_width [def] = "strokeWidth" => opt(number),
+        text_color [def] = "textColor" => opt(string),
+        icon [def] = "icon" => opt(string),
+        card [def] = "card" => opt(read_node_card),
+    })
+}
+
+fn read_node_card(v: Value) -> Read<NodeCard> {
+    object!(v, "NodeCard", NodeCard {
+        x [req] = "x" => number,
+        y [req] = "y" => number,
+        width [req] = "width" => number,
+        height [req] = "height" => number,
+        title [req] = "title" => string,
+        text [def] = "text" => opt(string),
+    })
+}
+
+fn read_node_shape(v: Value) -> Read<NodeShape> {
+    variant(
+        v,
+        &[
+            ("rect", NodeShape::Rect),
+            ("rounded", NodeShape::Rounded),
+            ("stadium", NodeShape::Stadium),
+            ("cylinder", NodeShape::Cylinder),
+            ("circle", NodeShape::Circle),
+            ("diamond", NodeShape::Diamond),
+            ("hexagon", NodeShape::Hexagon),
+            ("parallelogram", NodeShape::Parallelogram),
+            ("parallelogramAlt", NodeShape::ParallelogramAlt),
+            ("trapezoid", NodeShape::Trapezoid),
+            ("trapezoidAlt", NodeShape::TrapezoidAlt),
+        ],
+    )
+}
+
+fn read_diagram_edge(v: Value) -> Read<DiagramEdge> {
+    object!(v, "DiagramEdge", DiagramEdge {
+        from [req] = "from" => string,
+        to [req] = "to" => string,
+        points [req] = "points" => list(pair),
+        label [def] = "label" => opt(string),
+        label_position [def] = "labelPosition" => opt(pair),
+        stroke [def] = "stroke" => read_edge_stroke,
+        head [def] = "head" => opt(read_edge_end),
+        tail [def] = "tail" => opt(read_edge_end),
+    })
+}
+
+fn read_edge_stroke(v: Value) -> Read<EdgeStroke> {
+    variant(
+        v,
+        &[
+            ("solid", EdgeStroke::Solid),
+            ("dotted", EdgeStroke::Dotted),
+            ("thick", EdgeStroke::Thick),
+        ],
+    )
+}
+
+fn read_edge_end(v: Value) -> Read<EdgeEnd> {
+    variant(
+        v,
+        &[
+            ("none", EdgeEnd::None),
+            ("arrow", EdgeEnd::Arrow),
+            ("circle", EdgeEnd::Circle),
+            ("cross", EdgeEnd::Cross),
+        ],
+    )
 }
 
 #[cfg(test)]

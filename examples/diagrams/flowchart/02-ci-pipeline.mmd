@@ -1,0 +1,6 @@
+flowchart LR
+    push([git push]) --> lint[Lint] & test[Unit tests] & build[Build]
+    lint & test & build --> gate{All green?}
+    gate -->|yes| deploy[Deploy to staging]
+    gate -->|no| notify[Notify author]
+    deploy --> smoke[Smoke tests] --> prod([Promote to production])

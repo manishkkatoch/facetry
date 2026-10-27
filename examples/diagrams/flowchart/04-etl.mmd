@@ -1,0 +1,9 @@
+flowchart LR
+    s3[(Raw events<br>S3)] --> ingest[Ingest job]
+    pg[(Orders DB)] --> cdc[CDC stream]
+    cdc --> ingest
+    ingest --> clean[Clean and dedupe] --> enrich[Enrich with<br>customer data]
+    crm[(CRM)] --> enrich
+    enrich --> wh[(Warehouse)]
+    wh --> bi[Dashboards]
+    wh --> ml[Model training]

@@ -6,7 +6,12 @@ export {
   type MarkEvent,
   type SnapshotOptions,
 } from "./chart.js";
-export { FacetryError, type FacetryErrorCode, type SpecIssue } from "./errors.js";
+export {
+  FacetryError,
+  type DiagramIssue,
+  type FacetryErrorCode,
+  type SpecIssue,
+} from "./errors.js";
 // The spec types are generated from the Rust definitions (tsify), so they cannot drift.
 export type {
   AxisSpec,
@@ -17,8 +22,14 @@ export type {
   CameraUpdate,
   ChartSpec,
   ColorEncoding,
+  DiagramEdge,
+  DiagramNode,
+  DiagramSpec,
+  DiagramStyle,
   Dimension,
   Easing,
+  EdgeEnd,
+  EdgeStroke,
   Encoding,
   InteractionSpec,
   KeyEncoding,
@@ -30,6 +41,7 @@ export type {
   LegendOrient,
   LegendSpec,
   Mark,
+  NodeShape,
   Orient,
   PointConfig,
   PointSpec,

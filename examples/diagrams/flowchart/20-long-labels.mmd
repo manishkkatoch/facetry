@@ -1,0 +1,6 @@
+flowchart TD
+    A["Receive the purchase order from the customer portal"] --> B{"Does the order exceed<br>the approval threshold?"}
+    B -->|"Yes, needs a manager"| C["Route to the regional manager for approval"]
+    B -->|"No"| D["Create the sales order automatically"]
+    C --> D
+    D --> E["Send the confirmation email with the expected delivery date"]

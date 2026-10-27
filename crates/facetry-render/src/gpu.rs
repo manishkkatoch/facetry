@@ -40,7 +40,8 @@ pub struct Globals3 {
     /// Camera position (xyz).
     pub eye: [f32; 4],
     /// `x`: the camera's azimuth in degrees (`0..360`), which lines and labels test their
-    /// `azimuths` range against. The rest is spare (elevation, distance, perspective flag).
+    /// `azimuths` range against; `y` its elevation in degrees, `z` its distance, `w` 1 for the
+    /// perspective lens and 0 for the orthographic one.
     pub view: [f32; 4],
     /// Direction *to* the light (xyz, unit length) and the ambient fraction (w).
     pub light: [f32; 4],

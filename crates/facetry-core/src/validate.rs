@@ -1194,6 +1194,7 @@ pub fn validate(spec: &ChartSpec) -> Vec<Issue> {
         .filter_map(|i| resolve_layer(spec, i).ok())
         .collect();
     check_arcs(spec, &mut issues);
+    crate::diagram::validate_diagram(spec, &mut issues);
     check_hidden(spec, &mut issues);
     check_percent_axes(spec, &resolved, &mut issues);
     check_x_axes(spec, &resolved, &mut issues);

@@ -34,6 +34,8 @@
     <div id="app">
       <div id="controls">
         <label>Example <select id="example"></select></label>
+        <label title="How Mermaid diagrams are drawn">Style <select id="style"><option value="flat">flat</option><option value="glossy">glossy</option><option value="isometric">isometric</option><option value="schematic">schematic</option></select></label>
+        <label title="Isometric style: a card beside each node"><input id="cards" type="checkbox" /> Cards</label>
         <button id="apply" type="button">Apply</button>
         <button id="save-png" type="button" title="Download the chart as it is now (current camera) as a PNG">Save PNG</button>
         <button id="randomize" type="button" title="Change the numbers, and sometimes add or remove a category, then update the chart: watch the marks move, enter and leave">Randomize data</button>
@@ -45,7 +47,7 @@
       </div>
       <div id="chart-wrap"><canvas id="chart"></canvas></div>
       <div id="side">
-        <textarea id="json" spellcheck="false" aria-label="Chart spec (JSON)"></textarea>
+        <textarea id="json" spellcheck="false" aria-label="Chart spec (JSON) or Mermaid text"></textarea>
         <ul id="issues" aria-live="polite"></ul>
       </div>
     </div>

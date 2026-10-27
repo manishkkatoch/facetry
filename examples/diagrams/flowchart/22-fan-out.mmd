@@ -1,0 +1,5 @@
+flowchart TD
+    root[Release 2.0] --> a[Docs] & b[Website] & c[SDK: Python] & d[SDK: Go] & e[SDK: JavaScript] & f[CLI] & g[Changelog]
+    c & d & e --> pkg[Publish packages]
+    a & b & g --> announce[Announce]
+    f --> pkg

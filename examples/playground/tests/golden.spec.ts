@@ -64,3 +64,78 @@ for (const name of ["line3d", "combo3d-bar-line"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`${name}.png`);
   });
 }
+
+// Diagrams from Mermaid (facetry/diagrams): a decision with a cycle and labelled edges, and a
+// left-to-right pipeline with a fan-out and a fan-in. Orthographic, square on, edges at the
+// height of the node tops with flat arrowheads.
+for (const name of ["01-decision", "02-ci-pipeline"]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}
+
+// The glossy style: coloured slabs (by shape, and by classDef in 26-styled), thick
+// square-cornered arrows on the floor, label cards, soft shadows and printed labels, seen in
+// perspective at an angle.
+for (const name of ["01-decision", "26-styled"]) {
+  test(`glossy diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=glossy&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-glossy-${name}.png`);
+  });
+}
+
+// The isometric style: layered pedestals in palette colours (27-timeline, after infographic
+// timelines) and a flowchart with a cycle and labelled roads, in the classic isometric view.
+for (const name of ["27-timeline", "01-decision"]) {
+  test(`isometric diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=isometric&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-isometric-${name}.png`);
+  });
+}
+
+// Cards and icons: the roadmap with a card beside each pedestal (title, wrapped text, icon;
+// the pedestals show step numbers), and icons above the labels on the node tops.
+for (const [name, query] of [
+  ["isometric-cards-28-roadmap", "style=isometric&cards=1&example=mermaid/28-roadmap"],
+  ["isometric-29-icons", "style=isometric&example=mermaid/29-icons"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}
+
+// The schematic style: equipment by shape (buildings, silos on plinths, a tank, a valve,
+// reactors, a kiln), pipes and conveyors on supports with flow marks, and signs standing above
+// the equipment (with icons, in 29-icons), over a floor grid.
+for (const name of ["30-plant", "29-icons"]) {
+  test(`schematic diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=schematic&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-schematic-${name}.png`);
+  });
+}
+
+// The user's own icons (examples/diagrams/custom-icons/icons/*.svg, from line-icon and filled
+// icon sets): on the schematic signs, and on the isometric cards.
+for (const [name, query] of [
+  ["schematic-31-custom-icons", "style=schematic&example=mermaid/31-custom-icons"],
+  ["isometric-cards-31-custom-icons", "style=isometric&cards=1&example=mermaid/31-custom-icons"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}

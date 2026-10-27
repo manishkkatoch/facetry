@@ -1,0 +1,8 @@
+flowchart LR
+    user([User]) -->|clicks Sign in| app[App]
+    app -->|redirect| idp[Identity provider]
+    idp -->|login and consent| user
+    idp -->|authorization code| app
+    app -->|code + secret| token[Token endpoint]
+    token -->|access token| app
+    app -->|bearer token| api[Resource API]

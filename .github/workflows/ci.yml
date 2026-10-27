@@ -22,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo clippy -p facetry-core -p facetry-font -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - run: cargo clippy -p facetry-core -p facetry-font -p facetry-render -p facetry-wasm -p facetry-diagrams -p facetry-diagrams-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
       - run: cargo clippy -p facetry-render -p facetry-wasm --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl -- -D warnings
       - run: cargo test --workspace
       - name: No pending or untracked snapshot files

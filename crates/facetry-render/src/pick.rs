@@ -129,10 +129,10 @@ pub fn pick_point(
 }
 
 /// The mark under pixel `px` of a 3D scene, in the scene's mark index space: the bars first,
-/// then the pie slices, then the line points. A visible line point within reach of the pointer
+/// then the pie slices, the diagram nodes, then the line points. A visible line point within reach of the pointer
 /// wins over what is behind it, as in 2D (see [`pick_point`]). Bars are hit anywhere on their box; a slice is hit **on its top
 /// face** only (the ray meets the plane of the top and the point lies on the slice's
-/// footprint), so the sides of an extruded pie are not pickable: from the elevations the
+/// footprint), and so is a diagram node, so the sides of an extruded pie are not pickable: from the elevations the
 /// camera allows, the top is nearly always what the pointer is over. The nearest hit wins.
 pub fn pick_scene(
     scene: &Scene3d,
@@ -141,7 +141,7 @@ pub fn pick_scene(
     px: (f32, f32),
 ) -> Option<usize> {
     if let Some((i, _)) = pick_point(scene, view_proj, viewport, px) {
-        return Some(scene.boxes.len() + scene.slices.len() + i);
+        return Some(scene.first_point() + i);
     }
     let ray = ray_through_pixel(view_proj, viewport, px)?;
     let bar = nearest_hit(&scene.boxes, &ray);
@@ -154,6 +154,13 @@ pub fn pick_scene(
             let p = ray.origin + ray.dir * t;
             s.contains(p.x, p.z).then_some((scene.boxes.len() + i, t))
         })
+        .chain(scene.prisms.iter().enumerate().filter_map(|(i, p)| {
+            // Diagram nodes, like slices, on their top face.
+            let t = ray_plane_y(&ray, p.top)?;
+            let q = ray.origin + ray.dir * t;
+            p.contains(q.x, q.z)
+                .then_some((scene.boxes.len() + scene.slices.len() + i, t))
+        }))
         .min_by(|a, b| a.1.total_cmp(&b.1));
     match (bar, slice) {
         (Some(b), Some(s)) => Some(if s.1 < b.1 { s.0 } else { b.0 }),
@@ -181,7 +188,7 @@ mod tests {
     use facetry_font::FontMetrics;
 
     use super::*;
-    use crate::camera::Camera;
+    use crate::camera::{Camera, Projection};
 
     fn mark(key: &str, min: [f32; 3], max: [f32; 3]) -> BoxMark {
         BoxMark {
@@ -356,6 +363,41 @@ mod tests {
         // The middle of the hole, at the height of the top face.
         let hole = project(vp, viewport, Vec3::new(s.center[0], s.height, s.center[1])).unwrap();
         assert_eq!(pick_scene(&scene, vp, viewport, hole), None);
+    }
+
+    /// Diagram nodes are picked on their top face, in the index space after the boxes and
+    /// slices, from every camera, and the floor between them picks nothing.
+    #[test]
+    fn diagram_nodes_are_picked_on_their_top_face() {
+        let scene = scene_of("diagram-basic");
+        let viewport = (800.0, 500.0);
+        assert_eq!(scene.prisms.len(), 4);
+        for kind in [Projection::Orthographic, Projection::Perspective] {
+            for elevation in [20.0, 50.0, 80.0] {
+                for step in 0..8 {
+                    let mut c = Camera {
+                        projection: kind,
+                        ..Camera::default()
+                    };
+                    c.set(Some(step as f32 * 45.0), Some(elevation), Some(2.0));
+                    let vp = c.plot_view_proj(scene.size, viewport);
+                    for (i, p) in scene.prisms.iter().enumerate() {
+                        let [x, z] = p.centre();
+                        let px = project(vp, viewport, Vec3::new(x, p.top, z)).unwrap();
+                        assert_eq!(
+                            pick_scene(&scene, vp, viewport, px),
+                            Some(i),
+                            "node {i} at azimuth {} elevation {elevation} {kind:?}",
+                            step * 45
+                        );
+                    }
+                }
+            }
+        }
+        // The corner of the floor, between nodes: nothing.
+        let vp = Camera::default().plot_view_proj(scene.size, viewport);
+        let corner = project(vp, viewport, Vec3::new(0.01, 0.0, 0.01)).unwrap();
+        assert_eq!(pick_scene(&scene, vp, viewport, corner), None);
     }
 
     fn scene_of(name: &str) -> Scene3d {

@@ -1,12 +1,49 @@
 import { Chart, FacetryError, type ChartOptions, type ChartSpec, type UpdateOptions } from "facetry";
+import { diagram, type DiagramStyle } from "facetry/diagrams";
 
 // The same files the Rust snapshot tests and the golden-image test use.
 const modules = import.meta.glob<ChartSpec>("../../specs/*.json", { eager: true, import: "default" });
-const examples = new Map(
-  Object.entries(modules).map(([path, spec]) => [path.replace(/^.*\/(.+)\.json$/, "$1"), spec]),
+// Mermaid diagrams (the layout corpus of crates/facetry-diagrams), listed as `mermaid/<name>`.
+const mermaid = import.meta.glob<string>("../../diagrams/*/*.mmd", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+// Icons of the user's own (examples/diagrams/*/icons/<name>.svg), passed to every layout as
+// `icons`, so `@{ icon: "<name>" }` can use them.
+const icons = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>("../../diagrams/*/icons/*.svg", { eager: true, query: "?raw", import: "default" }),
+  ).map(([path, svg]) => [path.replace(/^.*\/(.+)\.svg$/, "$1"), svg]),
 );
+type Example = ChartSpec | string;
+const examples = new Map<string, Example>([
+  ...Object.entries(modules).map(
+    ([path, spec]) => [path.replace(/^.*\/(.+)\.json$/, "$1"), spec] as [string, Example],
+  ),
+  ...Object.entries(mermaid).map(
+    ([path, text]) => [path.replace(/^.*\/(.+)\.mmd$/, "mermaid/$1"), text] as [string, Example],
+  ),
+]);
+
+const styleSelect = document.querySelector<HTMLSelectElement>("#style")!;
+const cardsBox = document.querySelector<HTMLInputElement>("#cards")!;
+
+/** A spec as it is, or Mermaid text laid out by the diagrams add-on in the chosen style. */
+const toSpec = (example: Example): Promise<ChartSpec> =>
+  typeof example === "string"
+    ? diagram.fromMermaid(example, {
+        style: styleSelect.value as DiagramStyle,
+        cards: cardsBox.checked,
+        icons,
+      })
+    : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
+// ?style=glossy, ?style=isometric or ?style=schematic draws Mermaid diagrams in that style.
+styleSelect.value = ["glossy", "isometric", "schematic"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
+// ?cards=1 lays a card beside each node (isometric style).
+cardsBox.checked = params.get("cards") === "1";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
 // ?animateIn=1 animates the first frame (the marks enter). ?clock=manual holds the animation
@@ -34,7 +71,15 @@ const root = document.documentElement;
 for (const name of examples.keys()) select.append(new Option(name, name));
 select.value = initial;
 
-const show = (spec: ChartSpec) => (textarea.value = JSON.stringify(spec, null, 2));
+const show = (example: Example) =>
+  (textarea.value = typeof example === "string" ? example : JSON.stringify(example, null, 2));
+/** Problems in the spec or in the Mermaid text, as `{ path, message }`. */
+function issuesOf(err: FacetryError) {
+  if (err.diagramIssues.length) {
+    return err.diagramIssues.map((i) => ({ path: `line ${i.line}:${i.column}`, message: i.message }));
+  }
+  return err.issues.length ? err.issues : [{ path: "", message: err.message }];
+}
 /** Lists problems under the editor; no argument clears them. */
 function showIssues(items: { path: string; message: string }[] = []) {
   issuesList.replaceChildren(
@@ -72,15 +117,15 @@ let currentSpec: ChartSpec;
 const updateOptions = (): UpdateOptions | undefined => (animateBox.checked ? undefined : { transition: false });
 
 let updates = 0;
-async function apply(spec: unknown) {
+async function apply(example: unknown) {
   try {
-    chart.update(spec as ChartSpec, updateOptions());
-    currentSpec = spec as ChartSpec;
+    const spec = await toSpec(example as Example);
+    chart.update(spec, updateOptions());
+    currentSpec = spec;
     showCamera(currentSpec);
     showIssues();
   } catch (e) {
-    const err = FacetryError.from(e);
-    showIssues(err.issues.length ? err.issues : [{ path: "", message: err.message }]);
+    showIssues(issuesOf(FacetryError.from(e)));
     return;
   }
   await nextFrames();
@@ -88,10 +133,10 @@ async function apply(spec: unknown) {
 }
 
 show(examples.get(initial)!);
-currentSpec = examples.get(initial)!;
 let chart: Chart;
 try {
-  chart = await Chart.create(canvas, examples.get(initial)!, { backend, animateIn });
+  currentSpec = await toSpec(examples.get(initial)!);
+  chart = await Chart.create(canvas, currentSpec, { backend, animateIn });
   if (manualClock) chart.__animationClock(0);
   await chart.firstFrame;
   status.textContent = `backend: ${chart.backend}, ${chart.msaaSamples}x MSAA`;
@@ -101,6 +146,7 @@ try {
   // `playgroundSpec()` hands out a copy of the spec on screen, for tests to modify and apply.
   Object.assign(window, {
     facetryChart: chart,
+    facetryDiagram: diagram,
     playgroundSpec: () => structuredClone(currentSpec),
     // A copy of one of the example specs (`examples/specs/<name>.json`).
     playgroundExample: (name: string) => structuredClone(examples.get(name)),
@@ -122,7 +168,7 @@ try {
   const err = FacetryError.from(e);
   status.textContent = `Error (${err.code}): ${err.message}`;
   root.dataset.error = err.code;
-  showIssues(err.issues);
+  showIssues(issuesOf(err));
   throw e;
 }
 
@@ -139,7 +185,19 @@ select.addEventListener("change", () => {
   void apply(spec);
 });
 
+// A new style (or cards on or off) lays the Mermaid text in the editor out again.
+for (const control of [styleSelect, cardsBox]) {
+  control.addEventListener("change", () => {
+    if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
+  });
+}
+
 applyButton.addEventListener("click", () => {
+  // JSON is a chart spec; anything else is taken as Mermaid.
+  if (!textarea.value.trimStart().startsWith("{")) {
+    void apply(textarea.value);
+    return;
+  }
   let spec: unknown;
   try {
     spec = JSON.parse(textarea.value);

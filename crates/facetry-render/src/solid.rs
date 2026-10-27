@@ -225,12 +225,19 @@ pub struct CurtainVertex {
     pub color: [f32; 4],
 }
 
-/// The curtains (`style.area`) of the polylines that have one: for every segment, a vertical
-/// quad from the line down to its baseline (two triangles), translucent. Later series are
+/// The curtains (`style.area`) of the polylines that have one, after the floor shadows of the
+/// scene: for every segment, a vertical quad from the line down to its baseline (two
+/// triangles), translucent. Later series are
 /// emitted first, so with the first series on the front row the farther curtains are blended
 /// first and the nearer ones over them (right for the default camera).
 pub fn curtain_vertices(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec<CurtainVertex> {
     let mut out = Vec::new();
+    // Soft shadows on the floor (a glossy diagram's) share the curtains' translucent pass:
+    // just above the floor, so nothing standing on it is darkened.
+    let floor = scene.size[1] * 1e-3;
+    for s in &scene.shadows {
+        crate::arc::shadow(s, encode(s.color), floor, &mut out);
+    }
     for line in scene.polylines.iter().rev() {
         let Some(base) = line.area else { continue };
         let mut color = encode(line.color);
@@ -489,14 +496,16 @@ impl BoxPipeline {
     }
 }
 
-/// The slices of an extruded pie: one lit mesh, drawn with depth testing like the bars. The
-/// vertices are kept on the CPU too, so hovering a slice can rewrite just its range.
+/// The slices of an extruded pie and a diagram's nodes and arrowheads: one lit mesh, drawn
+/// with depth testing like the bars. The vertices are kept on the CPU too, so hovering a slice
+/// or node can rewrite just its range.
 #[derive(Debug)]
 pub struct SlicePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     vertices: Vec<Vertex3>,
-    /// Each slice's vertices within `vertices`, in slice order.
+    /// Each slice's vertices within `vertices`, in slice order, then each diagram node's (the
+    /// arrowheads come last and have none: they are not marks).
     ranges: Vec<Range<usize>>,
     buffer: InstanceBuffer,
 }
@@ -514,7 +523,7 @@ impl SlicePipeline {
         });
         let (layout, bind_group) = globals_only(device, "mesh3d", globals);
         let attrs = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32, 4 => Float32
         ];
         let pipeline = pipeline(
             device,
@@ -561,10 +570,25 @@ impl SlicePipeline {
             crate::arc::slice(s, encode(s.color), &mut self.vertices);
             self.ranges.push(start..self.vertices.len());
         }
+        for p in &scene.prisms {
+            let start = self.vertices.len();
+            crate::arc::prism(p, encode(p.color), &mut self.vertices);
+            self.ranges.push(start..self.vertices.len());
+        }
+        for p in &scene.decor {
+            crate::arc::prism(p, encode(p.color), &mut self.vertices);
+        }
+        for r in &scene.ribbons {
+            crate::arc::ribbon(r, encode(r.color), &mut self.vertices);
+        }
+        for f in &scene.fills {
+            crate::arc::fill(f, encode(f.color), &mut self.vertices);
+        }
         self.buffer.set(device, queue, &self.vertices);
     }
 
-    /// Lights slice `index` up (or not): rewrites the hover flag of its vertices only.
+    /// Lights slice (or, after the slices, node) `index` up (or not): rewrites the hover flag of
+    /// its vertices only.
     pub fn set_hover(&mut self, queue: &wgpu::Queue, index: usize, on: bool) {
         let Some(range) = self.ranges.get(index).cloned() else {
             return;

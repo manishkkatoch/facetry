@@ -11,7 +11,9 @@ use facetry_core::{
     settle_hidden, validate, validate_transition,
 };
 use facetry_font::FontMetrics;
-use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
+use facetry_render::{
+    BackendPreference, CLOSE_UP_DISTANCE, Camera, MIN_DISTANCE, Projection, Renderer, Snapshot,
+};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -38,12 +40,17 @@ export interface UpdateOptions {
     transition?: TransitionSpec;
 }
 
-/** The 3D camera right now (see `Chart.camera`). Angles are degrees; `distance` is in plot-box radii. */
+/**
+ * The 3D camera right now (see `Chart.camera`). Angles are degrees; `distance` is in plot-box
+ * radii; `pan` is how far the point looked at has been moved from the plot's centre, `[x, z]`
+ * in world units on the floor (`[0, 0]` until the viewer pans).
+ */
 export interface CameraState {
     type: "perspective" | "orthographic";
     azimuth: number;
     elevation: number;
     distance: number;
+    pan: [number, number];
 }
 
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
@@ -59,17 +66,23 @@ export interface CameraTweenOptions {
     easing?: Easing;
 }
 
-/** A mark (a bar, a line's data point or a pie slice), as hover and click events report it. */
+/**
+ * A mark (a bar, a line's data point, a pie slice or a diagram node), as hover and click
+ * events report it.
+ */
 export interface MarkInfo {
-    /** The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it). */
+    /**
+     * The mark's key (`layer0/Q3`, `layer1/Q3/Pro`, or whatever `encoding.key` made of it); a
+     * diagram node's id.
+     */
     key: string;
-    /** Index into the spec's `layers`. */
+    /** Index into the spec's `layers`; `-1` for a diagram node. */
     layer: number;
     /**
      * The mark's row of the layer's table, as a plain object (`{ quarter: "Q3", revenue: 140 }`).
      * A mark that stands for several rows that were summed (stacked, normalised and grouped
      * bars, pie slices) reports the first of them with the summed value in place of its y (or
-     * theta) value.
+     * theta) value. A diagram node: `{ id, label, shape }`.
      */
     datum: Record<string, number | string | null>;
 }
@@ -286,6 +299,10 @@ impl Plans {
                 let plan = Plan::diff(a, b, timing);
                 (!plan.is_static()).then(|| Self::TwoD(Box::new(plan)))
             }
+            // Diagrams are not animated yet (milestone D5): they jump to the new picture.
+            (SceneKind::ThreeD(a), SceneKind::ThreeD(b)) if a.has_diagram() || b.has_diagram() => {
+                None
+            }
             (SceneKind::ThreeD(a), SceneKind::ThreeD(b)) => {
                 let plan = Plan3::diff(a, b, timing);
                 (!plan.is_static()).then(|| Self::ThreeD(Box::new(plan)))
@@ -446,9 +463,10 @@ impl Chart {
         let renderer = renderer_for(canvas, preference)
             .await
             .map_err(|e| js_error(e.code(), &e.to_string()))?;
+        let camera = start_camera(&spec, renderer.size(), dpr as f32);
         let mut chart = Chart {
             renderer,
-            camera: Camera::from_spec(spec.camera.as_ref()),
+            camera,
             spec,
             theme,
             dpr: dpr as f32,
@@ -494,9 +512,11 @@ impl Chart {
         // What the viewer hid stays hidden, for series that still exist, unless the new spec
         // says (`legend.hidden`).
         settle_hidden(&mut spec, self.spec.hidden_override.as_deref());
-        // A new camera in the spec moves the camera there, over the same time as the data.
-        if spec.camera != self.spec.camera {
-            self.move_camera(Camera::from_spec(spec.camera.as_ref()), timing);
+        // A new camera in the spec (or, for a diagram, a new starting view) moves the camera
+        // there, over the same time as the data.
+        let (size, dpr) = (self.renderer.size(), self.dpr);
+        if spec.start_camera(size, dpr) != self.spec.start_camera(size, dpr) {
+            self.move_camera(start_camera(&spec, size, dpr), timing);
         }
         let before = std::mem::replace(&mut self.spec, spec);
         self.relayout_animated(timing, Origin::Spec(Box::new(before)));
@@ -643,9 +663,46 @@ impl Chart {
         }
     }
 
-    /// Back to the spec's camera (or the defaults). With `options` (`{ duration, easing }`,
-    /// `{}` for the defaults) the camera turns there over time instead of jumping, azimuth the
-    /// short way round.
+    /// Zooms by `delta` (as `zoom`) toward the point under `(x, y)` (CSS pixels from the
+    /// canvas's top-left): that point of the plane through the point looked at stays under
+    /// the pointer, as in a map. Call `render` afterwards.
+    #[wasm_bindgen(js_name = zoomAt)]
+    pub fn zoom_at(&mut self, delta: f64, x: f64, y: f64) {
+        if !self.is_3d() {
+            return;
+        }
+        self.camera_tween = None;
+        let s = f64::from(self.dpr);
+        let (x, y) = ((x * s) as f32, (y * s) as f32);
+        let before = self.renderer.plane_point_3d(x, y);
+        self.camera.zoom(delta as f32);
+        self.renderer.set_camera(self.camera);
+        let after = self.renderer.plane_point_3d(x, y);
+        if let (Some(b), Some(a), Some(size)) = (before, after, self.renderer.box_size()) {
+            self.camera.move_pan([b[0] - a[0], b[2] - a[2]], size);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Pans by a pointer drag of `(dx, dy)` CSS pixels: the floor follows the pointer. The
+    /// point looked at stays inside the plot box. Call `render` afterwards.
+    pub fn pan(&mut self, dx: f64, dy: f64) {
+        let Some(size) = self.renderer.box_size() else {
+            return;
+        };
+        if self.is_3d() {
+            self.camera_tween = None;
+            let s = f64::from(self.dpr);
+            let height = self.renderer.size().1 as f32;
+            self.camera
+                .pan_by((dx * s) as f32, (dy * s) as f32, height, size);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Back to the spec's camera (or the defaults), unpanned. With `options`
+    /// (`{ duration, easing }`, `{}` for the defaults) the camera turns there over time instead
+    /// of jumping, azimuth the short way round.
     #[wasm_bindgen(js_name = resetCamera)]
     pub fn reset_camera(
         &mut self,
@@ -653,15 +710,17 @@ impl Chart {
     ) -> Result<(), JsValue> {
         let timing = tween_timing(&options)?;
         if self.is_3d() {
-            self.move_camera(Camera::from_spec(self.spec.camera.as_ref()), timing);
+            let start = start_camera(&self.spec, self.renderer.size(), self.dpr);
+            self.move_camera(start, timing);
         }
         Ok(())
     }
 
-    /// Sets any of `type`, `azimuth`, `elevation`, `distance`; values are clamped. Throws
-    /// `invalid-options` if a field has the wrong type. With `options` (`{ duration, easing }`,
-    /// `{}` for the defaults) the camera turns there over time instead of jumping, azimuth the
-    /// short way round; the `type` (lens) changes at once.
+    /// Sets any of `type`, `azimuth`, `elevation`, `distance` and `pan` (`[x, z]`); values are
+    /// clamped (the pan to the plot box). Throws `invalid-options` if a field has the wrong
+    /// type. With `options` (`{ duration, easing }`, `{}` for the defaults) the camera turns
+    /// there over time instead of jumping, azimuth the short way round; the `type` (lens)
+    /// changes at once.
     #[wasm_bindgen(js_name = setCamera)]
     pub fn set_camera(
         &mut self,
@@ -693,6 +752,18 @@ impl Chart {
                 )));
             }
         };
+        let pan = js_sys::Reflect::get(&update, &"pan".into())?;
+        let pan = if pan.is_undefined() || pan.is_null() {
+            None
+        } else {
+            let array = js_sys::Array::from(&pan);
+            let x = array.get(0).as_f64();
+            let z = array.get(1).as_f64();
+            match (js_sys::Array::is_array(&pan), x, z, array.length()) {
+                (true, Some(x), Some(z), 2) => Some([x as f32, z as f32]),
+                _ => return Err(invalid_options("camera `pan` must be [x, z] (two numbers)")),
+            }
+        };
         if self.is_3d() {
             // Where the camera is going: from where it is now, or from where it is headed if
             // a tween is already running (so two quick calls compose).
@@ -701,6 +772,10 @@ impl Chart {
                 target.projection = p;
             }
             target.set(azimuth, elevation, distance);
+            if let (Some([x, z]), Some(size)) = (pan, self.renderer.box_size()) {
+                let current = target.pan;
+                target.move_pan([x - current[0], z - current[1]], size);
+            }
             self.move_camera(target, timing);
         }
         Ok(())
@@ -723,6 +798,8 @@ impl Chart {
         set("azimuth", round(c.azimuth).into());
         set("elevation", round(c.elevation).into());
         set("distance", round(c.distance).into());
+        let pan = js_sys::Array::of2(&round(c.pan[0]).into(), &round(c.pan[1]).into());
+        set("pan", pan.into());
         object.into()
     }
 
@@ -755,6 +832,12 @@ impl Chart {
         let Ok(mark) = usize::try_from(mark) else {
             return JsValue::NULL;
         };
+        if let SceneKind::ThreeD(s) = &self.scene {
+            let i = mark.checked_sub(s.boxes.len() + s.slices.len());
+            if let Some(prism) = i.and_then(|i| s.prisms.get(i)) {
+                return self.node_info(prism.node);
+            }
+        }
         let (key, layer, row, sum) = match &self.scene {
             SceneKind::TwoD(s) => s.mark(mark).map(|m| (m.key, m.layer, m.row, m.sum)),
             // Boxes, then pie slices, then line points.
@@ -768,7 +851,7 @@ impl Chart {
                         .get(i)
                         .map(|p| (p.key.as_str(), p.layer, p.row, p.sum))
                         .or_else(|| {
-                            let i = i.checked_sub(s.slices.len())?;
+                            let i = i.checked_sub(s.slices.len() + s.prisms.len())?;
                             s.points
                                 .get(i)
                                 .map(|p| (p.key.as_str(), p.layer, p.row, None))
@@ -809,6 +892,12 @@ impl Chart {
                         let p = s.slices.iter().find(|p| p.key == key)?;
                         let (a0, a1) = p.span();
                         Some(p.point((a0 + a1) / 2.0, (p.inner + p.outer) / 2.0, p.height))
+                    })
+                    // A diagram node: the middle of its top face.
+                    .or_else(|| {
+                        let p = s.prisms.iter().find(|p| p.key == key)?;
+                        let [x, z] = p.centre();
+                        Some([x, p.top, z])
                     })
                     // A line's data point.
                     .or_else(|| s.points.iter().find(|p| p.key == key).map(|p| p.pos));
@@ -1184,6 +1273,29 @@ impl Chart {
         self.renderer.set_hover(self.hover);
     }
 
+    /// `{ key, layer: -1, datum: { id, label, shape } }` for diagram node `index`.
+    fn node_info(&self, index: usize) -> JsValue {
+        let Some(node) = self.spec.diagram.as_ref().and_then(|d| d.nodes.get(index)) else {
+            return JsValue::NULL;
+        };
+        let object = js_sys::Object::new();
+        let datum = js_sys::Object::new();
+        let set = |o: &js_sys::Object, name: &str, value: JsValue| {
+            let _ = js_sys::Reflect::set(o, &name.into(), &value);
+        };
+        set(&datum, "id", node.id.as_str().into());
+        set(
+            &datum,
+            "label",
+            node.label.as_deref().unwrap_or(&node.id).into(),
+        );
+        set(&datum, "shape", node.shape.name().into());
+        set(&object, "key", node.id.as_str().into());
+        set(&object, "layer", (-1.0).into());
+        set(&object, "datum", datum.into());
+        object.into()
+    }
+
     /// The row of a layer's table as a plain JS object (numbers, strings, `null` for a
     /// missing number). When the mark stands for several merged rows (stacked, normalised
     /// and grouped bars add up rows with the same x and series) `sum` is the total, and it
@@ -1218,6 +1330,17 @@ impl Chart {
         }
         object.into()
     }
+}
+
+/// The camera a spec starts from: its own (with a diagram's defaults, fitted to `size`), and
+/// for a diagram the right to come much closer, to read a corner of a big one.
+fn start_camera(spec: &ChartSpec, size: (u32, u32), dpr: f32) -> Camera {
+    let min = if spec.diagram.is_some() {
+        CLOSE_UP_DISTANCE
+    } else {
+        MIN_DISTANCE
+    };
+    Camera::from_spec_with_min(spec.start_camera(size, dpr).as_ref(), min)
 }
 
 #[cfg(target_arch = "wasm32")]

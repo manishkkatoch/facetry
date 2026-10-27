@@ -1,0 +1,4 @@
+<!-- Filled-icon set style: one filled shape on a 512 grid; drawn as its outline. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <path d="M256 32c48 96 160 144 160 272a160 160 0 0 1-320 0c0-80 48-128 96-176 0 64 32 96 64 96 0-80-32-128 0-192z"/>
+</svg>

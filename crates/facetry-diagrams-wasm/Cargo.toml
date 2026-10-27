@@ -1,0 +1,25 @@
+[package]
+name = "facetry-diagrams-wasm"
+description = "wasm-bindgen bindings of facetry-diagrams: Mermaid text in, a laid-out chart spec out."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib is the .wasm; rlib lets `cargo test`/clippy build the crate natively.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+facetry-diagrams.workspace = true
+facetry-core.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+console_error_panic_hook.workspace = true
+
+[package.metadata.wasm-pack.profile.release]
+# scripts/build-wasm.sh runs wasm-opt itself.
+wasm-opt = false
+
+[lints]
+workspace = true

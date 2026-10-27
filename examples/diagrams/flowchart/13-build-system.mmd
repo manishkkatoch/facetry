@@ -1,0 +1,9 @@
+flowchart BT
+    app[app] --> ui[ui-kit]
+    app --> core[core]
+    app --> net[network]
+    ui --> core
+    net --> core
+    net --> tls[tls]
+    core --> std[stdlib]
+    tls --> std

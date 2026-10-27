@@ -1,0 +1,12 @@
+flowchart TD
+    visit([User opens app]) --> session{Has session?}
+    session -->|yes| home[Home screen]
+    session -->|no| login[Login form]
+    login --> creds[/Email and password/]
+    creds --> check{Valid?}
+    check -->|no| error[Show error] --> login
+    check -->|yes| mfa{MFA enabled?}
+    mfa -->|no| home
+    mfa -->|yes| code[Enter code] --> verify{Code ok?}
+    verify -->|yes| home
+    verify -->|no| error

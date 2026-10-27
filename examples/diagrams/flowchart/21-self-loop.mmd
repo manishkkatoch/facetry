@@ -1,0 +1,5 @@
+flowchart TD
+    poll[Poll queue] -->|empty| poll
+    poll -->|message| handle[Handle message]
+    handle -->|retry| poll
+    handle --> ack[Acknowledge]
