@@ -349,7 +349,10 @@ same isometric view as S2:
   the starting view; edge labels get smaller ones on the pipe. Text printed upright needed one
   more thing in the renderer: a printed glyph can now lie in a vertical plane (`Text3.upright`,
   the plane's reading direction) as well as on the floor. Icons are drawn on the sign in the same
-  plane. Boards and frames are standing prisms (from S3).
+  plane. Boards and frames are standing prisms (from S3). A sign turns about its post to face
+  the camera as it orbits (`Scene3d.signs`: built facing the isometric view, turned about the
+  pivot by the renderer whenever the azimuth changes, then re-tessellated with its text and
+  icon), and its face is printed unlit, so it reads white from every side.
 * **Grid.** A faint square grid over the floor, like drafting paper, and soft contact shadows.
 
 Known limits: signs are as wide as their text and float at the equipment's height, so signs of

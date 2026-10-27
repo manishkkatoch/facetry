@@ -113,6 +113,11 @@ struct Solid {
     curtains: CurtainPipeline,
     points: PointPipeline,
     text: Text3dPipeline,
+    /// Signs that turn to face the camera (see `turn_signs`): their solids, the lines of
+    /// their icons, and those lines' joins.
+    signs: SlicePipeline,
+    sign_lines: LinePipeline,
+    sign_points: PointPipeline,
 }
 
 /// A 2D value label that shows while its bar is hovered, colour already encoded.
@@ -206,6 +211,11 @@ pub struct Renderer {
     text: TextPipeline,
     /// Largest texture side the device accepts; larger resizes are clamped.
     max_dimension: u32,
+    /// 3D: the scene's signs (in a scene of their own), the printed glyphs that do not turn,
+    /// and the azimuth the signs were last turned to (`None`: not yet).
+    signs: Option<Scene3d>,
+    printed: Vec<Glyph3Instance>,
+    signs_at: Option<f32>,
     /// `false` while the surface has zero area (hidden canvas); we cannot configure
     /// or draw to a 0x0 surface, so we wait for the next non-zero `resize`.
     drawable: bool,
@@ -334,6 +344,9 @@ impl Renderer {
             globals,
             atlas,
             solid: None,
+            signs: None,
+            printed: Vec::new(),
+            signs_at: None,
             box_size: None,
             camera: Camera::default(),
             label_plan: None,
@@ -697,6 +710,9 @@ impl Renderer {
                 curtains: CurtainPipeline::new(device, format, samples, &globals),
                 points: PointPipeline::new(device, format, samples, &globals),
                 text: Text3dPipeline::new(device, atlas, format, samples, &globals, &label_states),
+                signs: SlicePipeline::new(device, format, samples, &globals),
+                sign_lines: LinePipeline::new(device, format, samples, &globals),
+                sign_points: PointPipeline::new(device, format, samples, &globals),
                 globals,
                 label_states,
             }
@@ -839,6 +855,22 @@ impl Renderer {
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
         solid.text.set_printed(&self.device, &self.queue, &printed);
+        // The signs are turned to the camera when a frame is drawn.
+        self.signs = (!scene.signs.is_empty()).then(|| {
+            let mut signs = scene.clone_shell();
+            signs.signs = scene.signs.clone();
+            signs
+        });
+        if self.signs.is_none() {
+            let empty = scene.clone_shell();
+            solid.signs.set(&self.device, &self.queue, &empty, encode);
+            solid
+                .sign_lines
+                .set_instances(&self.device, &self.queue, &[]);
+            solid.sign_points.set(&self.device, &self.queue, &[], &[]);
+        }
+        self.printed = printed;
+        self.signs_at = None;
         // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
         // buffers a 3D chart does not otherwise use).
         let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
@@ -1060,10 +1092,45 @@ impl Renderer {
         }
     }
 
+    /// Turns the signs to face the camera, re-tessellating them (and re-laying out the printed
+    /// text) only when its azimuth changed since they were last turned.
+    fn turn_signs(&mut self) {
+        let (Some(signs), Some(solid)) = (&self.signs, &mut self.solid) else {
+            return;
+        };
+        let azimuth = self.camera.azimuth;
+        if self.signs_at == Some(azimuth) {
+            return;
+        }
+        self.signs_at = Some(azimuth);
+        let format = self.config.format;
+        let encode = move |c| encode_color(format, c);
+        let turned = signs.signs_at(azimuth);
+        solid.signs.set(&self.device, &self.queue, &turned, encode);
+        solid.sign_lines.set_instances(
+            &self.device,
+            &self.queue,
+            &solid::polyline_instances(&turned, encode),
+        );
+        solid.sign_points.set(
+            &self.device,
+            &self.queue,
+            &solid::join_instances(&turned, encode),
+            &[],
+        );
+        let font = FontMetrics::inter();
+        let mut printed = self.printed.clone();
+        for t in &turned.texts {
+            text::layout_glyphs_3d(t, encode(t.color), NO_SLOT, font, &mut printed);
+        }
+        solid.text.set_printed(&self.device, &self.queue, &printed);
+    }
+
     /// Writes everything the shaders read per frame for a target of `target` pixels: the
     /// globals, and in 3D the label table (skipped when the camera and size are the ones it
     /// was last computed for).
     fn write_frame_uniforms(&mut self, target: (u32, u32)) {
+        self.turn_signs();
         let font = FontMetrics::inter();
         if let (Some(size), Some(solid)) = (self.box_size, &self.solid) {
             self.queue.write_buffer(
@@ -1163,6 +1230,7 @@ impl Renderer {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 solid.boxes.draw(&mut pass);
                 solid.slices.draw(&mut pass);
+                solid.signs.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
                 // Line layers: the curtains first (translucent, under everything of the
                 // line), then the segments, then the round joins and the markers on top.
@@ -1170,7 +1238,9 @@ impl Renderer {
                 // Text printed on surfaces, hidden by what stands in front of it.
                 solid.text.draw_printed(&mut pass, &self.quad);
                 solid.data_lines.draw(&mut pass, &self.quad);
+                solid.sign_lines.draw(&mut pass, &self.quad);
                 solid.points.draw(&mut pass, &self.quad);
+                solid.sign_points.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,
                 // and a label hidden behind a bar is worse than one drawn over it.
                 solid.text.draw(&mut pass, &self.quad, overlay);

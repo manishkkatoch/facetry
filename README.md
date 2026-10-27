@@ -724,8 +724,9 @@ glossy style, how its edges are routed):
   hexagon a reactor with a chimney, a stadium a drum with bands. Edges are pipes raised on
   supports, with green flow marks along their tops and a darker one before the head; thick
   edges are dark conveyors, dotted ones dashed pipes. Labels (and edge labels, smaller) are
-  printed on white signs in a dark frame, standing on posts above the equipment and turned to
-  face the isometric view; a node's icon goes on its sign. A faint grid covers the floor. A
+  printed on white signs in a dark frame, standing on posts above the equipment; the signs
+  turn about their posts to face the camera as it orbits, so they read from every side. A
+  node's icon goes on its sign. A faint grid covers the floor. A
   node's `color` fills its equipment, `stroke`/`stroke-width` draw its edges, and its text
   colour is used if it reads on the white sign. Signs of nodes that stand close together can
   cover each other in the starting view (orbiting separates them).
@@ -961,7 +962,8 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-schematic-29-icons`, and `diagram-schematic-31-custom-icons` and
   `diagram-isometric-cards-31-custom-icons` with the example icons of your own, and the
   subgraph diagrams `diagram-groups-36-org`, `diagram-glossy-groups-33-nested`,
-  `diagram-isometric-groups-33-nested` and `diagram-schematic-groups-34-group-edges`): Playwright screenshots these examples (3D ones at their
+  `diagram-isometric-groups-33-nested` and `diagram-schematic-groups-34-group-edges`, and
+  `diagram-schematic-31-custom-icons-behind`, orbited round so its signs turn): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -993,8 +995,8 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 927,158 B (905 KiB) | 407,103 B (398 KiB) | 332,657 B (325 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,534,180 B (2475 KiB) | 1,049,275 B (1025 KiB) | 826,880 B (808 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 934,083 B (912 KiB) | 409,971 B (400 KiB) | 335,072 B (327 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,541,082 B (2482 KiB) | 1,051,949 B (1027 KiB) | 829,357 B (810 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
 | `facetry_diagrams` (Mermaid add-on) | 261,162 B (255 KiB) | 112,561 B (110 KiB) | 96,285 B (94 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together

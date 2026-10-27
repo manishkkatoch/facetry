@@ -1,6 +1,7 @@
 //! Diagram specs: reading, validation, the scene, and the starting camera.
 #![cfg(not(target_arch = "wasm32"))]
 
+use facetry_core::scene3d::Scene3d;
 use facetry_core::spec::{CameraKind, ChartSpec, EdgeEnd, EdgeStroke, NodeShape};
 use facetry_core::{Issue, Theme, build_diagram_3d, build_scene_3d, parse_spec_json, validate};
 use facetry_font::FontMetrics;
@@ -478,18 +479,33 @@ fn the_schematic_style_draws_equipment_pipes_on_supports_and_upright_signs() {
     assert!(pipe.base > 0.0 && pipe.top <= scene.prisms[0].top);
     assert!(scene.decor.iter().any(|p| p.key == "edge0/head"));
     // Labels are printed upright on signs that face the isometric view, above the equipment.
-    let label = scene.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    let signs = scene.signs_at(45.0);
+    let label = signs.texts.iter().find(|t| t.text == "Alpha").unwrap();
     let r = 0.5f32.sqrt();
     let upright = label.upright.expect("upright");
     assert!((upright[0] - r).abs() < 1e-4 && (upright[1] + r).abs() < 1e-4);
     assert!(label.flat.is_some());
     assert!(label.anchor[1] > top);
-    let board = scene
+    let board = signs
         .decor
         .iter()
         .find(|p| p.key == "a/sign/board")
         .unwrap();
     assert!(board.stand.is_some());
+    // Turned to face the camera wherever it orbits to: from behind, the face points back.
+    let sign = scene.signs.iter().find(|s| s.key == "a/sign").unwrap();
+    let behind = scene.signs_at(225.0);
+    let turned = behind.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    let up = turned.upright.unwrap();
+    assert!((up[0] + r).abs() < 1e-4 && (up[1] - r).abs() < 1e-4);
+    // The anchor, in front of the board, moved to the pivot's other side, at the same height.
+    let (a, b) = (label.anchor, turned.anchor);
+    let (da, db) = (
+        [a[0] - sign.pivot[0], a[2] - sign.pivot[1]],
+        [b[0] - sign.pivot[0], b[2] - sign.pivot[1]],
+    );
+    assert!((da[0] + db[0]).abs() < 1e-4 && (da[1] + db[1]).abs() < 1e-4);
+    assert_eq!(a[1], b[1]);
     assert!(scene.decor.iter().any(|p| p.key == "a/sign/post"));
     // A faint grid lies on the floor.
     assert!(
@@ -520,6 +536,16 @@ fn schematic_pipes_stand_on_supports_and_carry_flow_marks() {
         assert!((p.top - pipe.base).abs() < 1e-6);
     }
     assert!(scene.decor.iter().any(|p| p.key.starts_with("edge0/flow/")));
+}
+
+/// `scene` with its signs (a schematic's) facing the isometric view, among the rest.
+fn with_signs(mut scene: Scene3d) -> Scene3d {
+    let signs = scene.signs_at(45.0);
+    scene.decor.extend(signs.decor);
+    scene.texts.extend(signs.texts);
+    scene.polylines.extend(signs.polylines);
+    scene.fills.extend(signs.fills);
+    scene
 }
 
 /// GOOD with node `a` showing icon `name` and the diagram's own `icons` (a JSON object body).
@@ -566,7 +592,12 @@ fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
     // And every style draws them.
     for style in ["glossy", "isometric", "schematic"] {
         let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
-        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let scene = with_signs(build_scene_3d(
+            &spec(&json),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        ));
         assert!(
             scene
                 .polylines
@@ -642,7 +673,12 @@ fn filled_icons_are_printed_as_flat_triangles_with_their_holes() {
     assert_eq!(validate(&s), vec![]);
     for style in ["flat", "glossy", "isometric", "schematic"] {
         let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
-        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let scene = with_signs(build_scene_3d(
+            &spec(&json),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        ));
         let fill = scene
             .fills
             .iter()

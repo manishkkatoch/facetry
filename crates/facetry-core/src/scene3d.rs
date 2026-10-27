@@ -224,6 +224,65 @@ pub struct FillMark {
     pub triangles: Vec<[f32; 3]>,
 }
 
+/// A sign standing in the scene that turns about the vertical line through `pivot` to face the
+/// camera as it orbits (a schematic diagram's name boards): its solids, the text printed on
+/// them, and its icon, all built facing the azimuth `facing` (degrees). Not a mark: never
+/// picked. See [`Sign::turned`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Sign {
+    pub key: String,
+    /// `[x, z]` world units.
+    pub pivot: [f32; 2],
+    pub facing: f32,
+    /// Stood up (`stand`) prisms.
+    pub prisms: Vec<PrismMark>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<Text3>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub polylines: Vec<Polyline3>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fills: Vec<FillMark>,
+}
+
+impl Sign {
+    /// The sign turned about its pivot to face the camera at `azimuth` (degrees).
+    pub fn turned(&self, azimuth: f32) -> Sign {
+        let d = (azimuth - self.facing).to_radians();
+        let (sin, cos) = d.sin_cos();
+        let [px, pz] = self.pivot;
+        // A direction turned with the camera (whose eye is at `(sin az, cos az)`).
+        let dir = |v: [f32; 2]| [v[0] * cos + v[1] * sin, v[1] * cos - v[0] * sin];
+        let at = |p: [f32; 3]| {
+            let [x, z] = dir([p[0] - px, p[2] - pz]);
+            [px + x, p[1], pz + z]
+        };
+        let mut out = self.clone();
+        for p in &mut out.prisms {
+            if let Some(s) = &mut p.stand {
+                s.origin = at(s.origin);
+                s.right = dir(s.right);
+            }
+        }
+        for t in &mut out.texts {
+            t.anchor = at(t.anchor);
+            t.upright = t.upright.map(dir);
+        }
+        for l in &mut out.polylines {
+            for run in &mut l.runs {
+                for p in run.iter_mut() {
+                    *p = at(*p);
+                }
+            }
+        }
+        for f in &mut out.fills {
+            for p in &mut f.triangles {
+                *p = at(*p);
+            }
+        }
+        out
+    }
+}
+
 fn points3<S: Serializer>(v: &[[f32; 3]], s: S) -> Result<S::Ok, S::Error> {
     let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
     let rounded: Vec<(f64, f64, f64)> = v.iter().map(|p| (r(p[0]), r(p[1]), r(p[2]))).collect();
@@ -508,6 +567,7 @@ impl Scene3d {
     pub fn clone_shell(&self) -> Scene3d {
         Scene3d {
             fills: Vec::new(),
+            signs: Vec::new(),
             shadows: Vec::new(),
             ribbons: Vec::new(),
             width: self.width,
@@ -529,6 +589,20 @@ impl Scene3d {
             texts: Vec::new(),
             labels: Vec::new(),
         }
+    }
+
+    /// The signs turned to face the camera at `azimuth` (degrees), as a scene of their own:
+    /// their solids in `decor`, with their `texts`, `polylines` and `fills`.
+    pub fn signs_at(&self, azimuth: f32) -> Scene3d {
+        let mut out = self.clone_shell();
+        for sign in &self.signs {
+            let s = sign.turned(azimuth);
+            out.decor.extend(s.prisms);
+            out.texts.extend(s.texts);
+            out.polylines.extend(s.polylines);
+            out.fills.extend(s.fills);
+        }
+        out
     }
 
     /// The series whose legend entry is under the canvas pixel `(x, y)`.
@@ -576,6 +650,7 @@ impl Scene3d {
             ribbons: Vec::new(),
             shadows: Vec::new(),
             fills: Vec::new(),
+            signs: Vec::new(),
             lines: Vec::new(),
             polylines: Vec::new(),
             points: Vec::new(),
@@ -643,6 +718,9 @@ pub struct Scene3d {
     /// Filled icons, printed on the surfaces they belong to.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<FillMark>,
+    /// Signs that turn to face the camera, drawn like `decor`, `polylines` and `fills`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub signs: Vec<Sign>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     /// Line layers' series, after the boxes and slices in draw order.

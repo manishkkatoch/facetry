@@ -16,7 +16,9 @@ use crate::diagram::{
 use crate::diagram_glossy::{push_shadow_with, rgb};
 use crate::diagram_isometric::{along, darken, outline};
 use crate::scene::Anchor;
-use crate::scene3d::{LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Stand, Text3, VAlign};
+use crate::scene3d::{
+    FillMark, LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Sign, Stand, Text3, VAlign,
+};
 use crate::spec::{DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeShape};
 use crate::text::TextMeasure;
 
@@ -487,8 +489,18 @@ fn push_sign(
         vec![[-w, -h], [w, -h], [w, h], [-w, h]]
     };
     let frame = SIGN_FRAME * scale;
+    // Built facing the isometric view; it turns about its centre to face the camera.
+    let mut sign = Sign {
+        key: format!("{key}/sign"),
+        pivot: [cx as f32, cz as f32],
+        facing: ISOMETRIC_AZIMUTH as f32,
+        prisms: Vec::new(),
+        texts: Vec::new(),
+        polylines: Vec::new(),
+        fills: Vec::new(),
+    };
     let mut board = |name: &str, outline, base: f64, top: f64, color| {
-        scene.decor.push(PrismMark {
+        sign.prisms.push(PrismMark {
             key: format!("{key}/sign/{name}"),
             color,
             outline,
@@ -542,6 +554,31 @@ fn push_sign(
         (cz + toward[1] * face) as f32,
     ];
     let left = -(text_w + icon_w) / 2.0;
+    // The board's face, unlit so it stays white whichever way the sign is turned to the light.
+    let paper = {
+        let at = depth / 2.0 + plan.len(0.05);
+        let (hw, hh) = (plan.len(w / 2.0), plan.len(h / 2.0));
+        let corner = |u: f64, v: f64| {
+            [
+                (cx + toward[0] * at + right[0] * u) as f32,
+                (centre_y + v) as f32,
+                (cz + toward[1] * at + right[1] * u) as f32,
+            ]
+        };
+        let [a, b, c, d] = [
+            corner(-hw, -hh),
+            corner(hw, -hh),
+            corner(hw, hh),
+            corner(-hw, hh),
+        ];
+        FillMark {
+            key: format!("{key}/sign/face"),
+            color: rgb(0xffffff),
+            triangles: vec![a, b, c, a, c, d],
+        }
+    };
+    let (lines_from, fills_from) = (scene.polylines.len(), scene.fills.len());
+    scene.fills.push(paper);
     if let Some(name) = icon {
         let icon_size = SIGN_ICON * size;
         let k = icon_size / 24.0;
@@ -570,7 +607,7 @@ fn push_sign(
             continue;
         }
         let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
-        scene.texts.push(Text3 {
+        sign.texts.push(Text3 {
             tick: None,
             key: format!("{key}/sign/{k}"),
             text: (*line).to_owned(),
@@ -587,6 +624,9 @@ fn push_sign(
             upright: Some([right[0] as f32, right[1] as f32]),
         });
     }
+    sign.polylines = scene.polylines.split_off(lines_from);
+    sign.fills = scene.fills.split_off(fills_from);
+    scene.signs.push(sign);
 }
 
 /// Whether `p` (layout units) is on or near a node, where pipes go into equipment.

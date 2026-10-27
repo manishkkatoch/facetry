@@ -126,6 +126,15 @@ for (const name of ["30-plant", "29-icons"]) {
   });
 }
 
+// Orbited round to the back: the signs turn with the camera, so their faces still read.
+test("schematic diagram 31-custom-icons seen from behind matches its golden image (webgl2)", async ({ page }) => {
+  await page.goto("/?backend=webgl2&ui=0&style=schematic&example=mermaid/31-custom-icons");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 200 }));
+  await page.mouse.move(790, 495);
+  await expect(page.locator("#chart")).toHaveScreenshot("diagram-schematic-31-custom-icons-behind.png");
+});
+
 // The user's own icons (examples/diagrams/custom-icons/icons/*.svg, from line-icon and filled
 // icon sets): on the schematic signs, and on the isometric cards.
 for (const [name, query] of [
