@@ -137,7 +137,38 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
         }
         out.push('}');
     }
-    out.push_str("]}}");
+    out.push(']');
+    if !spec.icons.is_empty() {
+        out.push_str(",\"icons\":{");
+        for (i, (name, icon)) in spec.icons.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            string(&mut out, name);
+            out.push_str(":{\"d\":");
+            string(&mut out, &icon.d);
+            if let Some(view_box) = icon.view_box {
+                // Exactly, unlike layout numbers: the path's own coordinates.
+                out.push_str(",\"viewBox\":[");
+                for (k, v) in view_box.iter().enumerate() {
+                    if k > 0 {
+                        out.push(',');
+                    }
+                    // To a ten-thousandth: finer than any viewBox needs, and the same
+                    // fixed-precision formatting as the layout numbers (the shortest-form
+                    // one would link more of the standard library).
+                    let v = if v.is_finite() { *v } else { 0.0 };
+                    let text = format!("{v:.4}");
+                    let text = text.trim_end_matches('0').trim_end_matches('.');
+                    out.push_str(if text == "-0" { "0" } else { text });
+                }
+                out.push(']');
+            }
+            out.push('}');
+        }
+        out.push('}');
+    }
+    out.push_str("}}");
     out
 }
 

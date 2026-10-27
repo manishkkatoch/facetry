@@ -163,3 +163,55 @@ test("the schematic style starts in the isometric view, and its equipment report
   await expect(page.locator("#hover")).toContainText("kiln");
   await expect(page.locator("#hover")).toContainText('"shape":"stadium"');
 });
+
+test("your own icons: SVG markup becomes path data in the spec, and broken ones are refused", async ({
+  page,
+}) => {
+  await page.goto("/?backend=webgl2&style=schematic&example=mermaid/31-custom-icons");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const run = (source: string, icons: Record<string, unknown>) =>
+    page.evaluate(
+      async ([source, icons]) => {
+        try {
+          return { spec: await (window as any).facetryDiagram.fromMermaid(source, { icons }) };
+        } catch (e: any) {
+          return { code: e.code, message: e.message as string };
+        }
+      },
+      [source, icons] as const,
+    );
+  const node = 'flowchart LR\n  a[Pump]@{ icon: "pump" }';
+  // A line-icon set's markup: its invisible bounding box is left out, shapes become paths.
+  const tabler =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">' +
+    '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="12" cy="12" r="9"/><rect x="4" y="4" width="16" height="8" rx="2"/></svg>';
+  const ok = await run(node, { pump: tabler });
+  const icon = ok.spec.diagram.icons.pump;
+  expect(icon.viewBox).toEqual([0, 0, 24, 24]);
+  expect(icon.d).not.toContain("M0 0h24v24H0z");
+  expect(icon.d).toMatch(/^M3 12 A9 9 0 1 0 21 12/);
+  expect(ok.spec.diagram.nodes[0].icon).toBe("pump");
+  // Bare path data, and { d, viewBox }.
+  expect((await run(node, { pump: "M2 2h20" })).spec.diagram.icons.pump).toEqual({ d: "M2 2h20" });
+  const boxed = await run(node, { pump: { d: "M0 0L96 48", viewBox: [0, 0, 96, 48] } });
+  expect(boxed.spec.diagram.icons.pump.viewBox).toEqual([0, 0, 96, 48]);
+  // What cannot be drawn is refused, naming the icon.
+  const transformed = await run(node, { pump: '<svg viewBox="0 0 24 24"><g transform="scale(2)"><path d="M1 1h4"/></g></svg>' });
+  expect(transformed.code).toBe("invalid-options");
+  expect(transformed.message).toContain("icon `pump`: transforms are not supported");
+  const broken = await run(node, { pump: "M0 0 L 5" });
+  expect(broken.code).toBe("invalid-options");
+  expect(broken.message).toBe("icon `pump`: expected a number at the end of the path");
+  const unknown = await run(node, { valve: "M0 0h4" });
+  expect(unknown.code).toBe("invalid-diagram");
+  expect(unknown.message).toContain("nor among the icons given: valve");
+});
+
+test("the playground's example icons are drawn on the schematic signs", async ({ page }) => {
+  await page.goto("/?backend=webgl2&style=schematic&example=mermaid/31-custom-icons");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#issues li")).toHaveCount(0);
+  const p = await where(page, "pump");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText("pump");
+});

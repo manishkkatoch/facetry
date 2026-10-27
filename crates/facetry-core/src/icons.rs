@@ -184,6 +184,26 @@ pub fn digit_strokes(d: char) -> Vec<Vec<[f64; 2]>> {
         .map_or_else(Vec::new, |k| path_strokes(DIGITS[k as usize]))
 }
 
+/// The strokes of a custom icon, fitted into the same 24 by 24 box as a built-in one: path
+/// data `d` drawn in `view_box` (`[min x, min y, width, height]`, default `[0, 0, 24, 24]`),
+/// scaled to fit and centred. Or what is wrong with it.
+pub fn custom_strokes(d: &str, view_box: Option<[f64; 4]>) -> Result<Vec<Vec<[f64; 2]>>, String> {
+    let [x0, y0, w, h] = view_box.unwrap_or([0.0, 0.0, 24.0, 24.0]);
+    if !(w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite() && x0.is_finite() && y0.is_finite()) {
+        return Err("viewBox must be finite, with a positive width and height".into());
+    }
+    let k = 24.0 / w.max(h);
+    let (dx, dy) = ((24.0 - w * k) / 2.0, (24.0 - h * k) / 2.0);
+    Ok(crate::svg_path::flatten(d)?
+        .into_iter()
+        .map(|run| {
+            run.into_iter()
+                .map(|p| [(p[0] - x0) * k + dx, (p[1] - y0) * k + dy])
+                .collect()
+        })
+        .collect())
+}
+
 /// The strokes of icon `name` (already resolved), in its 24 by 24 box.
 pub fn strokes(name: &str) -> Vec<Vec<[f64; 2]>> {
     ICONS

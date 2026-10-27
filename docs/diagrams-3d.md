@@ -213,6 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
+| **Icons** (done) | Icons of the user's own: `diagram.icons` (SVG path data and viewBox) in the spec, `icons` in `fromMermaid` taking SVG markup, path data or `{ d, viewBox }`; drawn like the built-in icons in every style |
 | **S4** (done) | The schematic style after the cement-plant reference: equipment modelled per shape with drawn edges, pipes and conveyors on supports with flow marks, signs standing on posts with upright printed text, a floor grid |
 | **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered with standing 3D digits, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
@@ -323,6 +324,30 @@ same isometric view as S2:
 Known limits: signs are as wide as their text and float at the equipment's height, so signs of
 nodes close together in the view can overlap in the starting view; the routing is the glossy
 style's, so it shares its crossing count.
+
+**Icons of the user's own.** The 32 built-in icons cannot cover every domain (pumps, valves,
+a company's own symbols), so icons can be brought as SVG, the format every icon set ships in:
+
+* **In the spec**, `diagram.icons` maps a name to `{ d, viewBox? }`: SVG path data and the area
+  it is drawn in. The spec stays self-contained (a stored diagram draws without the add-on or
+  the icon files), and only path data has to be understood by the wasm. A custom icon wins over
+  a built-in one of the same name; nodes may only name icons that exist, and a broken path is
+  reported at `/diagram/icons/<name>/d` with where it goes wrong.
+* **Path data** is read by a small reader in the core (`svg_path.rs`): every command, absolute
+  and relative, the packed number forms (`1.5.5`, `1-2`, arc flags run together), cubic and
+  quadratic curves (smooth ones reflected) cut into 10 steps and arcs per SVG's endpoint
+  parameterisation in steps of at most 15 degrees. It reads numbers itself, since
+  `str::parse::<f64>` would link the standard float parser (14 KB) into the add-on. A path may
+  come to 4,000 points at most. The strokes are fitted into the built-in icons' 24-unit box,
+  centred, so every style draws them the same way: on nodes, cards and signs.
+* **SVG markup** is turned into path data in TypeScript with the browser's own parser
+  (`iconFromSvg`), so no XML parser enters the wasm: shapes become path data (circles and
+  ellipses as two arcs, rounded rects with corner arcs, polylines), unpainted shapes such as an
+  icon set's bounding box are dropped, and what cannot be placed exactly without more code
+  (`transform`, `<use>`, `<text>`, `<image>`) is refused with a remedy.
+* **Drawn as lines**, like the built-in icons: line-icon sets look as designed, filled icons
+  show their outlines. Filling them would need polygon triangulation with holes, which can come
+  later if filled sets matter.
 
 **Moving around (S2).** Diagrams are maps more than objects, so orbit alone is not enough: the
 camera got a pan (the point looked at moves across the floor, clamped to the plot box) and zoom

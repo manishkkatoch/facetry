@@ -493,6 +493,26 @@ pub struct DiagramSpec {
     /// `"schematic"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub style: DiagramStyle,
+    /// Icons of the diagram's own, by name, for nodes' `icon` (a custom icon wins over a
+    /// built-in one of the same name). A JSON object; kept as pairs in its order, a name
+    /// given twice keeping its last icon. (A list rather than a map: there are a handful, and
+    /// a map type of its own would add kilobytes to the wasm.)
+    #[cfg_attr(feature = "ts", tsify(optional, type = "Record<string, CustomIcon>"))]
+    pub icons: Vec<(String, CustomIcon)>,
+}
+
+/// An icon brought by the user: SVG path data, drawn as lines like the built-in icons (the
+/// outline of a filled shape, the strokes of a line icon).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct CustomIcon {
+    /// SVG path data, as in a `<path d="...">`.
+    pub d: String,
+    /// The area the path is drawn in, `[minX, minY, width, height]` as in an SVG `viewBox`;
+    /// default `[0, 0, 24, 24]`. The icon is fitted into its node's icon square, centred.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub view_box: Option<[f64; 4]>,
 }
 
 /// A diagram's visual style.

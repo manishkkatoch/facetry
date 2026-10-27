@@ -18,6 +18,7 @@ pub mod scene;
 pub mod scene3d;
 pub mod spec;
 mod spec_read;
+pub mod svg_path;
 mod text;
 mod theme;
 pub mod transform;

@@ -9,6 +9,13 @@ const mermaid = import.meta.glob<string>("../../diagrams/*/*.mmd", {
   query: "?raw",
   import: "default",
 });
+// Icons of the user's own (examples/diagrams/*/icons/<name>.svg), passed to every layout as
+// `icons`, so `@{ icon: "<name>" }` can use them.
+const icons = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>("../../diagrams/*/icons/*.svg", { eager: true, query: "?raw", import: "default" }),
+  ).map(([path, svg]) => [path.replace(/^.*\/(.+)\.svg$/, "$1"), svg]),
+);
 type Example = ChartSpec | string;
 const examples = new Map<string, Example>([
   ...Object.entries(modules).map(
@@ -28,6 +35,7 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
     ? diagram.fromMermaid(example, {
         style: styleSelect.value as DiagramStyle,
         cards: cardsBox.checked,
+        icons,
       })
     : Promise.resolve(example);
 
@@ -123,7 +131,7 @@ try {
   root.dataset.msaa = String(chart.msaaSamples);
   root.dataset.backend = chart.backend;
   // For poking at it from the devtools console (and the e2e tests): `facetryChart.setCamera(...)`.
-  Object.assign(window, { facetryChart: chart });
+  Object.assign(window, { facetryChart: chart, facetryDiagram: diagram });
   showCamera(currentSpec);
   // Hover and click events: show the bar under the pointer, log clicks.
   chart.on("hover", (mark) => {

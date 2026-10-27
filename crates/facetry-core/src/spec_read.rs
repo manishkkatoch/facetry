@@ -12,10 +12,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
-    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, DiagramEdge, DiagramNode,
-    DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding, InteractionSpec,
-    KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient,
-    LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
+    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
+    DiagramNode, DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding,
+    InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig,
+    LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
     PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
 };
 use crate::validate::{Issue, pointer};
@@ -533,7 +533,47 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         edges [def] = "edges" => list(read_diagram_edge),
         font_size [def] = "fontSize" => opt(number),
         style [def] = "style" => read_diagram_style,
+        icons [def] = "icons" => read_custom_icons,
     })
+}
+
+/// The diagram's icons: an object read into pairs, in order, a repeated name keeping its last
+/// icon (as [`map`] does).
+fn read_custom_icons(v: Value) -> Read<Vec<(String, CustomIcon)>> {
+    let mut out: Vec<(String, CustomIcon)> = Vec::new();
+    for (key, value) in entries(v, "a map")? {
+        let icon = read_custom_icon(value).map_err(|e| e.at_key(&key))?;
+        out.retain(|(name, _)| *name != key);
+        out.push((key, icon));
+    }
+    Ok(out)
+}
+
+fn read_custom_icon(v: Value) -> Read<CustomIcon> {
+    object!(v, "CustomIcon", CustomIcon {
+        d [req] = "d" => string,
+        view_box [def] = "viewBox" => opt(quad),
+    })
+}
+
+/// A fixed-size quadruple, read like [`pair`].
+fn quad(v: Value) -> Read<[f64; 4]> {
+    const EXPECTED: &str = "an array of length 4";
+    let Value::Array(items) = v else {
+        return Err(bad_type(&v, EXPECTED));
+    };
+    let len = items.len();
+    let mut out = [0.0; 4];
+    for (i, item) in items.into_iter().take(4).enumerate() {
+        out[i] = number(item).map_err(|e| e.under(format!("/{i}")))?;
+    }
+    if len == 4 {
+        Ok(out)
+    } else {
+        Err(Fail::new(format!(
+            "invalid length {len}, expected {EXPECTED}"
+        )))
+    }
 }
 
 fn read_diagram_style(v: Value) -> Read<DiagramStyle> {

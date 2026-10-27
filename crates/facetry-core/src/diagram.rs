@@ -149,6 +149,24 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
             ));
         }
     }
+    for (name, icon) in &diagram.icons {
+        let name = name.as_str();
+        let at = |field: &str| pointer(&["diagram", "icons", name, field]);
+        if name.is_empty() || name.contains(['"', '\n']) {
+            issues.push(Issue::new(
+                pointer(&["diagram", "icons", name]),
+                "an icon's name must not be empty or hold a quote or a line break",
+            ));
+        }
+        if let Err(e) = crate::icons::custom_strokes(&icon.d, icon.view_box) {
+            let field = if e.starts_with("viewBox") {
+                "viewBox"
+            } else {
+                "d"
+            };
+            issues.push(Issue::new(at(field), e));
+        }
+    }
     for (i, node) in diagram.nodes.iter().enumerate() {
         let n = i.to_string();
         let at = |field: &str| pointer(&["diagram", "nodes", &n, field]);
@@ -186,12 +204,15 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
             }
         }
         if let Some(icon) = &node.icon {
-            if crate::icons::resolve(icon).is_none() {
+            if !diagram.icons.iter().any(|(name, _)| name == icon)
+                && crate::icons::resolve(icon).is_none()
+            {
                 let known: Vec<&str> = crate::icons::names().collect();
                 issues.push(Issue::new(
                     at("icon"),
                     format!(
-                        "no built-in icon {icon:?}; the icons are {}",
+                        "no icon {icon:?}: it is not in the diagram's `icons`, and the built-in \
+                         icons are {}",
                         known.join(", ")
                     ),
                 ));
@@ -346,7 +367,7 @@ fn dedup(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 // --- the plan and the camera ------------------------------------------------------------------
 
 /// How layout units map to the world: `world = (layout - origin) * scale`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Plan {
     origin: [f64; 2],
     pub(crate) scale: f64,
@@ -355,6 +376,8 @@ pub(crate) struct Plan {
     pub(crate) font: f64,
     /// Node height, in font sizes.
     node_height: f64,
+    /// The diagram's own icons that draw, read once: strokes in the icons' 24 box.
+    icons: Vec<(String, Vec<Vec<[f64; 2]>>)>,
 }
 
 impl Plan {
@@ -397,6 +420,23 @@ impl Plan {
                 DiagramStyle::Isometric => ISOMETRIC_NODE_HEIGHT,
                 DiagramStyle::Schematic => crate::diagram_schematic::SCENE_HEIGHT,
             },
+            icons: diagram
+                .icons
+                .iter()
+                .filter_map(|(name, icon)| {
+                    let strokes = crate::icons::custom_strokes(&icon.d, icon.view_box).ok()?;
+                    Some((name.clone(), strokes))
+                })
+                .collect(),
+        }
+    }
+
+    /// The strokes of icon `name`, in the icons' 24 by 24 box: the diagram's own icon of that
+    /// name, or else the built-in one it names; none if neither.
+    pub(crate) fn icon(&self, name: &str) -> Vec<Vec<[f64; 2]>> {
+        match self.icons.iter().find(|(n, _)| n == name) {
+            Some((_, strokes)) => strokes.clone(),
+            None => crate::icons::resolve(name).map_or_else(Vec::new, crate::icons::strokes),
         }
     }
 
@@ -599,6 +639,7 @@ pub fn build_diagram_3d(
         edges: Vec::new(),
         font_size: None,
         style: DiagramStyle::Flat,
+        icons: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
     match diagram.style {
@@ -832,12 +873,10 @@ pub(crate) fn push_icon(
     color: Color,
     s: f64,
 ) {
-    let Some(name) = crate::icons::resolve(name) else {
-        return;
-    };
     let k = size / 24.0;
     let lift = y + plan.len(0.3);
-    let runs = crate::icons::strokes(name)
+    let runs: Vec<Vec<[f32; 3]>> = plan
+        .icon(name)
         .into_iter()
         .map(|stroke| {
             stroke
@@ -846,6 +885,9 @@ pub(crate) fn push_icon(
                 .collect()
         })
         .collect();
+    if runs.is_empty() {
+        return;
+    }
     scene.polylines.push(Polyline3 {
         key: format!("{key}/icon"),
         color,

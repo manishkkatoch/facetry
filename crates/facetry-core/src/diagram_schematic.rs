@@ -13,7 +13,6 @@ use crate::Theme;
 use crate::diagram::{ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length};
 use crate::diagram_glossy::{push_shadow_with, rgb};
 use crate::diagram_isometric::{along, darken, outline};
-use crate::icons;
 use crate::scene::Anchor;
 use crate::scene3d::{LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Stand, Text3, VAlign};
 use crate::spec::{DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeShape};
@@ -536,7 +535,8 @@ fn push_sign(
     if let Some(name) = icon {
         let icon_size = SIGN_ICON * size;
         let k = icon_size / 24.0;
-        let runs = icons::strokes(name)
+        let runs = plan
+            .icon(name)
             .iter()
             .map(|stroke| {
                 stroke

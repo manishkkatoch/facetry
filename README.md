@@ -493,7 +493,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 98 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 104 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -520,6 +520,34 @@ that can be stored and drawn later without the add-on.
   `target`, `truck`, `user` and `users`; a prefix such as `fa:` is dropped and a few common
   names map onto them (`cog`, `envelope`, `lightbulb`, `warning`, `shopping-cart`, ...). An
   unknown icon, or any `@{ }` key but `icon`, is an error.
+
+**Your own icons.** Pass them by name as `icons`, and `@{ icon: "<name>" }` can use them (one
+named like a built-in icon replaces it):
+
+```ts
+const spec = await diagram.fromMermaid('flowchart LR\n  p[Pump station]@{ icon: "pump" } --> t[Tank]', {
+  style: "schematic",
+  icons: {
+    pump: await (await fetch("/icons/pump.svg")).text(), // SVG markup, as an icon set ships it
+    valve: "M4 8l16 8V8L4 16z",                          // bare path data, in a 24 x 24 box
+    tank: { d: "M64 32h384v448H64z", viewBox: [0, 0, 512, 512] },
+  },
+});
+```
+
+An icon is SVG markup, the path data of a `<path d="...">` drawn in a 24 by 24 box, or
+`{ d, viewBox }`. Markup is read in the browser: every `path`, `circle`, `ellipse`, `rect`
+(rounded too), `line`, `polyline` and `polygon`, inside the `<svg>`'s `viewBox` (or its `width` and
+`height`); shapes painted neither filled nor stroked (an icon set's invisible bounding box) are
+left out, and `transform`, `<use>`, `<text>` and `<image>` are refused (flatten transforms first,
+e.g. with SVGO). Path data takes every SVG command, curves and arcs included. Icons are drawn as
+lines in the style's ink, like the built-in ones: line-icon sets (Lucide, Tabler, Feather, ...)
+look as designed, filled ones show their outlines. The icons travel inside the returned spec
+(`diagram.icons`, path data and viewBox only), so it still draws on its own; `iconFromSvg(markup)`
+from `facetry/diagrams` does the conversion for a spec written by hand. A broken icon rejects
+with `code: "invalid-options"`, naming the icon and where its path goes wrong; an icon over
+4,000 points (once curves are cut into steps) is refused as too detailed. The playground passes
+the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-icons`).
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (subgraphs, other style properties such as `stroke-dasharray` or `font-size`, `click`,
@@ -591,11 +619,12 @@ and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 
 **Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
 `nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor?, icon?,
-card? }]`
+card? }]`, `icons?: { <name>: { d, viewBox? } }`
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
 "cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
-`examples/specs/diagram-glossy.json`). `icon` names a built-in icon; `card: { x, y, width, height,
+`examples/specs/diagram-glossy.json`). `icon` names one of the diagram's `icons` or a built-in
+icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
@@ -764,7 +793,7 @@ dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the
 their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
 the chart as it is now. `facetryChart` on `window` is the live chart for poking at from the
-console.
+console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
 
 ### Snapshots and golden images
 
@@ -778,7 +807,8 @@ console.
   the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision`,
   `diagram-glossy-26-styled`, `diagram-isometric-27-timeline`, `diagram-isometric-01-decision`,
   `diagram-isometric-29-icons`, `diagram-isometric-cards-28-roadmap`, `diagram-schematic-30-plant`
-  and `diagram-schematic-29-icons` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
+  `diagram-schematic-29-icons`, and `diagram-schematic-31-custom-icons` and
+  `diagram-isometric-cards-31-custom-icons` with the example icons of your own): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -810,9 +840,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 775,113 B (757 KiB) | 346,296 B (338 KiB) | 285,253 B (279 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,383,874 B (2328 KiB) | 989,058 B (966 KiB) | 782,148 B (764 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 226,227 B (221 KiB) | 97,854 B (96 KiB) | 83,866 B (82 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 789,075 B (771 KiB) | 352,785 B (345 KiB) | 291,619 B (285 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,396,504 B (2340 KiB) | 995,193 B (972 KiB) | 787,506 B (769 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 240,143 B (235 KiB) | 104,079 B (102 KiB) | 89,231 B (87 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -826,7 +856,11 @@ added 7,799 B gzip to the WebGPU module (the 32 icons, card layout and printed c
 to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement);
 the standing numerals then added 1,715 to the WebGPU module and 1,442 to the WebGL2 one. The
 schematic style (S4) added 5,850 B gzip to the WebGPU module and 6,235 to the WebGL2 one (the
-equipment, pipes, signs and upright printed text); the add-on only learned its name.
+equipment, pipes, signs and upright printed text); the add-on only learned its name. Icons of
+your own added 6,489 B gzip to the WebGPU module, 6,135 to the WebGL2 one and 6,225 to the
+add-on, about half of it the SVG path reader (its own number reader, as `str::parse` would
+link the standard one); they are kept as a list of pairs rather than a map, which saved about
+3 KB in each module.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

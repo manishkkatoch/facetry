@@ -15,7 +15,7 @@
 //!   `====>`), and labels (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
 //! * chains `a --> b --> c` and groups `a & b --> c & d`;
 //! * icons: `a@{ icon: "bulb" }` (alone or after a shape: `a([Idea])@{ icon: "fa:lightbulb" }`),
-//!   one of Facetry's built-in icons;
+//!   one of Facetry's built-in icons or of the user's own ([`parse_with_icons`]);
 //! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
 //!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
 //!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes.
@@ -151,6 +151,8 @@ pub enum Kind {
 struct Parser<'a> {
     text: &'a [char],
     lines: &'a Lines,
+    /// Names of the user's own icons, which `@{ icon }` may use besides the built-in ones.
+    icons: &'a [&'a str],
     pos: usize,
     issues: Vec<DiagramIssue>,
     chart: Flowchart,
@@ -168,11 +170,17 @@ fn is_id_char(c: char) -> bool {
 
 /// Parses a whole flowchart, or every problem found in it.
 pub fn parse(source: &str) -> Result<Flowchart, Vec<DiagramIssue>> {
+    parse_with_icons(source, &[])
+}
+
+/// [`parse`], where `@{ icon }` may also name one of `icons` (the user's own icons).
+pub fn parse_with_icons(source: &str, icons: &[&str]) -> Result<Flowchart, Vec<DiagramIssue>> {
     let text: Vec<char> = source.chars().collect();
     let lines = Lines::new(&text);
     let mut p = Parser {
         text: &text,
         lines: &lines,
+        icons,
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
@@ -193,6 +201,7 @@ pub fn kind(source: &str) -> Result<Kind, DiagramIssue> {
     let mut p = Parser {
         text: &text,
         lines: &lines,
+        icons: &[],
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
@@ -669,12 +678,19 @@ impl Parser<'_> {
             };
             match key.as_str() {
                 "icon" => {
-                    if facetry_core::icons::resolve(&value).is_none() {
+                    if !self.icons.contains(&value.as_str())
+                        && facetry_core::icons::resolve(&value).is_none()
+                    {
                         let names: Vec<&str> = facetry_core::icons::names().collect();
+                        let given = if self.icons.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" (nor among the icons given: {})", self.icons.join(", "))
+                        };
                         return self.fail(
                             value_at,
                             format!(
-                                "no built-in icon `{value}`; the icons are {}",
+                                "no built-in icon `{value}`{given}; the built-in icons are {}",
                                 names.join(", ")
                             ),
                         );
@@ -1339,6 +1355,27 @@ mod tests {
         assert_eq!(icons, [Some("bulb"), Some("fa:rocket"), Some("gear")]);
         assert_eq!(f.nodes[1].label, "Ship");
         assert_eq!(f.nodes[1].shape, NodeShape::Stadium);
+    }
+
+    #[test]
+    fn the_users_own_icons_may_be_named_too() {
+        let source = "flowchart LR\n  a@{ icon: \"pump\" } --> b@{ icon: \"star\" }";
+        let f = parse_with_icons(source, &["pump"]).unwrap();
+        assert_eq!(f.nodes[0].icon.as_deref(), Some("pump"));
+        let issues = parse(source).unwrap_err();
+        assert!(
+            issues[0]
+                .message
+                .starts_with("no built-in icon `pump`; the built-in icons are")
+        );
+        let issues = parse_with_icons(source, &["valve", "tank"]).unwrap_err();
+        assert!(
+            issues[0]
+                .message
+                .starts_with("no built-in icon `pump` (nor among the icons given: valve, tank)"),
+            "{}",
+            issues[0].message
+        );
     }
 
     #[test]

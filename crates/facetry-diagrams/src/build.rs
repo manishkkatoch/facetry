@@ -5,8 +5,8 @@ use facetry_core::diagram::{
     CARD_BADGE, CARD_TEXT, CARD_TEXT_WIDTH, ICON_GAP, ICON_SIZE, card_layout, shape_outline,
 };
 use facetry_core::spec::{
-    DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, DiagramStyle, EdgeEnd,
-    NodeCard, NodeShape,
+    CustomIcon, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, DiagramStyle,
+    EdgeEnd, NodeCard, NodeShape,
 };
 use facetry_font::FontMetrics;
 
@@ -16,12 +16,15 @@ use crate::orthogonal;
 use crate::route;
 
 /// How to lay a diagram out and draw it.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Options {
     pub style: DiagramStyle,
     /// Isometric style only: a card on the floor beside each node, with the node's label (its
     /// first line as the title, the rest as text) and icon; the node then shows its number.
     pub cards: bool,
+    /// Icons of the user's own, by name, for `@{ icon: "name" }` besides the built-in ones;
+    /// they go into the spec with the diagram.
+    pub icons: Vec<(String, CustomIcon)>,
 }
 
 /// Cards: room between a pedestal and its card (past the pedestal's plate), and the smallest
@@ -439,6 +442,7 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             edges,
             font_size: Some(FONT),
             style: options.style,
+            icons: options.icons.clone(),
         },
         control,
     }

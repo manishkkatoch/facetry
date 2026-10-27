@@ -60,7 +60,8 @@ pub fn from_mermaid_with(source: &str, options: &Options) -> Result<Diagram, Vec
             )]);
         }
     }
-    let chart = flowchart::parse(source)?;
+    let names: Vec<&str> = options.icons.iter().map(|(n, _)| n.as_str()).collect();
+    let chart = flowchart::parse_with_icons(source, &names)?;
     let built = build::build(&chart, options);
     let metrics = metrics::measure(&built.spec, &built.control, build::FONT);
     Ok(Diagram {

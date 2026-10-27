@@ -521,3 +521,91 @@ fn schematic_pipes_stand_on_supports_and_carry_flow_marks() {
     }
     assert!(scene.decor.iter().any(|p| p.key.starts_with("edge0/flow/")));
 }
+
+/// GOOD with node `a` showing icon `name` and the diagram's own `icons` (a JSON object body).
+fn with_icons(name: &str, icons: &str) -> String {
+    broken(
+        r#""diagram": {"#,
+        &format!(r#""diagram": {{ "icons": {{ {icons} }},"#),
+    )
+    .replace(
+        r#""label": "Alpha","#,
+        &format!(r#""label": "Alpha", "icon": "{name}","#),
+    )
+}
+
+#[test]
+fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
+    // A diagonal across a 48-wide viewBox: fitted into the 24 box, centred.
+    let json = with_icons(
+        "slash",
+        r#""slash": { "d": "M0 0 L48 24", "viewBox": [0, 0, 48, 24] }"#,
+    );
+    let s = spec(&json);
+    assert_eq!(validate(&s), vec![]);
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    let icon = scene.polylines.iter().find(|p| p.key == "a/icon").unwrap();
+    assert_eq!(icon.runs.len(), 1);
+    let run = &icon.runs[0];
+    // Wider than tall: it spans the icon's width at half its height.
+    let (dx, dz) = (run[1][0] - run[0][0], run[1][2] - run[0][2]);
+    assert!((dx - 2.0 * dz).abs() < 1e-4, "{dx} {dz}");
+    // A custom icon named like a built-in one is drawn instead of it.
+    let star = |json: &str| {
+        let scene = build_scene_3d(&spec(json), (800, 500), 1.0, FontMetrics::inter());
+        scene
+            .polylines
+            .into_iter()
+            .find(|p| p.key == "a/icon")
+            .unwrap()
+    };
+    let own = star(&with_icons("star", r#""star": { "d": "M2 2 H22" }"#));
+    assert_eq!(own.runs.len(), 1);
+    assert_eq!(own.runs[0].len(), 2);
+    assert!(star(&with_icons("star", "")).runs[0].len() > 2);
+    // And every style draws them.
+    for style in ["glossy", "isometric", "schematic"] {
+        let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        assert!(
+            scene
+                .polylines
+                .iter()
+                .any(|p| p.key.ends_with("/icon") && p.runs.len() == 1),
+            "{style}"
+        );
+    }
+}
+
+#[test]
+fn broken_custom_icons_are_reported_where_they_are() {
+    let got = issues(&with_icons("pump", r#""pump": { "d": "M0 0 L 5" }"#));
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].path, "/diagram/icons/pump/d");
+    assert_eq!(got[0].message, "expected a number at the end of the path");
+    let got = issues(&with_icons(
+        "pump",
+        r#""pump": { "d": "M0 0 L5 5", "viewBox": [0, 0, 0, 24] }"#,
+    ));
+    assert_eq!(got[0].path, "/diagram/icons/pump/viewBox");
+    let got = issues(&with_icons(
+        "pump",
+        r#""pump": { "d": "M0 0 L5 5", "viewBox": [0, 0, 24] }"#,
+    ));
+    assert_eq!(got[0].path, "/diagram/icons/pump/viewBox");
+    assert!(
+        got[0].message.contains("expected an array of length 4"),
+        "{got:?}"
+    );
+    // A name with a slash is escaped in the pointer.
+    let got = issues(&with_icons("a/b", r#""a/b": { "d": "Q" }"#));
+    assert_eq!(got[0].path, "/diagram/icons/a~1b/d");
+    // A node may only name an icon that exists.
+    let got = issues(&with_icons("pumpp", r#""pump": { "d": "M0 0 L5 5" }"#));
+    assert_eq!(got[0].path, "/diagram/nodes/0/icon");
+    assert!(
+        got[0]
+            .message
+            .starts_with("no icon \"pumpp\": it is not in the diagram's `icons`")
+    );
+}

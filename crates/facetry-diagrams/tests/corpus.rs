@@ -13,10 +13,12 @@ use facetry_diagrams::{Options, build, flowchart, from_mermaid, from_mermaid_wit
 const GLOSSY: Options = Options {
     style: DiagramStyle::Glossy,
     cards: false,
+    icons: Vec::new(),
 };
 const CARDS: Options = Options {
     style: DiagramStyle::Isometric,
     cards: true,
+    icons: Vec::new(),
 };
 
 fn corpus() -> Vec<(String, String)> {
@@ -89,7 +91,7 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
                 &chart,
                 &Options {
                     style,
-                    cards: false,
+                    ..Options::default()
                 },
             );
             assert_eq!(other.control, built.control, "{name}");
@@ -98,7 +100,7 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
                 &source,
                 &Options {
                     style,
-                    cards: false,
+                    ..Options::default()
                 },
             )
             .unwrap()
@@ -166,4 +168,37 @@ fn cards_take_room_of_their_own() {
         writeln!(report, "{name:<26} {m}").unwrap();
     }
     insta::assert_snapshot!(report);
+}
+
+#[test]
+fn the_users_icons_travel_in_the_spec_and_draw() {
+    use facetry_core::spec::CustomIcon;
+    let icons = vec![
+        (
+            "a b/c".to_owned(),
+            CustomIcon {
+                d: "M0 0 L48 24".into(),
+                view_box: Some([0.0, 0.0, 48.5, 24.25]),
+            },
+        ),
+        (
+            "pump".to_owned(),
+            CustomIcon {
+                d: "M2 2h20".into(),
+                view_box: None,
+            },
+        ),
+    ];
+    let options = Options {
+        style: DiagramStyle::Schematic,
+        icons,
+        ..Options::default()
+    };
+    let d = from_mermaid_with("flowchart LR\n  a[A]@{ icon: pump } --> b", &options).unwrap();
+    let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
+    assert!(facetry_core::validate(&spec).is_empty());
+    let diagram = spec.diagram.unwrap();
+    // Unchanged, the viewBox exactly (not rounded like layout numbers), awkward names too.
+    assert_eq!(diagram.icons, options.icons);
+    assert_eq!(diagram.nodes[0].icon.as_deref(), Some("pump"));
 }

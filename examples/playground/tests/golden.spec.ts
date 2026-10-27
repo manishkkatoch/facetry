@@ -125,3 +125,17 @@ for (const name of ["30-plant", "29-icons"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-schematic-${name}.png`);
   });
 }
+
+// The user's own icons (examples/diagrams/custom-icons/icons/*.svg, from line-icon and filled
+// icon sets): on the schematic signs, and on the isometric cards.
+for (const [name, query] of [
+  ["schematic-31-custom-icons", "style=schematic&example=mermaid/31-custom-icons"],
+  ["isometric-cards-31-custom-icons", "style=isometric&cards=1&example=mermaid/31-custom-icons"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}
