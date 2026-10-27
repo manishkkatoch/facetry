@@ -717,8 +717,8 @@ same text always gives the same layout.
 **Styles.** `diagram.fromMermaid(text, { style })` picks how the diagram looks (and, for the
 glossy style, how its edges are routed):
 
-- `"flat"` (the default): light blocks with a rim, thin curved edges, labels that face the
-  viewer; square on through an orthographic lens. Described below.
+- `"flat"` (the default): light blocks with a rim, thin curved edges, labels printed on
+  the node tops; square on through an orthographic lens. Described below.
 - `"glossy"`: polished coloured slabs (by shape unless `classDef`/`style` say otherwise: red
   start and end, blue steps, magenta decisions, amber stores, green preparation, violet
   input/output) with a sheen and a light catch-light along their top edge, soft shadows on the
@@ -762,7 +762,9 @@ run at the height of the node tops (so an arrow arriving from behind a node is n
 it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
 orthographic camera looking square on and 50 degrees down, at a distance that fits the diagram
 to the canvas but never draws a layout unit (about a CSS pixel) at more than 1.15 pixels, so a
-small diagram is not blown up; labels are sized for that starting view. A spec `camera` overrides
+small diagram is not blown up. Labels are printed on the node tops at the diagram's
+`fontSize` (edge labels on a patch of the page's colour, over the line), so they grow and shrink
+with the zoom like the nodes they name. A spec `camera` overrides
 any of this, and orbit, zoom and `setCamera` work as for charts. Hover lightens a node; `hover`
 and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 

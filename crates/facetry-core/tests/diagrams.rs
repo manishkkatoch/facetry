@@ -1,9 +1,11 @@
 //! Diagram specs: reading, validation, the scene, and the starting camera.
 #![cfg(not(target_arch = "wasm32"))]
 
-use facetry_core::scene3d::Scene3d;
+use facetry_core::scene3d::{FOV_Y_DEGREES, Scene3d};
 use facetry_core::spec::{CameraKind, ChartSpec, EdgeEnd, EdgeStroke, NodeShape};
-use facetry_core::{Issue, Theme, build_diagram_3d, build_scene_3d, parse_spec_json, validate};
+use facetry_core::{
+    Issue, Theme, build_diagram_3d, build_scene_3d, framing_radius, parse_spec_json, validate,
+};
 use facetry_font::FontMetrics;
 
 fn issues(json: &str) -> Vec<Issue> {
@@ -174,7 +176,8 @@ fn diagrams_start_orthographic_and_square_on_unless_the_spec_says_otherwise() {
     assert_eq!(chart.start_camera((800, 500), 1.0), None);
 }
 
-/// The label size of a diagram whose nodes are `n` in a row, in a canvas of `size`.
+/// The label size (CSS px, at the starting camera) of a diagram whose nodes are `n` in a row,
+/// in a canvas of `size`.
 fn label_px(n: usize, size: (u32, u32)) -> f32 {
     let nodes: Vec<String> = (0..n)
         .map(|i| {
@@ -188,14 +191,15 @@ fn label_px(n: usize, size: (u32, u32)) -> f32 {
         r#"{{ "dimension": "3d", "diagram": {{ "nodes": [{}] }} }}"#,
         nodes.join(",")
     );
-    let scene = build_diagram_3d(
-        &spec(&json),
-        size,
-        1.0,
-        FontMetrics::inter(),
-        &Theme::default(),
-    );
-    scene.texts[0].size_px
+    let s = spec(&json);
+    let scene = build_diagram_3d(&s, size, 1.0, FontMetrics::inter(), &Theme::default());
+    // Printed: `size_px` layout units of `flat` world units each, seen from the start.
+    let label = &scene.texts[0];
+    let distance = s.start_camera(size, 1.0).unwrap().distance.unwrap();
+    let half_fov = (FOV_Y_DEGREES / 2.0).to_radians().tan();
+    let px_per_world =
+        f64::from(size.1) / (2.0 * distance * f64::from(framing_radius(scene.size)) * half_fov);
+    (f64::from(label.size_px) * f64::from(label.flat.unwrap()) * px_per_world) as f32
 }
 
 #[test]
