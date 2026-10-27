@@ -15,7 +15,7 @@ use crate::diagram::{
     CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, ICON_SIZE, ISOMETRIC_AZIMUTH, Plan, card_layout,
     dashes, icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
 };
-use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with, rgb};
+use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with};
 use crate::diagram_hops::Hops;
 use crate::icons::{DIGIT_STROKE, DIGIT_WIDTH, digit_strokes};
 use crate::scene::Anchor;
@@ -70,27 +70,6 @@ const NUMERAL_DEPTH: f64 = 0.4;
 const NUMERAL_SPACING: f64 = 3.0;
 const NUMERAL_ROOM: f64 = 0.75;
 const WHITE_GLOSS: f32 = 0.15;
-
-/// Node colours, used in turn: the warm-to-cool sequence of infographic timelines.
-const PALETTE: [u32; 8] = [
-    0xf6b33f, 0xe8553e, 0x3cb371, 0x3d8fe0, 0x9b5cd6, 0x1fb5a8, 0xf0812f, 0x56677d,
-];
-
-fn plate_color() -> Color {
-    rgb(0xe4e8ee)
-}
-
-fn body_color() -> Color {
-    rgb(0xf3f5f8)
-}
-
-fn road_color() -> Color {
-    rgb(0xdadfe6)
-}
-
-fn chevron_color() -> Color {
-    rgb(0xa3adba)
-}
 
 /// `c` mixed toward black by `t`.
 pub(crate) fn darken(c: Color, t: f32) -> Color {
@@ -158,7 +137,8 @@ fn push_node(
     text: Color,
     measure: &dyn TextMeasure,
 ) {
-    let fill = parse_color(&node.color).unwrap_or_else(|| rgb(PALETTE[index % PALETTE.len()]));
+    let look = &plan.look;
+    let fill = parse_color(&node.color).unwrap_or(look.caps[index % look.caps.len()]);
     let floor = |points: &[[f64; 2]]| points.iter().map(|&p| plan.floor_point(p)).collect();
     let layer =
         |key: &str, points: &[[f64; 2]], smooth, base: f64, height: f64, color, gloss| PrismMark {
@@ -185,7 +165,7 @@ fn push_node(
         smooth,
         0.0,
         PLATE_HEIGHT,
-        plate_color(),
+        plan.look.plate,
         0.0,
     ));
     scene.decor.push(layer(
@@ -194,7 +174,7 @@ fn push_node(
         smooth,
         body_base,
         BODY_HEIGHT,
-        body_color(),
+        plan.look.body,
         WHITE_GLOSS,
     ));
     // The cap is the node's mark: what hover lights and picking finds (on its top face).
@@ -207,7 +187,7 @@ fn push_node(
         smooth,
         inset_base,
         INSET_HEIGHT,
-        Color::linear(1.0, 1.0, 1.0, 1.0),
+        look.inset,
         WHITE_GLOSS,
     ));
     // A light catch-light round the cap's top edge, or the node's own stroke.
@@ -228,11 +208,16 @@ fn push_node(
     // The label goes on the white inset: in a deep shade of the node's colour, or the node's
     // own text colour if that reads on white (a `color:#fff` meant for a coloured fill would
     // vanish), or the theme's dark text if the fill is too pale to shade.
-    let white = Color::linear(1.0, 1.0, 1.0, 1.0);
-    let readable = |c: &Color| c.contrast(white) >= 3.0;
+    // (On a dark page the inset is dark, and the shade a light one.)
+    let readable = |c: &Color| c.contrast(look.inset) >= 3.0;
+    let shade = if look.dark {
+        lighten(fill, 0.45)
+    } else {
+        darken(fill, 0.35)
+    };
     let ink = parse_color(&node.text_color)
         .filter(readable)
-        .or_else(|| Some(darken(fill, 0.35)).filter(readable))
+        .or_else(|| Some(shade).filter(readable))
         .unwrap_or(text);
     let label = node.label.as_deref().unwrap_or(&node.id);
     let top = plan.len(STACK_HEIGHT * plan.font);
@@ -394,7 +379,7 @@ fn push_card_on_floor(
     let top = plan.len(CARD_HEIGHT * plan.font);
     scene.decor.push(PrismMark {
         key: format!("{}/card", node.id),
-        color: rgb(0xfbfcfd),
+        color: plan.look.floor_card,
         outline: outline.iter().map(|&p| plan.floor_point(p)).collect(),
         base: 0.0,
         top: top as f32,
@@ -424,7 +409,7 @@ fn push_card_on_floor(
             at(p),
             top,
             CARD_TEXT * plan.font,
-            rgb(0x6b7280),
+            plan.look.card_text,
             Anchor::Start,
         );
     }
@@ -446,7 +431,7 @@ fn push_card_on_floor(
 fn road(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark {
     RibbonMark {
         key,
-        color: road_color(),
+        color: plan.look.road,
         path: points.iter().map(|&p| plan.floor_point(p)).collect(),
         width: plan.len(width) as f32,
         base: 0.0,
@@ -557,7 +542,7 @@ fn push_edge(
                 at,
                 dir,
                 1.0,
-                chevron_color(),
+                plan.look.chevron,
             );
             // Riding up a bridge.
             let up = plan.len(HOP_HEIGHT * hops.rise(at)) as f32;
@@ -577,7 +562,7 @@ fn push_edge(
         }
         let (at, dir) = along(&path, distance);
         let dir = if at_head { dir } else { [-dir[0], -dir[1]] };
-        let dark = darken(chevron_color(), 0.35);
+        let dark = darken(plan.look.chevron, 0.35);
         let name = if at_head { "head" } else { "tail" };
         match end {
             EdgeEnd::None => {}
@@ -595,7 +580,7 @@ fn push_edge(
                     color: if end == EdgeEnd::Circle {
                         dark
                     } else {
-                        rgb(0xe8553e)
+                        plan.look.stop
                     },
                     outline: disc
                         .iter()

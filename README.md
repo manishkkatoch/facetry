@@ -605,7 +605,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 113 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 114 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -625,9 +625,9 @@ that can be stored and drawn later without the add-on.
 ```
 
 Each block's text (its shared indentation removed) is replaced by a canvas as wide as the block
-and `height` tall (default `400px`), with the text as its `aria-label`. `data-style` and
-`data-cards` choose a block's own style and cards; the other options are `fromMermaid`'s
-(`style`, `cards`, `icons`, for every block), `querySelector` (default `"pre.mermaid"`) or
+and `height` tall (default `400px`), with the text as its `aria-label`. `data-style`,
+`data-theme` and `data-cards` choose a block's own style, theme and cards; the other options are `fromMermaid`'s
+(`style`, `theme`, `cards`, `icons`, for every block), `querySelector` (default `"pre.mermaid"`) or
 `nodes`, and `chart` (`Chart.create`'s options, such as `backend`). Drawn blocks get
 `data-processed`, so `run` can be called again after adding more. A block that fails shows its
 message in its place (a `role="alert"` box listing every issue with its line and column); the
@@ -696,12 +696,16 @@ from `facetry/diagrams` does the conversion for a spec written by hand. A broken
 with `code: "invalid-options"`, naming the icon and where its path goes wrong; an icon over
 4,000 points (once curves are cut into steps) is refused as too detailed. The playground passes
 the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-icons`).
+- themes: `%%{init: {"theme": "dark"}}%%` before the header (also `initialize`, single quotes
+  or bare words, over several lines), or front matter with `config:` and `theme:` under it;
+  `default` (or `base`), `neutral`, `dark` or `forest`. See "Themes" below.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (other style properties such as `stroke-dasharray` or `font-size`, `click`,
 `linkStyle`, invisible `~~~` links, the
 `[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
-markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
+markdown strings, HTML other than `<br>`, anything in a directive or front matter but the
+theme): a diagram is
 never drawn with parts silently missing. Sequence and architecture diagrams are planned
 (milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
 covers printable ASCII; other characters draw as `?`.
@@ -757,6 +761,15 @@ glossy style, how its edges are routed):
   colour is used if it reads on the white sign. Signs of nodes that stand close together can
   cover each other in the starting view (orbiting separates them).
 
+**Themes.** `diagram.fromMermaid(text, { theme })` (and `diagram.run({ theme })`, or a block's
+`data-theme`) colours the diagram after Mermaid's themes, each style in its own manner:
+`"default"`, `"neutral"` (greys: lavender nodes turn grey, glossy slabs and isometric caps are
+shades of slate), `"dark"` (a dark page with light text, lines and arrows; nodes, bases, roads,
+equipment and signs in dark tones, coloured slabs and caps kept) or `"forest"` (greens and earth
+tones). A theme the Mermaid text sets itself wins, as in Mermaid. The theme travels in the spec
+(`diagram.theme`), and the playground has a Theme menu (`?theme=dark`). A chart's own
+`clearColor` still sets the page colour.
+
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
 it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
@@ -775,7 +788,7 @@ card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }
 round nodes, `parent` naming the group around it; an edge's `from` or `to` may name a group)
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
-"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
+"cross", tail? }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
 `examples/specs/diagram-glossy.json`). `icon` names one of the diagram's `icons` or a built-in
 icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
@@ -999,7 +1012,9 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-isometric-groups-33-nested` and `diagram-schematic-groups-34-group-edges`, and
   `diagram-schematic-31-custom-icons-behind`, orbited round so its signs turn, and
   `diagram-flat-23-dense`, `diagram-glossy-23-dense` and `diagram-schematic-23-dense`, whose
-  crossing edges arc over each other): Playwright screenshots these examples (3D ones at their
+  crossing edges arc over each other, and `diagram-{flat,glossy,isometric,schematic}-dark-34-group-edges`,
+  `diagram-flat-neutral-34-group-edges` and `diagram-isometric-forest-34-group-edges` in the
+  themes): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -1031,9 +1046,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 939,439 B (917 KiB) | 412,643 B (403 KiB) | 337,650 B (330 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,546,366 B (2487 KiB) | 1,054,179 B (1029 KiB) | 830,764 B (811 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 261,181 B (255 KiB) | 112,574 B (110 KiB) | 96,355 B (94 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 945,809 B (924 KiB) | 415,498 B (406 KiB) | 339,414 B (331 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,552,736 B (2493 KiB) | 1,057,073 B (1032 KiB) | 833,444 B (814 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 264,361 B (258 KiB) | 113,992 B (111 KiB) | 97,470 B (95 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1069,6 +1084,9 @@ of its own instead of the standard one saved 2.7 KB, and leaving the layout qual
 
 Schematic signs that turn to face the camera added 2,868 B gzip to the WebGPU module and
 2,674 to the WebGL2 one; edges arcing over crossings 2,672 and 2,230, and 13 B to the add-on.
+Printed flat-style labels and the four themes then added 2,855 B gzip to the WebGPU module and
+2,894 to the WebGL2 one (a palette per theme), and 1,418 to the add-on (reading the theme from
+directives and front matter).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

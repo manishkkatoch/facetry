@@ -2,7 +2,7 @@
 //! spec. The TypeScript wrapper (`facetry/diagrams` in `packages/facetry`) loads this module
 //! only when a page asks for a diagram, and hands the spec to the core module to draw.
 
-use facetry_core::spec::{CustomIcon, DiagramStyle, FillRule, IconFill};
+use facetry_core::spec::{CustomIcon, DiagramStyle, DiagramTheme, FillRule, IconFill};
 use facetry_diagrams::{DiagramIssue, Options, chart_json};
 use wasm_bindgen::prelude::*;
 
@@ -33,7 +33,7 @@ fn start() {
 /// default); and one entry per filled shape, icon after icon: `icon_fills` (path data) and
 /// `icon_fill_rules` (1 for even-odd, 0 for nonzero). Throws an `Error` named `FacetryError` with `code: "invalid-diagram"` and a
 /// `diagramIssues` list when the text has problems (or uses Mermaid features Facetry does not
-/// support), and `code: "invalid-options"` for an unknown style or a broken icon; nothing is
+/// support), and `code: "invalid-options"` for an unknown style or theme or a broken icon; nothing is
 /// laid out then.
 #[wasm_bindgen(js_name = layoutMermaid)]
 // Flat lists across the JS boundary keep the module free of a JSON reader.
@@ -42,6 +42,7 @@ pub fn layout_mermaid(
     source: &str,
     style: Option<String>,
     cards: Option<bool>,
+    theme: Option<String>,
     icon_names: Option<Vec<String>>,
     icon_strokes: Option<Vec<String>>,
     icon_fill_counts: Option<Vec<u32>>,
@@ -57,6 +58,17 @@ pub fn layout_mermaid(
         Some(other) => {
             return Err(invalid_options(&format!(
                 "`style` must be \"flat\", \"glossy\", \"isometric\" or \"schematic\", got {other:?}"
+            )));
+        }
+    };
+    let theme = match theme.as_deref() {
+        None | Some("default") => DiagramTheme::Default,
+        Some("neutral") => DiagramTheme::Neutral,
+        Some("dark") => DiagramTheme::Dark,
+        Some("forest") => DiagramTheme::Forest,
+        Some(other) => {
+            return Err(invalid_options(&format!(
+                "`theme` must be \"default\", \"neutral\", \"dark\" or \"forest\", got {other:?}"
             )));
         }
     };
@@ -111,6 +123,7 @@ pub fn layout_mermaid(
         source,
         &Options {
             style,
+            theme,
             cards,
             icons,
         },

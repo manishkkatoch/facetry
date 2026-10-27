@@ -901,3 +901,44 @@ fn where_edges_cross_the_later_arcs_over_the_earlier_in_every_style() {
         }
     }
 }
+
+#[test]
+fn a_dark_theme_darkens_the_page_and_lightens_the_text_in_every_style() {
+    let light = facetry_core::Color::linear(1.0, 1.0, 1.0, 1.0);
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = broken(
+            r#""diagram": {"#,
+            &format!(r#""diagram": {{ "style": "{style}", "theme": "dark","#),
+        );
+        let s = spec(&json);
+        assert_eq!(validate(&s), vec![], "{style}");
+        let theme = Theme::default();
+        let scene = with_signs(build_diagram_3d(
+            &s,
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+            &theme,
+        ));
+        assert!(scene.background.contrast(light) > 10.0, "{style}");
+        // The edge label is light on the dark page (or on its dark card or sign).
+        let label = scene.texts.iter().find(|t| t.text == "go").expect(style);
+        assert!(label.color.contrast(scene.background) >= 4.5, "{style}");
+        // A page colour the chart was given (`clearColor`) is kept.
+        let red = facetry_core::Color::linear(1.0, 0.0, 0.0, 1.0);
+        let scene = build_diagram_3d(
+            &s,
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+            &Theme::with_background(red),
+        );
+        assert_eq!(scene.background, red, "{style}");
+    }
+    // Themes are named.
+    let got = issues(&broken(
+        r#""diagram": {"#,
+        r#""diagram": { "theme": "pink","#,
+    ));
+    assert_eq!(got[0].path, "/diagram/theme");
+}

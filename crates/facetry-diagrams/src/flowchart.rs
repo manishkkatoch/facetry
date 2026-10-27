@@ -22,14 +22,16 @@
 //!   one of Facetry's built-in icons or of the user's own ([`parse_with_icons`]);
 //! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
 //!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
-//!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes.
+//!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes;
+//! * the theme: `%%{init: {"theme": "dark"}}%%`, or front matter with `config:` and `theme:`.
 //!
 //! Everything else that is valid Mermaid (`linkStyle`, other style properties,
-//! click handlers, keys of `@{ }` other than `icon`, front matter and directives, ...) is an
+//! click handlers, keys of `@{ }` other than `icon`, anything in a directive or front matter but
+//! the theme, ...) is an
 //! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
 
-use facetry_core::spec::{EdgeEnd, EdgeStroke, NodeShape};
+use facetry_core::spec::{DiagramTheme, EdgeEnd, EdgeStroke, NodeShape};
 
 use crate::issue::{DiagramIssue, Lines};
 use crate::style::{self, NodeStyle};
@@ -115,6 +117,9 @@ pub struct Flowchart {
     pub edges: Vec<Edge>,
     /// In the order they close: a nested subgraph comes before the one around it.
     pub subgraphs: Vec<Subgraph>,
+    /// The theme the text asks for (`%%{init: {"theme": "dark"}}%%`, or `config: theme:` in
+    /// front matter).
+    pub theme: Option<DiagramTheme>,
 }
 
 impl Flowchart {
@@ -360,38 +365,234 @@ impl Parser<'_> {
         self.text[start..self.pos].iter().collect()
     }
 
-    /// Blank lines, `%%` comments, and the front matter and directives Facetry rejects.
+    /// Blank lines, `%%` comments, directives and front matter (of which only the theme is
+    /// read; anything else in them is an error).
     fn skip_preamble(&mut self) {
         loop {
             self.skip_inline_ws();
             match self.peek() {
                 Some('\n') => self.pos += 1,
-                Some('%') if self.starts_with("%%{") => {
-                    let at = self.pos;
-                    let _: Step<()> = self.fail(at, "directives (`%%{ ... }%%`) are not supported");
-                    self.skip_line();
-                }
+                Some('%') if self.starts_with("%%{") => self.directive(),
                 Some('%') if self.starts_with("%%") => self.skip_line(),
-                Some('-') if self.starts_with("---") => {
-                    let at = self.pos;
-                    let _: Step<()> = self.fail(at, "front matter (`---`) is not supported");
-                    // Skip to the closing `---`.
-                    self.skip_line();
-                    loop {
-                        if self.peek().is_none() {
-                            break;
-                        }
-                        self.pos += 1; // the line break
-                        self.skip_inline_ws();
-                        let closing = self.starts_with("---");
-                        self.skip_line();
-                        if closing {
-                            break;
-                        }
-                    }
-                }
+                Some('-') if self.starts_with("---") => self.front_matter(),
                 _ => return,
             }
+        }
+    }
+
+    /// `%%{init: {"theme": "dark"}}%%` (`initialize` too, either quotes, keys bare or quoted,
+    /// over one line or several): the theme.
+    fn directive(&mut self) {
+        let start = self.pos;
+        let close =
+            (start + 3..self.text.len()).find(|&i| self.text[i..].starts_with(&['}', '%', '%']));
+        let Some(close) = close else {
+            let _: Step<()> = self.fail(start, "directive not closed with `}%%`");
+            self.skip_line();
+            return;
+        };
+        self.pos = start + 3;
+        let found = self.issues.len();
+        if self.init_object(close).is_err() && self.issues.len() == found {
+            let _: Step<()> = self.fail(
+                start,
+                "could not read the directive; expected `%%{init: {\"theme\": \"dark\"}}%%`",
+            );
+        }
+        self.pos = close + 3;
+        self.skip_line();
+    }
+
+    /// The `init: { ... }` of a directive, ending before `close`.
+    fn init_object(&mut self, close: usize) -> Step<()> {
+        self.skip_ws_before(close);
+        let at = self.pos;
+        let name = self.word();
+        if name != "init" && name != "initialize" {
+            return self.fail(at, "only `init` directives are supported");
+        }
+        self.skip_ws_before(close);
+        self.expect_char(':')?;
+        self.skip_ws_before(close);
+        self.expect_char('{')?;
+        loop {
+            self.skip_ws_before(close);
+            match self.peek() {
+                Some('}') => {
+                    self.pos += 1;
+                    return Ok(());
+                }
+                Some(',') => self.pos += 1,
+                _ if self.pos >= close => return Err(Skip),
+                _ => {
+                    let key_at = self.pos;
+                    let key = self.directive_word()?;
+                    self.skip_ws_before(close);
+                    self.expect_char(':')?;
+                    self.skip_ws_before(close);
+                    let value_at = self.pos;
+                    if self.peek() == Some('{') {
+                        self.skip_braces(close)?;
+                    } else {
+                        let value = self.directive_word()?;
+                        if key == "theme" {
+                            self.set_theme(&value, value_at);
+                            continue;
+                        }
+                    }
+                    let _: Step<()> = self.fail(
+                        key_at,
+                        format!("`{key}` is not supported in a directive; only `theme` is"),
+                    );
+                }
+            }
+        }
+    }
+
+    /// A key or value in a directive: quoted (either quotes) or bare.
+    fn directive_word(&mut self) -> Step<String> {
+        match self.peek() {
+            Some(q @ ('"' | '\'')) => {
+                let start = self.pos + 1;
+                let end = (start..self.text.len())
+                    .find(|&i| self.text[i] == q || self.text[i] == '\n')
+                    .filter(|&i| self.text[i] == q)
+                    .ok_or(Skip)?;
+                self.pos = end + 1;
+                Ok(self.text[start..end].iter().collect())
+            }
+            _ => {
+                let w = self.word();
+                if w.is_empty() { Err(Skip) } else { Ok(w) }
+            }
+        }
+    }
+
+    /// Past a `{ ... }` with what it holds, nested ones included, ending before `close`.
+    fn skip_braces(&mut self, close: usize) -> Step<()> {
+        let mut depth = 0;
+        while self.pos < close {
+            match self.text[self.pos] {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        self.pos += 1;
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+            self.pos += 1;
+        }
+        Err(Skip)
+    }
+
+    fn skip_ws_before(&mut self, end: usize) {
+        while self.pos < end && self.peek().is_some_and(char::is_whitespace) {
+            self.pos += 1;
+        }
+    }
+
+    fn expect_char(&mut self, c: char) -> Step<()> {
+        if self.peek() == Some(c) {
+            self.pos += 1;
+            Ok(())
+        } else {
+            Err(Skip)
+        }
+    }
+
+    fn set_theme(&mut self, name: &str, at: usize) {
+        let theme = match name {
+            "default" | "base" => DiagramTheme::Default,
+            "neutral" => DiagramTheme::Neutral,
+            "dark" => DiagramTheme::Dark,
+            "forest" => DiagramTheme::Forest,
+            _ => {
+                let _: Step<()> = self.fail(
+                    at,
+                    format!(
+                        "unknown theme `{name}`; expected `default`, `neutral`, `dark` or `forest`"
+                    ),
+                );
+                return;
+            }
+        };
+        self.chart.theme = Some(theme);
+    }
+
+    /// Front matter between `---` lines: `config:` with `theme:` under it.
+    ///
+    /// ```text
+    /// ---
+    /// config:
+    ///   theme: forest
+    /// ---
+    /// ```
+    fn front_matter(&mut self) {
+        self.skip_line();
+        let mut in_config = false;
+        loop {
+            if self.peek().is_none() {
+                let at = self.pos;
+                let _: Step<()> = self.fail(at, "front matter not closed with `---`");
+                return;
+            }
+            self.pos += 1; // the line break
+            let indented = matches!(self.peek(), Some(' ' | '\t'));
+            self.skip_inline_ws();
+            if self.starts_with("---") && !indented {
+                self.skip_line();
+                return;
+            }
+            if matches!(self.peek(), Some('\n' | '#') | None) {
+                self.skip_line();
+                continue;
+            }
+            let at = self.pos;
+            let key = self.word();
+            self.skip_inline_ws();
+            if key.is_empty() || self.peek() != Some(':') {
+                let _: Step<()> = self.fail(at, "expected `key: value` in front matter");
+                self.skip_line();
+                continue;
+            }
+            self.pos += 1;
+            self.skip_inline_ws();
+            let value_at = self.pos;
+            let value = match self.peek() {
+                Some('"' | '\'') => self.directive_word().unwrap_or_default(),
+                _ => {
+                    let start = self.pos;
+                    self.skip_line();
+                    self.text[start..self.pos]
+                        .iter()
+                        .collect::<String>()
+                        .trim()
+                        .to_owned()
+                }
+            };
+            match (indented && in_config, key.as_str()) {
+                (false, "config") if value.is_empty() => in_config = true,
+                (true, "theme") => self.set_theme(&value, value_at),
+                (true, _) => {
+                    let _: Step<()> = self.fail(
+                        at,
+                        format!("`config.{key}` is not supported; only `theme` is"),
+                    );
+                }
+                (false, _) => {
+                    in_config = false;
+                    let _: Step<()> = self.fail(
+                        at,
+                        format!(
+                            "`{key}` in front matter is not supported; only `config: theme` is"
+                        ),
+                    );
+                }
+            }
+            self.skip_line();
         }
     }
 
@@ -1715,12 +1916,49 @@ mod tests {
             ("graph TD\nclick A call()", "click"),
             ("graph TD\nA[\"`**md**`\"]", "markdown"),
             ("graph TD\nA[a <b>bold</b>]", "HTML"),
-            ("%%{init: {}}%%\ngraph TD\nA", "directives"),
-            ("---\ntitle: T\n---\ngraph TD\nA", "front matter"),
+            ("%%{wrap}%%\ngraph TD\nA", "only `init` directives"),
+            (
+                "%%{init: {\"flowchart\": {\"curve\": \"step\"}}}%%\ngraph TD\nA",
+                "`flowchart` is not supported in a directive",
+            ),
+            (
+                "%%{init: {'theme': 'pink'}}%%\ngraph TD\nA",
+                "unknown theme `pink`",
+            ),
+            ("---\ntitle: T\n---\ngraph TD\nA", "`title` in front matter"),
+            (
+                "---\nconfig:\n  look: handDrawn\n---\ngraph TD\nA",
+                "`config.look` is not supported",
+            ),
         ] {
             let e = err(src);
             assert!(e.iter().any(|i| i.message.contains(needle)), "{src}: {e:?}");
         }
+    }
+
+    #[test]
+    fn a_theme_comes_from_a_directive_or_front_matter() {
+        assert_eq!(ok("graph TD\nA").theme, None);
+        for src in [
+            "%%{init: {\"theme\": \"dark\"}}%%\ngraph TD\nA",
+            "%%{ initialize: { 'theme': 'dark' } }%%\ngraph TD\nA",
+            "%%{init: {theme: dark}}%%\ngraph TD\nA",
+            "%%{\n  init: {\n    \"theme\": \"dark\"\n  }\n}%%\ngraph TD\nA",
+            "---\nconfig:\n  theme: dark\n---\ngraph TD\nA",
+            "---\n# a comment\nconfig:\n  theme: \"dark\"\n---\n%% and one here\ngraph TD\nA",
+        ] {
+            let chart = ok(src);
+            assert_eq!(chart.theme, Some(DiagramTheme::Dark), "{src}");
+            assert_eq!(chart.nodes.len(), 1, "{src}");
+        }
+        assert_eq!(
+            ok("%%{init: {'theme':'base'}}%%\ngraph TD\nA").theme,
+            Some(DiagramTheme::Default)
+        );
+        // An unclosed directive is reported where it starts.
+        let e = err("%%{init: {'theme': 'dark'}\ngraph TD\nA");
+        assert_eq!((e[0].line, e[0].column), (1, 1));
+        assert!(e[0].message.contains("not closed"), "{e:?}");
     }
 
     #[test]

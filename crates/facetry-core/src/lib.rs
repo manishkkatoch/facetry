@@ -14,6 +14,7 @@ mod diagram_groups;
 mod diagram_hops;
 mod diagram_isometric;
 mod diagram_schematic;
+mod diagram_theme;
 pub mod fill;
 pub mod icons;
 mod legend;

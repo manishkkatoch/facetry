@@ -587,6 +587,9 @@ pub struct DiagramSpec {
     /// `"schematic"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub style: DiagramStyle,
+    /// The colours, after Mermaid's themes: `"default"`, `"neutral"`, `"dark"` or `"forest"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub theme: DiagramTheme,
     /// Icons of the diagram's own, by name, for nodes' `icon` (a custom icon wins over a
     /// built-in one of the same name). A JSON object; kept as pairs in its order, a name
     /// given twice keeping its last icon. (A list rather than a map: there are a handful, and
@@ -710,6 +713,23 @@ pub enum DiagramStyle {
     /// outlines, edges pipes on supports with flow marks (thick edges conveyors), and labels
     /// on signs standing above the equipment, over a faint floor grid.
     Schematic,
+}
+
+/// A diagram's colours, after Mermaid's themes of the same names; every style has its own take
+/// on each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum DiagramTheme {
+    /// The style's own light colours (Mermaid's lavender nodes in the flat style).
+    #[default]
+    Default,
+    /// Greys, for print and for pages that bring their own colour.
+    Neutral,
+    /// Light lines and text on a dark page.
+    Dark,
+    /// Greens.
+    Forest,
 }
 
 /// Default label size of a diagram, in layout units.

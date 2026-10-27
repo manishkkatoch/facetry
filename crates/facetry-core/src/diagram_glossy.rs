@@ -14,6 +14,7 @@ use crate::diagram::{
     push_rim, shape_outline, trim_end,
 };
 use crate::diagram_hops::Hops;
+use crate::diagram_theme::Look;
 use crate::scene::Anchor;
 use crate::scene3d::{LabelRole, PrismMark, RibbonMark, Scene3d, ShadowMark, Text3, VAlign};
 use crate::spec::{
@@ -64,30 +65,26 @@ const SHADOW_ALPHA: f32 = 0.32;
 /// lets the surface show through the letters.
 const PRINT_LIFT: f64 = 0.3;
 
-pub(crate) fn rgb(hex: u32) -> Color {
-    Color::from_srgb8((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 0xff)
-}
-
 /// The fill of a node that does not choose one: by what the shape usually means in a
 /// flowchart, so start and end, steps, decisions and stores read apart at a glance.
-pub(crate) fn shape_fill(shape: NodeShape) -> Color {
-    match shape {
+pub(crate) fn shape_fill(shape: NodeShape, look: &Look) -> Color {
+    look.shapes[match shape {
         // Start and end.
-        NodeShape::Stadium | NodeShape::Circle => rgb(0xe5484d),
+        NodeShape::Stadium | NodeShape::Circle => 0,
         // Steps.
-        NodeShape::Rect | NodeShape::Rounded => rgb(0x3e8ef7),
+        NodeShape::Rect | NodeShape::Rounded => 1,
         // Decisions.
-        NodeShape::Diamond => rgb(0xd6409f),
+        NodeShape::Diamond => 2,
         // Data stores.
-        NodeShape::Cylinder => rgb(0xf5a524),
+        NodeShape::Cylinder => 3,
         // Preparation.
-        NodeShape::Hexagon => rgb(0x30a46c),
+        NodeShape::Hexagon => 4,
         // Input and output, manual steps.
         NodeShape::Parallelogram
         | NodeShape::ParallelogramAlt
         | NodeShape::Trapezoid
-        | NodeShape::TrapezoidAlt => rgb(0x8e4ec6),
-    }
+        | NodeShape::TrapezoidAlt => 5,
+    }]
 }
 
 /// `c` mixed toward white by `t` (0 to 1).
@@ -95,15 +92,6 @@ pub(crate) fn lighten(c: Color, t: f32) -> Color {
     let [r, g, b, a] = c.to_array();
     let m = |v: f32| v + (1.0 - v) * t;
     Color::linear(m(r), m(g), m(b), a)
-}
-
-/// The colour of the arrows and of dark text.
-fn edge_color() -> Color {
-    rgb(0x30323a)
-}
-
-fn card_color() -> Color {
-    rgb(0xf8f8fb)
 }
 
 pub(crate) fn build(
@@ -235,7 +223,7 @@ fn push_node(
         .iter()
         .map(|p| [node.x + p[0], node.y + p[1]])
         .collect();
-    let fill = parse_color(&node.color).unwrap_or_else(|| shape_fill(node.shape));
+    let fill = parse_color(&node.color).unwrap_or_else(|| shape_fill(node.shape, &plan.look));
     push_shadow(scene, plan, &absolute, shadow);
     scene.prisms.push(PrismMark {
         key: node.id.clone(),
@@ -289,7 +277,7 @@ fn push_node(
 fn ribbon(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark {
     RibbonMark {
         key,
-        color: edge_color(),
+        color: plan.look.arrow,
         path: points.iter().map(|&p| plan.floor_point(p)).collect(),
         width: plan.len(width) as f32,
         base: 0.0,
@@ -395,7 +383,7 @@ pub(crate) fn push_card(
         let card_top = base + plan.len(CARD_HEIGHT);
         scene.decor.push(PrismMark {
             key: format!("{key}/card"),
-            color: card_color(),
+            color: plan.look.card,
             outline: card.iter().map(|&p| plan.floor_point(p)).collect(),
             base: base as f32,
             top: card_top as f32,
@@ -425,7 +413,7 @@ fn push_end(
     let name = if at_head { "head" } else { "tail" };
     let solid = |outline: Vec<[f64; 2]>, smooth: bool| PrismMark {
         key: format!("{key}/{name}"),
-        color: edge_color(),
+        color: plan.look.arrow,
         outline: outline.iter().map(|&p| plan.floor_point(p)).collect(),
         base: 0.0,
         top: plan.len(EDGE_HEIGHT) as f32,

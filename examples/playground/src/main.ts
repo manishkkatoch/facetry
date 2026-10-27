@@ -1,5 +1,5 @@
 import { Chart, FacetryError, type ChartOptions, type ChartSpec, type UpdateOptions } from "facetry";
-import { diagram, type DiagramStyle } from "facetry/diagrams";
+import { diagram, type DiagramStyle, type DiagramTheme } from "facetry/diagrams";
 
 // The same files the Rust snapshot tests and the golden-image test use.
 const modules = import.meta.glob<ChartSpec>("../../specs/*.json", { eager: true, import: "default" });
@@ -28,6 +28,7 @@ const examples = new Map<string, Example>([
 
 const styleSelect = document.querySelector<HTMLSelectElement>("#style")!;
 const cardsBox = document.querySelector<HTMLInputElement>("#cards")!;
+const themeSelect = document.querySelector<HTMLSelectElement>("#theme")!;
 
 /** A spec as it is, or Mermaid text laid out by the diagrams add-on in the chosen style. */
 const toSpec = (example: Example): Promise<ChartSpec> =>
@@ -35,6 +36,7 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
     ? diagram.fromMermaid(example, {
         style: styleSelect.value as DiagramStyle,
         cards: cardsBox.checked,
+        theme: themeSelect.value as DiagramTheme,
         icons,
       })
     : Promise.resolve(example);
@@ -44,6 +46,8 @@ const params = new URLSearchParams(location.search);
 styleSelect.value = ["glossy", "isometric", "schematic"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
 // ?cards=1 lays a card beside each node (isometric style).
 cardsBox.checked = params.get("cards") === "1";
+// ?theme=dark (or neutral, forest) colours Mermaid diagrams after that theme.
+themeSelect.value = ["neutral", "dark", "forest"].includes(params.get("theme") ?? "") ? params.get("theme")! : "default";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
 // ?animateIn=1 animates the first frame (the marks enter). ?clock=manual holds the animation
@@ -185,8 +189,8 @@ select.addEventListener("change", () => {
   void apply(spec);
 });
 
-// A new style (or cards on or off) lays the Mermaid text in the editor out again.
-for (const control of [styleSelect, cardsBox]) {
+// A new style or theme (or cards on or off) lays the Mermaid text in the editor out again.
+for (const control of [styleSelect, cardsBox, themeSelect]) {
   control.addEventListener("change", () => {
     if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
   });

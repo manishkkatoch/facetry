@@ -19,13 +19,14 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram_hops::Hops;
+use crate::diagram_theme::Look;
 use crate::framing_radius;
 use crate::icons::IconShape;
 use crate::scene::RuleKind;
 use crate::scene3d::{FOV_Y_DEGREES, FRAMING_LIFT, FillMark, Line3, Polyline3, PrismMark, Scene3d};
 use crate::spec::{
     CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
-    DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
+    DiagramSpec, DiagramStyle, DiagramTheme, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
     MAX_NODE_STROKE_WIDTH, NodeShape,
 };
 use crate::text::TextMeasure;
@@ -97,7 +98,7 @@ const PERSPECTIVE_FILL: f64 = 0.9;
 /// the canvas.
 const MAX_ZOOM: f64 = 1.15;
 
-/// The diagram's default colours (light theme).
+/// The flat style's colours.
 #[derive(Debug, Clone, Copy)]
 struct Palette {
     node: Color,
@@ -109,13 +110,11 @@ struct Palette {
 }
 
 impl Palette {
-    fn new(theme: &Theme) -> Self {
-        let rgb =
-            |hex: u32| Color::from_srgb8((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 0xff);
+    fn new(look: &Look, theme: &Theme) -> Self {
         Self {
-            node: rgb(0xececff),
-            rim: rgb(0x9370db),
-            edge: rgb(0x4a4a5a),
+            node: look.node,
+            rim: look.rim,
+            edge: look.edge,
             text: theme.text,
             page: theme.background,
         }
@@ -465,6 +464,8 @@ pub(crate) struct Plan {
     node_height: f64,
     /// The diagram's own icons that draw, read once: strokes in the icons' 24 box.
     icons: Vec<(String, IconShape)>,
+    /// The theme's colours.
+    pub(crate) look: Look,
 }
 
 impl Plan {
@@ -518,6 +519,7 @@ impl Plan {
                     Some((name.clone(), crate::icons::custom_shape(icon).ok()?))
                 })
                 .collect(),
+            look: Look::of(diagram.theme),
         }
     }
 
@@ -740,10 +742,12 @@ pub fn build_diagram_3d(
         edges: Vec::new(),
         font_size: None,
         style: DiagramStyle::Flat,
+        theme: DiagramTheme::Default,
         icons: Vec::new(),
         groups: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
+    let theme = &Look::of(diagram.theme).chart_theme(theme);
     match diagram.style {
         DiagramStyle::Flat => {}
         DiagramStyle::Glossy => {
@@ -757,7 +761,7 @@ pub fn build_diagram_3d(
         }
     }
     let plan = Plan::new(diagram);
-    let palette = Palette::new(theme);
+    let palette = Palette::new(&plan.look, theme);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
     crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);

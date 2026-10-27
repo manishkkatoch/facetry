@@ -1,7 +1,7 @@
 //! The laid-out diagram as a Facetry `ChartSpec`, in JSON: what the add-on hands to the core
 //! module. Written by hand (no serde in the wasm), in a fixed key order, numbers to a tenth.
 
-use facetry_core::spec::{DiagramSpec, DiagramStyle, EdgeEnd, EdgeStroke, FillRule};
+use facetry_core::spec::{DiagramSpec, DiagramStyle, DiagramTheme, EdgeEnd, EdgeStroke, FillRule};
 
 /// `{"dimension":"3d","diagram":{...}}`.
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
@@ -12,6 +12,12 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
         DiagramStyle::Glossy => out.push_str("\"style\":\"glossy\","),
         DiagramStyle::Isometric => out.push_str("\"style\":\"isometric\","),
         DiagramStyle::Schematic => out.push_str("\"style\":\"schematic\","),
+    }
+    match spec.theme {
+        DiagramTheme::Default => {}
+        DiagramTheme::Neutral => out.push_str("\"theme\":\"neutral\","),
+        DiagramTheme::Dark => out.push_str("\"theme\":\"dark\","),
+        DiagramTheme::Forest => out.push_str("\"theme\":\"forest\","),
     }
     if let Some(size) = spec.font_size {
         out.push_str("\"fontSize\":");

@@ -7,16 +7,18 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use facetry_core::spec::DiagramStyle;
+use facetry_core::spec::{DiagramStyle, DiagramTheme};
 use facetry_diagrams::{Options, build, flowchart, from_mermaid, from_mermaid_with};
 
 const GLOSSY: Options = Options {
     style: DiagramStyle::Glossy,
+    theme: DiagramTheme::Default,
     cards: false,
     icons: Vec::new(),
 };
 const CARDS: Options = Options {
     style: DiagramStyle::Isometric,
+    theme: DiagramTheme::Default,
     cards: true,
     icons: Vec::new(),
 };
@@ -218,4 +220,29 @@ fn the_users_icons_travel_in_the_spec_and_draw() {
     // Unchanged, the viewBox exactly (not rounded like layout numbers), awkward names too.
     assert_eq!(diagram.icons, options.icons);
     assert_eq!(diagram.nodes[0].icon.as_deref(), Some("pump"));
+}
+
+#[test]
+fn a_theme_travels_in_the_spec_and_the_text_s_own_wins() {
+    let theme = |source: &str, given: DiagramTheme| {
+        let options = Options {
+            theme: given,
+            ..Options::default()
+        };
+        let d = from_mermaid_with(source, &options).unwrap();
+        let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
+        assert!(facetry_core::validate(&spec).is_empty());
+        spec.diagram.unwrap().theme
+    };
+    let plain = "flowchart LR\n  a --> b";
+    assert_eq!(theme(plain, DiagramTheme::Default), DiagramTheme::Default);
+    for given in [
+        DiagramTheme::Neutral,
+        DiagramTheme::Dark,
+        DiagramTheme::Forest,
+    ] {
+        assert_eq!(theme(plain, given), given);
+    }
+    let own = "%%{init: {'theme': 'forest'}}%%\nflowchart LR\n  a --> b";
+    assert_eq!(theme(own, DiagramTheme::Dark), DiagramTheme::Forest);
 }

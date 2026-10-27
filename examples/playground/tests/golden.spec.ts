@@ -137,6 +137,23 @@ for (const style of ["flat", "glossy", "schematic"]) {
   });
 }
 
+// Themes, after Mermaid's: dark in every style, and neutral and forest in one each.
+for (const [style, theme] of [
+  ["flat", "dark"],
+  ["glossy", "dark"],
+  ["isometric", "dark"],
+  ["schematic", "dark"],
+  ["flat", "neutral"],
+  ["isometric", "forest"],
+]) {
+  test(`${style} diagram 34-group-edges in the ${theme} theme matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=${style}&theme=${theme}&example=mermaid/34-group-edges`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${style}-${theme}-34-group-edges.png`);
+  });
+}
+
 // Orbited round to the back: the signs turn with the camera, so their faces still read.
 test("schematic diagram 31-custom-icons seen from behind matches its golden image (webgl2)", async ({ page }) => {
   await page.goto("/?backend=webgl2&ui=0&style=schematic&example=mermaid/31-custom-icons");
