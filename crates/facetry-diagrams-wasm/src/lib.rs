@@ -41,9 +41,10 @@ pub fn layout_mermaid(
         None | Some("flat") => DiagramStyle::Flat,
         Some("glossy") => DiagramStyle::Glossy,
         Some("isometric") => DiagramStyle::Isometric,
+        Some("schematic") => DiagramStyle::Schematic,
         Some(other) => {
             let error = js_sys::Error::new(&format!(
-                "`style` must be \"flat\", \"glossy\" or \"isometric\", got {other:?}"
+                "`style` must be \"flat\", \"glossy\", \"isometric\" or \"schematic\", got {other:?}"
             ));
             error.set_name("FacetryError");
             let _ = js_sys::Reflect::set(&error, &"code".into(), &"invalid-options".into());

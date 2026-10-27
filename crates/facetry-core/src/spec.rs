@@ -489,7 +489,8 @@ pub struct DiagramSpec {
     /// the matching screen size for the starting camera, so they fit their nodes.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub font_size: Option<f64>,
-    /// How the diagram looks: `"flat"` (the default), `"glossy"` or `"isometric"`.
+    /// How the diagram looks: `"flat"` (the default), `"glossy"`, `"isometric"` or
+    /// `"schematic"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub style: DiagramStyle,
 }
@@ -512,6 +513,11 @@ pub enum DiagramStyle {
     /// palette, joined by grey roads on the floor with chevrons showing the way, under long
     /// soft shadows; seen through an orthographic lens from 45 degrees round.
     Isometric,
+    /// A plant schematic in the same isometric view: each node a piece of equipment modelled
+    /// after its shape (building, silo, tank, valve, reactor, drum) in pale greys with dark
+    /// outlines, edges pipes on supports with flow marks (thick edges conveyors), and labels
+    /// on signs standing above the equipment, over a faint floor grid.
+    Schematic,
 }
 
 /// Default label size of a diagram, in layout units.

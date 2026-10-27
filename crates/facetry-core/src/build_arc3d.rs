@@ -177,6 +177,7 @@ pub(crate) fn build_pie_3d(
             role: LabelRole::Fixed,
             halo,
             flat: None,
+            upright: None,
         };
         let top = height as f32;
         let t3 = if fits {

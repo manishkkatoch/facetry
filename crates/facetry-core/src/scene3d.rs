@@ -429,6 +429,11 @@ pub struct Text3 {
     /// of it and scales with the zoom, like the surface it is printed on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flat: Option<f32>,
+    /// With `flat`: printed on the vertical plane through `anchor` instead, reading along the
+    /// horizontal unit direction `[x, z]` with its lines going down; a sign standing in the
+    /// scene.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upright: Option<[f32; 2]>,
 }
 
 fn is_true(v: &bool) -> bool {

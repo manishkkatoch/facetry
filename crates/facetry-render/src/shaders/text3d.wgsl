@@ -51,6 +51,7 @@ struct Vertex {
     @location(7) show: vec2<f32>,    // azimuth range [from, to) in which to draw
     @location(8) slot: f32,          // index into `labels`, or -1 for none
     @location(9) flat: f32,          // > 0: printed on the floor plane, world units per pixel
+    @location(10) upright: vec2<f32>, // non-zero: printed upright instead, reading along [x, z]
 }
 
 struct Varying {
@@ -76,10 +77,15 @@ fn vs_main(v: Vertex) -> Varying {
     let uv = mix(v.uv.xy, v.uv.zw, v.corner);
     // Printed text: the glyph's quad, laid out in pixels, lies on the horizontal plane through
     // the anchor (pixel x along world x, pixel y down along world z) and is projected like any
-    // surface, depth and all.
+    // surface, depth and all. Upright text stands in the vertical plane through the anchor
+    // instead: pixel x along `upright`, pixel y down.
     if v.flat > 0.0 {
         let p = v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
-        let world = v.anchor + vec3<f32>(p.x, 0.0, p.y) * v.flat;
+        var across = vec3<f32>(p.x, 0.0, p.y);
+        if dot(v.upright, v.upright) > 0.0 {
+            across = vec3<f32>(p.x * v.upright.x, -p.y, p.x * v.upright.y);
+        }
+        let world = v.anchor + across * v.flat;
         return Varying(globals.view_proj * vec4<f32>(world, 1.0), uv, v.color);
     }
     var nudge = vec2<f32>(0.0);

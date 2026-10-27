@@ -213,6 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
+| **S4** (done) | The schematic style after the cement-plant reference: equipment modelled per shape with drawn edges, pipes and conveyors on supports with flow marks, signs standing on posts with upright printed text, a floor grid |
 | **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered with standing 3D digits, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
@@ -295,6 +296,33 @@ label on a node, on the card with cards. 32 icons cover what infographics and fl
 show (people, data, servers, money, time, alerts, ...); `fa:` prefixes are dropped and a few common
 names alias onto them, and an unknown name is an error rather than a missing picture. This is not
 the architecture icon atlas of D4, which still needs Mermaid's own icon names.
+
+**Schematic (S4).** After the cement-plant reference, whose appeal is that it reads as a
+technical illustration: recognisable equipment, pipework, signs, and almost no colour. In the
+same isometric view as S2:
+
+* **Equipment by shape.** A node is a small model built from prisms: a building (rectangle),
+  a silo on a square plinth with a stepped roof (cylinder), a banded tank (circle), a valve with
+  its hand wheel (diamond), a reactor with a chimney (hexagon), a drum with bands (stadium).
+  Its first solid, the body, has the node's footprint and is its mark; every body is at least as
+  tall as a pipe, so pipes always end in a wall. Pale greys throughout (a `fill` recolours the
+  equipment).
+* **Drawn edges.** Lighting alone left light grey walls hard to tell apart, so every solid gets
+  dark edges as one polyline: a ring round its top, one round its foot, and its corners for
+  solids that have them; the depth test hides the ones behind.
+* **Pipes** are ribbons raised off the floor on square supports every 48 units (none inside
+  equipment), with green flow marks on top and a darker one before the head; thick edges are
+  wider, dark conveyors, dotted edges dashed pipes.
+* **Signs.** Labels stand on white boards in a dark frame, on posts above the equipment, facing
+  the starting view; edge labels get smaller ones on the pipe. Text printed upright needed one
+  more thing in the renderer: a printed glyph can now lie in a vertical plane (`Text3.upright`,
+  the plane's reading direction) as well as on the floor. Icons are drawn on the sign in the same
+  plane. Boards and frames are standing prisms (from S3).
+* **Grid.** A faint square grid over the floor, like drafting paper, and soft contact shadows.
+
+Known limits: signs are as wide as their text and float at the equipment's height, so signs of
+nodes close together in the view can overlap in the starting view; the routing is the glossy
+style's, so it shares its crossing count.
 
 **Moving around (S2).** Diagrams are maps more than objects, so orbit alone is not enough: the
 camera got a pan (the point looked at moves across the floor, clamped to the plot box) and zoom

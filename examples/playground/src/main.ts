@@ -32,8 +32,8 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
     : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
-// ?style=glossy or ?style=isometric draws Mermaid diagrams in that style.
-styleSelect.value = ["glossy", "isometric"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
+// ?style=glossy, ?style=isometric or ?style=schematic draws Mermaid diagrams in that style.
+styleSelect.value = ["glossy", "isometric", "schematic"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
 // ?cards=1 lays a card beside each node (isometric style).
 cardsBox.checked = params.get("cards") === "1";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.

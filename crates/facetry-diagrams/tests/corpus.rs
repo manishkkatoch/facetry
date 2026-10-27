@@ -83,16 +83,29 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
     for (name, source) in corpus() {
         let chart = flowchart::parse(&source).unwrap();
         let built = build::build(&chart, &GLOSSY);
-        // The isometric style routes the same way.
-        let iso = build::build(
-            &chart,
-            &Options {
-                style: DiagramStyle::Isometric,
-                cards: false,
-            },
-        );
-        assert_eq!(iso.control, built.control, "{name}");
-        assert_eq!(iso.spec.style, DiagramStyle::Isometric);
+        // The isometric and schematic styles route the same way.
+        for style in [DiagramStyle::Isometric, DiagramStyle::Schematic] {
+            let other = build::build(
+                &chart,
+                &Options {
+                    style,
+                    cards: false,
+                },
+            );
+            assert_eq!(other.control, built.control, "{name}");
+            assert_eq!(other.spec.style, style);
+            let json = from_mermaid_with(
+                &source,
+                &Options {
+                    style,
+                    cards: false,
+                },
+            )
+            .unwrap()
+            .to_json();
+            let spec = facetry_core::parse_spec_json(&json).unwrap();
+            assert!(facetry_core::validate(&spec).is_empty(), "{name}");
+        }
         for (i, c) in built.control.iter().enumerate() {
             for w in c.windows(2) {
                 let (dx, dy) = ((w[0][0] - w[1][0]).abs(), (w[0][1] - w[1][1]).abs());

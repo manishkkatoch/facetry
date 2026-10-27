@@ -431,3 +431,93 @@ fn a_label_that_is_not_a_short_number_is_printed_on_the_pedestal() {
     assert!(scene.texts.iter().any(|t| t.text == "A1"));
     assert!(!scene.decor.iter().any(|p| p.key == "a/numeral"));
 }
+
+fn schematic() -> ChartSpec {
+    spec(&broken(
+        r#""diagram": {"#,
+        r#""diagram": { "style": "schematic","#,
+    ))
+}
+
+#[test]
+fn the_schematic_style_draws_equipment_pipes_on_supports_and_upright_signs() {
+    let s = schematic();
+    assert_eq!(validate(&s), vec![]);
+    let c = s.start_camera((800, 500), 1.0).unwrap();
+    assert_eq!(c.kind, Some(CameraKind::Orthographic));
+    assert_eq!(c.azimuth, Some(45.0));
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    // One mark per node (its body); a cylinder is a silo standing on its plinth.
+    assert_eq!(scene.prisms.len(), 2);
+    assert_eq!(scene.prisms[1].key, "b");
+    let silo = scene.decor.iter().find(|p| p.key == "b/silo").unwrap();
+    assert!((silo.base - scene.prisms[1].top).abs() < 1e-6);
+    // Every part has its drawn edges, which stand a hair above its top.
+    for id in ["a", "b"] {
+        assert!(
+            scene
+                .polylines
+                .iter()
+                .any(|l| l.key == format!("{id}/edge/0")),
+            "{id}"
+        );
+    }
+    let top = scene.prisms[0].top;
+    let body = scene
+        .polylines
+        .iter()
+        .find(|l| l.key == "a/edge/0")
+        .unwrap();
+    // A closed ring round the top and one round the foot, and the box's four corners.
+    assert_eq!(body.runs.len(), 2 + 4);
+    assert!(body.runs[0].iter().all(|p| p[1] > top));
+    assert_eq!(body.runs[0].first(), body.runs[0].last());
+    // The edge is a pipe off the floor, as high as a body is tall at the least.
+    assert_eq!(scene.ribbons.len(), 1);
+    let pipe = &scene.ribbons[0];
+    assert!(pipe.base > 0.0 && pipe.top <= scene.prisms[0].top);
+    assert!(scene.decor.iter().any(|p| p.key == "edge0/head"));
+    // Labels are printed upright on signs that face the isometric view, above the equipment.
+    let label = scene.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    let r = 0.5f32.sqrt();
+    let upright = label.upright.expect("upright");
+    assert!((upright[0] - r).abs() < 1e-4 && (upright[1] + r).abs() < 1e-4);
+    assert!(label.flat.is_some());
+    assert!(label.anchor[1] > top);
+    let board = scene
+        .decor
+        .iter()
+        .find(|p| p.key == "a/sign/board")
+        .unwrap();
+    assert!(board.stand.is_some());
+    assert!(scene.decor.iter().any(|p| p.key == "a/sign/post"));
+    // A faint grid lies on the floor.
+    assert!(
+        scene
+            .polylines
+            .iter()
+            .any(|p| p.key == "grid" && !p.runs.is_empty())
+    );
+}
+
+#[test]
+fn schematic_pipes_stand_on_supports_and_carry_flow_marks() {
+    // A long edge: room for supports and flow marks along it.
+    let json = broken(r#""diagram": {"#, r#""diagram": { "style": "schematic","#).replace(
+        r#""points": [[50, 40], [50, 95]]"#,
+        r#""points": [[50, 40], [50, 260], [300, 260]]"#,
+    );
+    let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+    let supports: Vec<_> = scene
+        .decor
+        .iter()
+        .filter(|p| p.key.starts_with("edge0/support/"))
+        .collect();
+    assert!(supports.len() >= 3, "{}", supports.len());
+    let pipe = &scene.ribbons[0];
+    for p in &supports {
+        assert_eq!(p.base, 0.0);
+        assert!((p.top - pipe.base).abs() < 1e-6);
+    }
+    assert!(scene.decor.iter().any(|p| p.key.starts_with("edge0/flow/")));
+}

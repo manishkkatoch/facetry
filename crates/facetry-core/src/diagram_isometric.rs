@@ -89,7 +89,7 @@ fn chevron_color() -> Color {
 }
 
 /// `c` mixed toward black by `t`.
-fn darken(c: Color, t: f32) -> Color {
+pub(crate) fn darken(c: Color, t: f32) -> Color {
     let [r, g, b, a] = c.to_array();
     let m = |v: f32| v * (1.0 - t);
     Color::linear(m(r), m(g), m(b), a)
@@ -123,7 +123,7 @@ pub(crate) fn build(
 
 /// The outline of `node`'s shape grown (or shrunk, for a negative `by`) by `by` on every
 /// side, absolute layout units.
-fn outline(node: &DiagramNode, by: f64) -> (Vec<[f64; 2]>, bool) {
+pub(crate) fn outline(node: &DiagramNode, by: f64) -> (Vec<[f64; 2]>, bool) {
     let (w, h) = (
         (node.width + 2.0 * by).max(4.0),
         (node.height + 2.0 * by).max(4.0),
@@ -447,7 +447,7 @@ fn road(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark
 }
 
 /// The point at `distance` along a path and the unit direction there.
-fn along(points: &[[f64; 2]], distance: f64) -> ([f64; 2], [f64; 2]) {
+pub(crate) fn along(points: &[[f64; 2]], distance: f64) -> ([f64; 2], [f64; 2]) {
     let mut left = distance.max(0.0);
     for w in points.windows(2) {
         let (dx, dy) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);

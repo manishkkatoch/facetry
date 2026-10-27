@@ -27,7 +27,9 @@ export interface DiagramOptions {
    * `"glossy"`: glossy slabs coloured by shape (or by `classDef`), thick square-cornered
    * arrows on the floor, soft shadows and labels printed on the slabs, seen at an angle.
    * `"isometric"`: layered pedestals in palette colours joined by roads with chevrons, long
-   * soft shadows, printed labels, in the classic isometric view. The
+   * soft shadows, printed labels, in the classic isometric view. `"schematic"`: a plant
+   * schematic in the same view, nodes as equipment by shape (building, silo, tank, valve,
+   * reactor, drum), pipes on supports with flow marks, labels on standing signs. The
    * style also decides how edges are routed, so it is chosen here rather than in the spec.
    */
   style?: DiagramStyle;

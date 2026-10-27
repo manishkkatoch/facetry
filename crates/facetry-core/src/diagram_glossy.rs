@@ -178,6 +178,7 @@ pub(crate) fn print_aligned(
             role: LabelRole::Fixed,
             halo: false,
             flat: Some(plan.scale as f32),
+            upright: None,
         });
     }
 }

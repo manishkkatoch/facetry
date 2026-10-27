@@ -1,0 +1,99 @@
+{
+  "dimension": "3d",
+  "diagram": {
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Start",
+        "shape": "stadium",
+        "x": 160,
+        "y": 30,
+        "width": 90,
+        "height": 40
+      },
+      {
+        "id": "B",
+        "label": "Is it valid?",
+        "shape": "diamond",
+        "x": 160,
+        "y": 130,
+        "width": 130,
+        "height": 70
+      },
+      {
+        "id": "C",
+        "label": "Save",
+        "shape": "cylinder",
+        "x": 70,
+        "y": 240,
+        "width": 90,
+        "height": 46
+      },
+      {
+        "id": "D",
+        "label": "Show error",
+        "shape": "rounded",
+        "x": 260,
+        "y": 240,
+        "width": 110,
+        "height": 40
+      }
+    ],
+    "edges": [
+      {
+        "from": "A",
+        "to": "B",
+        "points": [
+          [
+            160,
+            50
+          ],
+          [
+            160,
+            95
+          ]
+        ]
+      },
+      {
+        "from": "B",
+        "to": "C",
+        "points": [
+          [
+            125,
+            150
+          ],
+          [
+            70,
+            200
+          ],
+          [
+            70,
+            217
+          ]
+        ],
+        "label": "yes"
+      },
+      {
+        "from": "B",
+        "to": "D",
+        "points": [
+          [
+            195,
+            150
+          ],
+          [
+            260,
+            200
+          ],
+          [
+            260,
+            220
+          ]
+        ],
+        "label": "no",
+        "stroke": "dotted"
+      }
+    ],
+    "style": "schematic"
+  }
+}

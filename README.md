@@ -18,7 +18,7 @@ hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)).
 **Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
 small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
 extruded nodes with edges and labels, flat, glossy (thick arrows, shadows, printed labels) or
-isometric (pedestals joined by roads) (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
+isometric (pedestals joined by roads) or schematic (equipment joined by pipes) (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
 the design in [docs/diagrams-3d.md](docs/diagrams-3d.md)).
 
 ```ts
@@ -567,6 +567,18 @@ glossy style, how its edges are routed):
   declares the nodes) as solid digits standing on it, in the node's colour, turned to face the
   isometric view. The layout reserves room for each card, which goes to alternate sides
   rank by rank, and no edge runs over a card. `cards` is ignored by the other styles.
+- `"schematic"`: a plant schematic in the same isometric view, after isometric illustrations of
+  industrial plants. Every node is a piece of equipment modelled after its shape, in pale greys
+  with dark drawn edges: a rectangle a building with a roof slab and a roof unit, a cylinder a
+  silo on a square plinth, a circle a banded tank, a diamond a valve with its hand wheel, a
+  hexagon a reactor with a chimney, a stadium a drum with bands. Edges are pipes raised on
+  supports, with green flow marks along their tops and a darker one before the head; thick
+  edges are dark conveyors, dotted ones dashed pipes. Labels (and edge labels, smaller) are
+  printed on white signs in a dark frame, standing on posts above the equipment and turned to
+  face the isometric view; a node's icon goes on its sign. A faint grid covers the floor. A
+  node's `color` fills its equipment, `stroke`/`stroke-width` draw its edges, and its text
+  colour is used if it reads on the white sign. Signs of nodes that stand close together can
+  cover each other in the starting view (orbiting separates them).
 
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
@@ -582,12 +594,12 @@ and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 card? }]`
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
-"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"` or `"isometric"`;
+"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
 `examples/specs/diagram-glossy.json`). `icon` names a built-in icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (29 flowcharts in the
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (30 flowcharts in the
 style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
@@ -746,7 +758,7 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
 and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
-`mermaid/01-decision`), `?style=glossy` or `?style=isometric` (draw Mermaid in that style; also a **Style**
+`mermaid/01-decision`), `?style=glossy`, `?style=isometric` or `?style=schematic` (draw Mermaid in that style; also a **Style**
 dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
 (anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
 their line and column). 3D examples show the
@@ -765,7 +777,8 @@ console.
   `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
   the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision`,
   `diagram-glossy-26-styled`, `diagram-isometric-27-timeline`, `diagram-isometric-01-decision`,
-  `diagram-isometric-29-icons` and `diagram-isometric-cards-28-roadmap` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
+  `diagram-isometric-29-icons`, `diagram-isometric-cards-28-roadmap`, `diagram-schematic-30-plant`
+  and `diagram-schematic-29-icons` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -797,9 +810,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 760,934 B (743 KiB) | 340,446 B (332 KiB) | 280,948 B (274 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,369,673 B (2314 KiB) | 982,823 B (960 KiB) | 777,851 B (760 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 226,149 B (221 KiB) | 97,817 B (96 KiB) | 83,850 B (82 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 775,113 B (757 KiB) | 346,296 B (338 KiB) | 285,253 B (279 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,383,874 B (2328 KiB) | 989,058 B (966 KiB) | 782,148 B (764 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 226,227 B (221 KiB) | 97,854 B (96 KiB) | 83,866 B (82 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -811,7 +824,9 @@ replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard fl
 isometric style and panning (S2) added 3,820 B gzip to the WebGPU module. Cards and icons (S3)
 added 7,799 B gzip to the WebGPU module (the 32 icons, card layout and printed card text), 7,731
 to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement);
-the standing numerals then added 1,715 to the WebGPU module and 1,442 to the WebGL2 one.
+the standing numerals then added 1,715 to the WebGPU module and 1,442 to the WebGL2 one. The
+schematic style (S4) added 5,850 B gzip to the WebGPU module and 6,235 to the WebGL2 one (the
+equipment, pipes, signs and upright printed text); the add-on only learned its name.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

@@ -11,6 +11,7 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
         DiagramStyle::Flat => {}
         DiagramStyle::Glossy => out.push_str("\"style\":\"glossy\","),
         DiagramStyle::Isometric => out.push_str("\"style\":\"isometric\","),
+        DiagramStyle::Schematic => out.push_str("\"style\":\"schematic\","),
     }
     if let Some(size) = spec.font_size {
         out.push_str("\"fontSize\":");

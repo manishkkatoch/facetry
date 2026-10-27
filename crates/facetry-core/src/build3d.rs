@@ -408,6 +408,7 @@ pub fn build_scene_3d_with_theme(
             },
             halo: !pending.inside,
             flat: None,
+            upright: None,
         };
         scene.labels.push(MarkLabel3 {
             mark: pending.mark,
@@ -557,6 +558,7 @@ pub fn build_scene_3d_with_theme(
                             role: LabelRole::OnPoint,
                             halo: true,
                             flat: None,
+                            upright: None,
                         },
                     });
                 }
@@ -762,6 +764,7 @@ pub fn build_scene_3d_with_theme(
             role,
             halo: true,
             flat: None,
+            upright: None,
         });
     };
 

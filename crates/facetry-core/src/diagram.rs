@@ -395,8 +395,18 @@ impl Plan {
                 DiagramStyle::Flat => NODE_HEIGHT,
                 DiagramStyle::Glossy => GLOSSY_NODE_HEIGHT,
                 DiagramStyle::Isometric => ISOMETRIC_NODE_HEIGHT,
+                DiagramStyle::Schematic => crate::diagram_schematic::SCENE_HEIGHT,
             },
         }
+    }
+
+    /// The floor's corners in layout units: the diagram's extent and the margin round it.
+    pub(crate) fn bounds(&self) -> ([f64; 2], [f64; 2]) {
+        let far = [
+            self.origin[0] + self.floor[0] / self.scale,
+            self.origin[1] + self.floor[1] / self.scale,
+        ];
+        (self.origin, far)
     }
 
     /// A layout point on the floor at world height `y`.
@@ -539,7 +549,7 @@ impl ChartSpec {
         let (kind, azimuth, elevation) = match diagram.style {
             DiagramStyle::Flat => (CameraKind::Orthographic, DIAGRAM_AZIMUTH, DIAGRAM_ELEVATION),
             DiagramStyle::Glossy => (CameraKind::Perspective, GLOSSY_AZIMUTH, GLOSSY_ELEVATION),
-            DiagramStyle::Isometric => (
+            DiagramStyle::Isometric | DiagramStyle::Schematic => (
                 CameraKind::Orthographic,
                 ISOMETRIC_AZIMUTH,
                 ISOMETRIC_ELEVATION,
@@ -598,6 +608,9 @@ pub fn build_diagram_3d(
         }
         DiagramStyle::Isometric => {
             return crate::diagram_isometric::build(diagram, viewport_px, dpr, measure, theme);
+        }
+        DiagramStyle::Schematic => {
+            return crate::diagram_schematic::build(diagram, viewport_px, dpr, measure, theme);
         }
     }
     let plan = Plan::new(diagram);
@@ -699,6 +712,7 @@ fn push_node(
             role: LabelRole::Fixed,
             halo: false,
             flat: None,
+            upright: None,
         });
     }
 }
@@ -972,6 +986,7 @@ fn push_edge(
                 role: LabelRole::Fixed,
                 halo: true,
                 flat: None,
+                upright: None,
             });
         }
     }

@@ -31,4 +31,5 @@ expression: report
 27-timeline                nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 150 size 489 x 92
 28-roadmap                 nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 150 size 1545 x 407
 29-icons                   nodes 8 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 4 | edge length 630 size 469 x 572
-TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 173
+30-plant                   nodes 11 edges 11 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 8 | edge length 1083 size 1342 x 179
+TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 181

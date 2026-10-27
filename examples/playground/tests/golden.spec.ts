@@ -113,3 +113,15 @@ for (const [name, query] of [
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
   });
 }
+
+// The schematic style: equipment by shape (buildings, silos on plinths, a tank, a valve,
+// reactors, a kiln), pipes and conveyors on supports with flow marks, and signs standing above
+// the equipment (with icons, in 29-icons), over a floor grid.
+for (const name of ["30-plant", "29-icons"]) {
+  test(`schematic diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=schematic&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-schematic-${name}.png`);
+  });
+}

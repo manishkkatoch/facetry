@@ -150,3 +150,16 @@ test("the Cards box lays a card beside each node and numbers the nodes", async (
   await page.mouse.move(p.x, p.y);
   await expect(page.locator("#hover")).toContainText('"label":"2"');
 });
+
+test("the schematic style starts in the isometric view, and its equipment reports hover", async ({ page }) => {
+  await page.goto("/?backend=webgl2&style=schematic&example=mermaid/30-plant");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const camera = await page.evaluate(() => (window as any).facetryChart.camera);
+  expect(camera.type).toBe("orthographic");
+  expect(camera.azimuth).toBe(45);
+  await expect(page.locator("#style")).toHaveValue("schematic");
+  const p = await where(page, "kiln");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText("kiln");
+  await expect(page.locator("#hover")).toContainText('"shape":"stadium"');
+});

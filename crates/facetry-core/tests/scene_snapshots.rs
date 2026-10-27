@@ -284,3 +284,4 @@ snapshot3d!(diagram_glossy_3d, "diagram-glossy");
 // And in the isometric style: pedestals (plate, body, cap, inset), roads with chevrons, cards,
 // long shadows, printed labels.
 snapshot3d!(diagram_isometric_3d, "diagram-isometric");
+snapshot3d!(diagram_schematic_3d, "diagram-schematic");

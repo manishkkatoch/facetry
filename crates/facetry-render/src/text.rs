@@ -340,6 +340,9 @@ pub struct Glyph3Instance {
     /// Printed text (see `Text3::flat`): world units per pixel of the quad, which then lies on
     /// the horizontal plane through `anchor`. 0 for text that faces the viewer.
     pub flat: f32,
+    /// Printed upright (see `Text3::upright`): the horizontal reading direction `[x, z]` of
+    /// the vertical plane the quad stands in; zero for text printed on the floor plane.
+    pub upright: [f32; 2],
 }
 
 /// The `slot` of a label that is not managed per frame.
@@ -385,6 +388,7 @@ pub fn layout_glyphs_3d(
         show,
         slot,
         flat: text.flat.unwrap_or(0.0),
+        upright: text.upright.unwrap_or([0.0; 2]),
     }));
 }
 
@@ -448,7 +452,7 @@ impl Text3dPipeline {
         let (layout, bind_group) = atlas.bind(device, "text3d", globals, Some(label_states));
         let instance_attrs = wgpu::vertex_attr_array![
             1 => Float32x3, 2 => Float32x2, 3 => Float32x2, 4 => Float32x2, 5 => Float32x4,
-            6 => Float32x4, 7 => Float32x2, 8 => Float32, 9 => Float32
+            6 => Float32x4, 7 => Float32x2, 8 => Float32, 9 => Float32, 10 => Float32x2
         ];
         let buffers = [
             Some(QUAD_LAYOUT),
@@ -646,6 +650,7 @@ mod tests {
             role: Default::default(),
             halo: true,
             flat: None,
+            upright: None,
         }
     }
 
