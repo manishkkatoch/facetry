@@ -27,4 +27,5 @@ expression: report
 23-dense                   nodes 8 edges 15 | crossings 5 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 13 | edge length 1678 size 312 x 310
 24-rl                      nodes 6 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 2 | edge length 329 size 731 x 124
 25-disconnected            nodes 6 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 180 size 403 x 220
-TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 165
+26-styled                  nodes 7 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 4 | edge length 505 size 312 x 429
+TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 169

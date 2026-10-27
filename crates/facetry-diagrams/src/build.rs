@@ -3,13 +3,30 @@
 
 use facetry_core::diagram::shape_outline;
 use facetry_core::spec::{
-    DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, NodeShape,
+    DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, DiagramStyle, EdgeEnd,
+    NodeShape,
 };
 use facetry_font::FontMetrics;
 
 use crate::flowchart::{Direction, Flowchart};
 use crate::layout::{self, Graph, Size, Spacing};
+use crate::orthogonal;
 use crate::route;
+
+/// How to lay a diagram out and draw it.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Options {
+    pub style: DiagramStyle,
+}
+
+/// Spacing for the glossy style: its thick arrows need longer runs between ranks.
+const GLOSSY_SPACING: Spacing = Spacing {
+    node: 50.0,
+    edge: 24.0,
+    rank: 90.0,
+};
+/// Corner radius of a square-cornered edge.
+const CORNER_RADIUS: f64 = 12.0;
 
 /// Labels are measured at this size; the spec's `fontSize` says so to the renderer.
 pub const FONT: f64 = DEFAULT_DIAGRAM_FONT_SIZE;
@@ -86,7 +103,8 @@ pub fn node_size(shape: NodeShape, label: &str) -> (f64, f64) {
 }
 
 /// Lays out `chart`.
-pub fn build(chart: &Flowchart) -> Built {
+pub fn build(chart: &Flowchart, options: &Options) -> Built {
+    let glossy = options.style == DiagramStyle::Glossy;
     let sizes: Vec<(f64, f64)> = chart
         .nodes
         .iter()
@@ -124,7 +142,16 @@ pub fn build(chart: &Flowchart) -> Built {
             })
             .collect(),
     };
-    let laid = layout::layout(&graph, Spacing::default());
+    let laid = layout::layout(
+        &graph,
+        if glossy {
+            GLOSSY_SPACING
+        } else {
+            Spacing::default()
+        },
+    );
+    let pairs: Vec<(usize, usize)> = chart.edges.iter().map(|e| (e.from, e.to)).collect();
+    let square = glossy.then(|| orthogonal::route(&laid, &graph.nodes, &pairs));
     let out = |p: [f64; 2]| match chart.direction {
         Direction::TopBottom => p,
         Direction::BottomTop => [p[0], -p[1]],
@@ -148,19 +175,32 @@ pub fn build(chart: &Flowchart) -> Built {
 
     let mut control = Vec::with_capacity(chart.edges.len());
     let mut edges = Vec::with_capacity(chart.edges.len());
-    for (e, r) in chart.edges.iter().zip(&laid.edges) {
-        let mut points: Vec<[f64; 2]> = r.points.iter().map(|&p| out(p)).collect();
-        if e.from == e.to {
-            let (w, h) = sizes[e.from];
-            points = route::self_loop(centres[e.from], w, h, !sideways);
-        }
-        // Leave and enter through the outlines, toward the neighbouring control point.
-        let n = points.len();
-        let first = route::clip(&outlines[e.from], centres[e.from], points[1.min(n - 1)]);
-        let last = route::clip(&outlines[e.to], centres[e.to], points[n.saturating_sub(2)]);
-        points[0] = first;
-        points[n - 1] = last;
-        let smooth = route::basis(&points);
+    for (i, (e, r)) in chart.edges.iter().zip(&laid.edges).enumerate() {
+        let (points, drawn) = if let Some(square) = &square {
+            // Square corners: from port to port, the ends fitted to the outlines along the
+            // first and last segments, then the corners rounded.
+            let s = &square[i];
+            let mut points: Vec<[f64; 2]> = s.points.iter().map(|&p| out(p)).collect();
+            let n = points.len();
+            points[0] = route::clip(&outlines[e.from], out(s.start_inside), points[1]);
+            points[n - 1] = route::clip(&outlines[e.to], out(s.end_inside), points[n - 2]);
+            let drawn = orthogonal::round_corners(&points, CORNER_RADIUS);
+            (points, drawn)
+        } else {
+            let mut points: Vec<[f64; 2]> = r.points.iter().map(|&p| out(p)).collect();
+            if e.from == e.to {
+                let (w, h) = sizes[e.from];
+                points = route::self_loop(centres[e.from], w, h, !sideways);
+            }
+            // Leave and enter through the outlines, toward the neighbouring control point.
+            let n = points.len();
+            let first = route::clip(&outlines[e.from], centres[e.from], points[1.min(n - 1)]);
+            let last = route::clip(&outlines[e.to], centres[e.to], points[n.saturating_sub(2)]);
+            points[0] = first;
+            points[n - 1] = last;
+            let smooth = route::basis(&points);
+            (points, smooth)
+        };
         control.push(points);
         let label_position = match (&e.label, r.label) {
             (Some(_), Some(p)) => Some(out(p)),
@@ -180,7 +220,7 @@ pub fn build(chart: &Flowchart) -> Built {
         edges.push(DiagramEdge {
             from: chart.nodes[e.from].id.clone(),
             to: chart.nodes[e.to].id.clone(),
-            points: smooth.iter().map(|&p| round(p)).collect(),
+            points: drawn.iter().map(|&p| round(p)).collect(),
             label: e.label.clone(),
             label_position: label_position.map(round),
             stroke: e.stroke,
@@ -229,7 +269,10 @@ pub fn build(chart: &Flowchart) -> Built {
                 y,
                 width: round1(w),
                 height: round1(h),
-                color: None,
+                color: n.style.fill.clone(),
+                stroke: n.style.stroke.clone(),
+                stroke_width: n.style.stroke_width,
+                text_color: n.style.color.clone(),
             }
         })
         .collect();
@@ -238,6 +281,7 @@ pub fn build(chart: &Flowchart) -> Built {
             nodes,
             edges,
             font_size: Some(FONT),
+            style: options.style,
         },
         control,
     }
@@ -256,6 +300,10 @@ fn round(p: [f64; 2]) -> [f64; 2] {
 mod tests {
     use super::*;
     use crate::flowchart::parse;
+
+    fn build_flat(chart: &Flowchart) -> Built {
+        build(chart, &Options::default())
+    }
 
     #[test]
     fn labels_fit_their_nodes() {
@@ -296,7 +344,7 @@ mod tests {
     #[test]
     fn directions_rotate_the_drawing() {
         let at = |src: &str| {
-            let b = build(&parse(src).unwrap());
+            let b = build_flat(&parse(src).unwrap());
             let n = &b.spec.nodes;
             ([n[0].x, n[0].y], [n[1].x, n[1].y])
         };
@@ -312,7 +360,8 @@ mod tests {
 
     #[test]
     fn edges_start_and_end_on_the_outlines() {
-        let b = build(&parse("flowchart TD\nA[Start] --> B{Choice}\nB -->|yes| C[(DB)]").unwrap());
+        let b =
+            build_flat(&parse("flowchart TD\nA[Start] --> B{Choice}\nB -->|yes| C[(DB)]").unwrap());
         let n = |id: &str| b.spec.nodes.iter().find(|n| n.id == id).unwrap();
         for e in &b.spec.edges {
             let (from, to) = (n(&e.from), n(&e.to));

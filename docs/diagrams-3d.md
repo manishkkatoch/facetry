@@ -213,6 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
+| **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
 | **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, labels that follow the zoom, themes, `diagram.run()` |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
@@ -221,3 +222,38 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 Each milestone reports the size of both core modules and of the add-on, as `docs/wasm-size.md`
 does for charts.
+
+Order agreed after D1: **styles first** (S1 glossy, then an isometric-infographic style with
+pedestals, floor cards and icons, then a schematic one), then subgraphs, sequence and
+architecture.
+
+## Styles
+
+Looking at reference infographics showed that what makes 3D diagrams appealing is mostly style
+(materials, shadows, thick geometry, text on surfaces), not layout. A style is a whole look:
+`diagram.style` in the spec selects how the core draws, and the add-on's `style` option also
+selects routing, because some looks need square-cornered edges.
+
+**Glossy (S1).** What it changed in the D1 decisions:
+
+* **Camera:** perspective, azimuth 28 and elevation 40. D1 rejected a turned camera because
+  floating, screen-facing labels and tilted rows read badly; glossy labels are *printed* on the
+  slabs (laid out in world units on the horizontal plane, depth-tested), so they turn with the
+  scene and stay readable, and the turn is the look. The starting distance is fitted by
+  projecting the plot box's corners through the actual lens.
+* **Edges** lie on the floor as solid ribbons with solid arrowheads, stopping short of the nodes
+  (on the floor, the last stretch behind a slab is hidden by it; the gap keeps the arrowhead in
+  view from the starting elevation). They are routed at right angles: ports spread along a
+  node's bottom and top sides in the order of where the edges go, one turn per change of column
+  in the gap between ranks, tracks per gap ordered so turns do not cross needlessly, a lead-in
+  long enough for the arrowhead, corners rounded. Dummy nodes only constrain the route where they
+  carry a label or sit in a rank with real nodes.
+* **Materials:** a per-vertex gloss in the lit-mesh shader gives each top face a sheen gradient
+  (brighter at the far side) plus a camera-following specular term, and a lighter catch-light
+  rim along each slab's top edge. Soft shadows are translucent rings under slabs and cards.
+* **Colour:** by shape (start/end, step, decision, store, ...) unless `classDef`/`style` set
+  `fill`; `stroke`, `stroke-width` and `color` are honoured in both styles.
+
+Known limits: square-cornered routing crosses more than curves (15 against 9 in the corpus);
+edges into a narrow node from many sources crowd its top side; wide diagrams print small labels
+at the starting distance (they grow when zooming, being printed).

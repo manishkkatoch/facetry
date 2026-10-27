@@ -13,10 +13,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, DiagramEdge, DiagramNode,
-    DiagramSpec, Dimension, EdgeEnd, EdgeStroke, Encoding, InteractionSpec, KeyEncoding,
-    LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark,
-    NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec,
-    Table, ThetaEncoding,
+    DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding, InteractionSpec,
+    KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient,
+    LegendSpec, Mark, NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding,
+    ScaleSpec, StyleSpec, Table, ThetaEncoding,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -532,7 +532,18 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         nodes [req] = "nodes" => list(read_diagram_node),
         edges [def] = "edges" => list(read_diagram_edge),
         font_size [def] = "fontSize" => opt(number),
+        style [def] = "style" => read_diagram_style,
     })
+}
+
+fn read_diagram_style(v: Value) -> Read<DiagramStyle> {
+    variant(
+        v,
+        &[
+            ("flat", DiagramStyle::Flat),
+            ("glossy", DiagramStyle::Glossy),
+        ],
+    )
 }
 
 fn read_diagram_node(v: Value) -> Read<DiagramNode> {
@@ -545,6 +556,9 @@ fn read_diagram_node(v: Value) -> Read<DiagramNode> {
         width [req] = "width" => number,
         height [req] = "height" => number,
         color [def] = "color" => opt(string),
+        stroke [def] = "stroke" => opt(string),
+        stroke_width [def] = "strokeWidth" => opt(number),
+        text_color [def] = "textColor" => opt(string),
     })
 }
 

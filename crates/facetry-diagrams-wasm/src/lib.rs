@@ -2,7 +2,8 @@
 //! spec. The TypeScript wrapper (`facetry/diagrams` in `packages/facetry`) loads this module
 //! only when a page asks for a diagram, and hands the spec to the core module to draw.
 
-use facetry_diagrams::{DiagramIssue, from_mermaid};
+use facetry_core::spec::DiagramStyle;
+use facetry_diagrams::{DiagramIssue, Options, from_mermaid_with};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -24,12 +25,26 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-/// Lays out Mermaid `source` and returns the chart spec as JSON text. Throws an `Error` named
-/// `FacetryError` with `code: "invalid-diagram"` and a `diagramIssues` list when the text has
-/// problems (or uses Mermaid features Facetry does not support); nothing is laid out then.
+/// Lays out Mermaid `source` in `style` (`"flat"` or `"glossy"`; absent: flat) and returns the
+/// chart spec as JSON text. Throws an `Error` named `FacetryError` with
+/// `code: "invalid-diagram"` and a `diagramIssues` list when the text has problems (or uses
+/// Mermaid features Facetry does not support), and `code: "invalid-options"` for an unknown
+/// style; nothing is laid out then.
 #[wasm_bindgen(js_name = layoutMermaid)]
-pub fn layout_mermaid(source: &str) -> Result<String, JsValue> {
-    from_mermaid(source)
+pub fn layout_mermaid(source: &str, style: Option<String>) -> Result<String, JsValue> {
+    let style = match style.as_deref() {
+        None | Some("flat") => DiagramStyle::Flat,
+        Some("glossy") => DiagramStyle::Glossy,
+        Some(other) => {
+            let error = js_sys::Error::new(&format!(
+                "`style` must be \"flat\" or \"glossy\", got {other:?}"
+            ));
+            error.set_name("FacetryError");
+            let _ = js_sys::Reflect::set(&error, &"code".into(), &"invalid-options".into());
+            return Err(error.into());
+        }
+    };
+    from_mermaid_with(source, &Options { style })
         .map(|d| d.to_json())
         .map_err(|issues| invalid_diagram(&issues))
 }

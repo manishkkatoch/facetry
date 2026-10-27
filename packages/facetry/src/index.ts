@@ -24,6 +24,7 @@ export type {
   DiagramEdge,
   DiagramNode,
   DiagramSpec,
+  DiagramStyle,
   Dimension,
   EdgeEnd,
   EdgeStroke,

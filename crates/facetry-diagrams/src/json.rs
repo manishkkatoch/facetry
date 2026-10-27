@@ -1,12 +1,15 @@
 //! The laid-out diagram as a Facetry `ChartSpec`, in JSON: what the add-on hands to the core
 //! module. Written by hand (no serde in the wasm), in a fixed key order, numbers to a tenth.
 
-use facetry_core::spec::{DiagramSpec, EdgeEnd, EdgeStroke};
+use facetry_core::spec::{DiagramSpec, DiagramStyle, EdgeEnd, EdgeStroke};
 
 /// `{"dimension":"3d","diagram":{...}}`.
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
     let mut out = String::with_capacity(256 + 160 * (spec.nodes.len() + spec.edges.len()));
     out.push_str("{\"dimension\":\"3d\",\"diagram\":{");
+    if spec.style == DiagramStyle::Glossy {
+        out.push_str("\"style\":\"glossy\",");
+    }
     if let Some(size) = spec.font_size {
         out.push_str("\"fontSize\":");
         number(&mut out, size);
@@ -36,9 +39,21 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
             out.push_str("\":");
             number(&mut out, v);
         }
-        if let Some(c) = &n.color {
-            out.push_str(",\"color\":");
-            string(&mut out, c);
+        for (key, value) in [
+            ("color", &n.color),
+            ("stroke", &n.stroke),
+            ("textColor", &n.text_color),
+        ] {
+            if let Some(v) = value {
+                out.push_str(",\"");
+                out.push_str(key);
+                out.push_str("\":");
+                string(&mut out, v);
+            }
+        }
+        if let Some(w) = n.stroke_width {
+            out.push_str(",\"strokeWidth\":");
+            number(&mut out, w);
         }
         out.push('}');
     }

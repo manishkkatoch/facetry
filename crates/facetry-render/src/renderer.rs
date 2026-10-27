@@ -563,7 +563,12 @@ impl Renderer {
         let mut glyphs: Vec<Glyph3Instance> = Vec::new();
         // The glyphs that get an outline (labels printed on a bar or slice do not).
         let mut outlined: Vec<Glyph3Instance> = Vec::new();
+        let mut printed: Vec<Glyph3Instance> = Vec::new();
         for (t, &slot) in scene.texts.iter().zip(&slots) {
+            if t.flat.is_some() {
+                text::layout_glyphs_3d(t, encode(t.color), NO_SLOT, font, &mut printed);
+                continue;
+            }
             let from = glyphs.len();
             text::layout_glyphs_3d(t, encode(t.color), slot, font, &mut glyphs);
             if t.halo {
@@ -599,6 +604,7 @@ impl Renderer {
             .text
             .set_instances(&self.device, &self.queue, &instances);
         solid.text.set_overlay(&self.device, &self.queue, &[]);
+        solid.text.set_printed(&self.device, &self.queue, &printed);
         // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
         // buffers a 3D chart does not otherwise use).
         let swatches = rect::from_boxes(
@@ -884,6 +890,8 @@ impl Renderer {
                 // Line layers: the curtains first (translucent, under everything of the
                 // line), then the segments, then the round joins and the markers on top.
                 solid.curtains.draw(&mut pass);
+                // Text printed on surfaces, hidden by what stands in front of it.
+                solid.text.draw_printed(&mut pass, &self.quad);
                 solid.data_lines.draw(&mut pass, &self.quad);
                 solid.points.draw(&mut pass, &self.quad);
                 // Labels are drawn last and ignore depth: they sit just outside the box,

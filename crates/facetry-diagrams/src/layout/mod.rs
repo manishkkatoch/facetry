@@ -71,6 +71,8 @@ pub struct Route {
     /// From the centre of `from` through each dummy to the centre of `to`; a self-loop has
     /// just the node's centre twice (the caller draws the loop).
     pub points: Vec<[f64; 2]>,
+    /// The rank of every point (the same order as `points`).
+    pub ranks: Vec<i32>,
     /// The middle of the label, if the edge has one.
     pub label: Option<[f64; 2]>,
 }
@@ -81,6 +83,9 @@ pub struct Layout {
     pub edges: Vec<Route>,
     /// The rank of every node (after doubling: real nodes on adjacent ranks are 2 apart).
     pub ranks: Vec<i32>,
+    /// The y extent of every rank, `[top, bottom]`: its tallest node (or label). A rank of
+    /// nothing but edges is a line (`top == bottom`).
+    pub rank_bands: Vec<[f64; 2]>,
 }
 
 /// Lays `graph` out top to bottom.
@@ -201,23 +206,33 @@ pub fn layout(graph: &Graph, spacing: Spacing) -> Layout {
                 let c = nodes[e.from];
                 return Route {
                     points: vec![c, c],
+                    ranks: vec![ranks[e.from]; 2],
                     label: None,
                 };
             }
             let mut points: Vec<[f64; 2]> = chains[i].iter().map(|&v| at(v)).collect();
+            let mut point_ranks: Vec<i32> = chains[i].iter().map(|&v| rank_of[v]).collect();
             if reversed[i] {
                 points.reverse();
+                point_ranks.reverse();
             }
             Route {
                 points,
+                ranks: point_ranks,
                 label: label_node[i].map(at),
             }
         })
+        .collect();
+    let rank_bands = rank_y
+        .iter()
+        .zip(&rank_height)
+        .map(|(&y, &h)| [y - h / 2.0, y + h / 2.0])
         .collect();
     Layout {
         nodes,
         edges,
         ranks,
+        rank_bands,
     }
 }
 

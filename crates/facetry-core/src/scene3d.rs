@@ -182,9 +182,46 @@ pub struct PrismMark {
     /// The outline approximates a curve (a cylinder, a stadium's ends): its walls are shaded
     /// smoothly instead of facet by facet.
     pub smooth: bool,
+    /// How shiny the surface is: 0 is matte (lit only by the diffuse light, like the bars), up
+    /// to 1 for a strong specular highlight.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub gloss: f32,
     /// The diagram node it draws (an index into `diagram.nodes`); what hover and click report.
     #[serde(skip)]
     pub node: usize,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
+/// A thick edge lying on the floor: a band `width` wide along `path` (`[x, z]` world units),
+/// heights `base..=top`, lit like the prisms. Not a mark: never picked.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RibbonMark {
+    pub key: String,
+    pub color: Color,
+    #[serde(serialize_with = "outline2")]
+    pub path: Vec<[f32; 2]>,
+    #[serde(serialize_with = "w4")]
+    pub width: f32,
+    #[serde(serialize_with = "w4")]
+    pub base: f32,
+    #[serde(serialize_with = "w4")]
+    pub top: f32,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub gloss: f32,
+}
+
+/// A soft shadow on the floor: the convex `outline` (`[x, z]` world units) filled with
+/// `color` (its alpha the darkness), fading to nothing over `blur` world units outside it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ShadowMark {
+    #[serde(serialize_with = "outline2")]
+    pub outline: Vec<[f32; 2]>,
+    #[serde(serialize_with = "w4")]
+    pub blur: f32,
+    pub color: Color,
 }
 
 impl PrismMark {
@@ -372,6 +409,12 @@ pub struct Text3 {
     /// of the page colour would swallow letters of the same colour.
     #[serde(skip_serializing_if = "is_true")]
     pub halo: bool,
+    /// `Some(k)`: the text is printed flat on the horizontal plane through `anchor` instead of
+    /// facing the viewer, reading along +x with its lines going down toward +z, `k` world
+    /// units per pixel of `size_px` and `offset_px`. It is then hidden by what stands in front
+    /// of it and scales with the zoom, like the surface it is printed on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flat: Option<f32>,
 }
 
 fn is_true(v: &bool) -> bool {
@@ -441,6 +484,8 @@ impl Scene3d {
             slices: Vec::new(),
             prisms: Vec::new(),
             decor: Vec::new(),
+            ribbons: Vec::new(),
+            shadows: Vec::new(),
             lines: Vec::new(),
             polylines: Vec::new(),
             points: Vec::new(),
@@ -499,6 +544,12 @@ pub struct Scene3d {
     /// Solids that are not marks (a diagram's arrowheads): drawn like `prisms`, never picked.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub decor: Vec<PrismMark>,
+    /// Thick edges on the floor (a glossy diagram's), drawn with the prisms; never picked.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ribbons: Vec<RibbonMark>,
+    /// Soft shadows on the floor, drawn translucent over it after the solids.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shadows: Vec<ShadowMark>,
     /// Gridlines on the back walls and floor, then axis edges and ticks.
     pub lines: Vec<Line3>,
     /// Line layers' series, after the boxes and slices in draw order.

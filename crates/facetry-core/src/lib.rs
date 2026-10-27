@@ -8,6 +8,7 @@ mod build_arc;
 mod build_arc3d;
 mod color;
 pub mod diagram;
+mod diagram_glossy;
 mod legend;
 pub mod scale;
 pub mod scene;

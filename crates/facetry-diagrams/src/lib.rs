@@ -12,7 +12,9 @@ pub mod issue;
 pub mod json;
 pub mod layout;
 pub mod metrics;
+pub mod orthogonal;
 pub mod route;
+pub mod style;
 
 use facetry_core::spec::DiagramSpec;
 
@@ -33,9 +35,16 @@ impl Diagram {
     }
 }
 
-/// Parses Mermaid text and lays it out. On failure, every problem found, each with its line
-/// and column; nothing is laid out.
+pub use build::Options;
+
+/// Parses Mermaid text and lays it out in the flat style. On failure, every problem found,
+/// each with its line and column; nothing is laid out.
 pub fn from_mermaid(source: &str) -> Result<Diagram, Vec<DiagramIssue>> {
+    from_mermaid_with(source, &Options::default())
+}
+
+/// [`from_mermaid`] with options (the style, which also decides how edges are routed).
+pub fn from_mermaid_with(source: &str, options: &Options) -> Result<Diagram, Vec<DiagramIssue>> {
     match flowchart::kind(source).map_err(|i| vec![i])? {
         flowchart::Kind::Flowchart => {}
         kind => {
@@ -52,7 +61,7 @@ pub fn from_mermaid(source: &str) -> Result<Diagram, Vec<DiagramIssue>> {
         }
     }
     let chart = flowchart::parse(source)?;
-    let built = build::build(&chart);
+    let built = build::build(&chart, options);
     let metrics = metrics::measure(&built.spec, &built.control, build::FONT);
     Ok(Diagram {
         spec: built.spec,

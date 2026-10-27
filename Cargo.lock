@@ -328,6 +328,7 @@ name = "facetry-diagrams-wasm"
 version = "0.0.0"
 dependencies = [
  "console_error_panic_hook",
+ "facetry-core",
  "facetry-diagrams",
  "js-sys",
  "wasm-bindgen",

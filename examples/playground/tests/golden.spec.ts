@@ -76,3 +76,15 @@ for (const name of ["01-decision", "02-ci-pipeline"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
   });
 }
+
+// The glossy style: coloured slabs (by shape, and by classDef in 26-styled), thick
+// square-cornered arrows on the floor, label cards, soft shadows and printed labels, seen in
+// perspective at an angle.
+for (const name of ["01-decision", "26-styled"]) {
+  test(`glossy diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=glossy&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-glossy-${name}.png`);
+  });
+}

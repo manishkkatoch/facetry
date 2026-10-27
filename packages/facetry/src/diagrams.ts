@@ -15,11 +15,21 @@
  * stored, edited or shipped as JSON and drawn later without this module.
  */
 // Types only: nothing from the chart modules is loaded by this entry point.
-import type { ChartSpec } from "../wasm/facetry_wasm.js";
+import type { ChartSpec, DiagramStyle } from "../wasm/facetry_wasm.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
 
-export type { DiagramIssue };
+export type { DiagramIssue, DiagramStyle };
+
+export interface DiagramOptions {
+  /**
+   * How the diagram looks. `"flat"` (default): light blocks with thin edges, seen square on.
+   * `"glossy"`: glossy slabs coloured by shape (or by `classDef`), thick square-cornered
+   * arrows on the floor, soft shadows and labels printed on the slabs, seen at an angle. The
+   * style also decides how edges are routed, so it is chosen here rather than in the spec.
+   */
+  style?: DiagramStyle;
+}
 
 type Glue = typeof import("../wasm/facetry_diagrams.js");
 
@@ -37,16 +47,17 @@ function load(): Promise<Glue> {
 
 export const diagram = {
   /**
-   * Parses Mermaid text and lays it out. Supported: `flowchart` (also written `graph`); see
+   * Parses Mermaid text and lays it out in `options.style`. Supported: `flowchart` (also
+   * written `graph`), with `classDef`, `class`, `:::` and `style` for colours; see
    * the README for the exact subset. Rejects with a `FacetryError` whose `code` is
    * `"invalid-diagram"` and whose `diagramIssues` lists every problem (line, column, the
    * source line and a message), including Mermaid features that are not supported: a diagram
    * is never drawn with parts missing.
    */
-  async fromMermaid(source: string): Promise<ChartSpec> {
+  async fromMermaid(source: string, options: DiagramOptions = {}): Promise<ChartSpec> {
     const glue = await load();
     try {
-      return JSON.parse(glue.layoutMermaid(source)) as ChartSpec;
+      return JSON.parse(glue.layoutMermaid(source, options.style)) as ChartSpec;
     } catch (e) {
       throw FacetryError.from(e);
     }

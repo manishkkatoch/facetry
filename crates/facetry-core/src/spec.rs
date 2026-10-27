@@ -489,6 +489,24 @@ pub struct DiagramSpec {
     /// the matching screen size for the starting camera, so they fit their nodes.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub font_size: Option<f64>,
+    /// How the diagram looks: `"flat"` (the default) or `"glossy"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub style: DiagramStyle,
+}
+
+/// A diagram's visual style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum DiagramStyle {
+    /// Light blocks with a crisp rim, thin edges over the node tops, labels facing the viewer;
+    /// seen square on from an orthographic camera.
+    #[default]
+    Flat,
+    /// Glossy coloured slabs (coloured by shape unless the node says otherwise) with soft
+    /// shadows, thick arrows on the floor routed at right angles, and labels printed on the
+    /// slabs; seen at an angle through a perspective camera.
+    Glossy,
 }
 
 /// Default label size of a diagram, in layout units.
@@ -498,6 +516,7 @@ pub const MAX_DIAGRAM_FONT_SIZE: f64 = 200.0;
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
 pub struct DiagramNode {
     /// Unique among the nodes; what edges, hover and click refer to.
     pub id: String,
@@ -513,10 +532,23 @@ pub struct DiagramNode {
     /// The footprint's size (the shape is fitted into this rectangle).
     pub width: f64,
     pub height: f64,
-    /// Fill colour, `#rrggbb`. Default: the theme's node colour.
+    /// Fill colour, `#rrggbb`. Default: the style's colour for the shape.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub color: Option<String>,
+    /// Outline colour, `#rrggbb`: the rim round the top face. Default: the style's (the flat
+    /// style draws a rim, the glossy one none).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: Option<String>,
+    /// Rim width in CSS px (0 to 20). Default: the style's.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke_width: Option<f64>,
+    /// Label colour, `#rrggbb`. Default: dark or white, whichever reads better on the fill.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text_color: Option<String>,
 }
+
+/// Widest node rim accepted, CSS px.
+pub const MAX_NODE_STROKE_WIDTH: f64 = 20.0;
 
 /// The outline a node is extruded from. All are convex, fitted into the node's rectangle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

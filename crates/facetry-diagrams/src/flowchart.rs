@@ -13,16 +13,20 @@
 //! * edges `-->`, `---`, `-.->`, `-.-`, `==>`, `===`, with circle (`--o`) or cross (`--x`)
 //!   heads, two-headed forms (`<-->`, `o--o`, `x--x`), extra length (`--->`, `-..->`,
 //!   `====>`), and labels (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
-//! * chains `a --> b --> c` and groups `a & b --> c & d`.
+//! * chains `a --> b --> c` and groups `a & b --> c & d`;
+//! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
+//!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
+//!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes.
 //!
-//! Everything else that is valid Mermaid (subgraphs, styling, classes, click handlers, the
-//! newer `@{ shape: ... }` syntax, front matter and directives, ...) is an error that names the
-//! feature, so a diagram is never drawn with parts silently missing. All problems are
+//! Everything else that is valid Mermaid (subgraphs, `linkStyle`, other style properties,
+//! click handlers, the newer `@{ shape: ... }` syntax, front matter and directives, ...) is an
+//! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
 
 use facetry_core::spec::{EdgeEnd, EdgeStroke, NodeShape};
 
 use crate::issue::{DiagramIssue, Lines};
+use crate::style::{self, NodeStyle};
 
 /// Which way ranks run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -41,6 +45,8 @@ pub struct Node {
     /// Lines separated by `\n`.
     pub label: String,
     pub shape: NodeShape,
+    /// What `classDef`, `class`, `:::` and `style` made of it.
+    pub style: NodeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,6 +67,17 @@ pub struct Flowchart {
     pub direction: Direction,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+}
+
+/// Styling statements, resolved once the whole text is read (a class may be defined after
+/// the nodes that use it).
+#[derive(Debug, Default)]
+struct Styling {
+    classes: Vec<(String, NodeStyle)>,
+    /// `(node, class, offset)` in the order written.
+    uses: Vec<(String, String, usize)>,
+    /// `(node, style, offset)` from `style` statements.
+    styles: Vec<(String, NodeStyle, usize)>,
 }
 
 /// The longest edge Mermaid's extra dashes can ask for.
@@ -106,10 +123,7 @@ const UNSUPPORTED_STATEMENTS: &[(&str, &str)] = &[
         "direction",
         "`direction` (inside subgraphs) is not supported yet",
     ),
-    ("classDef", "styling (`classDef`) is not supported"),
-    ("class", "styling (`class`) is not supported"),
-    ("style", "styling (`style`) is not supported"),
-    ("linkStyle", "styling (`linkStyle`) is not supported"),
+    ("linkStyle", "edge styling (`linkStyle`) is not supported"),
     ("click", "click handlers (`click`) are not supported"),
     ("callback", "click handlers (`callback`) are not supported"),
     (
@@ -136,6 +150,7 @@ struct Parser<'a> {
     pos: usize,
     issues: Vec<DiagramIssue>,
     chart: Flowchart,
+    styling: Styling,
 }
 
 /// A failed statement: the issue is already recorded; skip to the next statement.
@@ -157,6 +172,7 @@ pub fn parse(source: &str) -> Result<Flowchart, Vec<DiagramIssue>> {
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
+        styling: Styling::default(),
     };
     p.document();
     if p.issues.is_empty() {
@@ -176,6 +192,7 @@ pub fn kind(source: &str) -> Result<Kind, DiagramIssue> {
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
+        styling: Styling::default(),
     };
     p.skip_preamble();
     if let Some(issue) = std::mem::take(&mut p.issues).into_iter().next() {
@@ -312,6 +329,113 @@ impl Parser<'_> {
             }
         };
         self.statements();
+        self.resolve_styles();
+    }
+
+    /// Applies `classDef default`, then each node's classes, then its `style` statements.
+    fn resolve_styles(&mut self) {
+        let styling = std::mem::take(&mut self.styling);
+        let class = |name: &str| styling.classes.iter().rev().find(|(n, _)| n == name);
+        if let Some((_, default)) = class("default") {
+            for node in &mut self.chart.nodes {
+                node.style.apply(default);
+            }
+        }
+        for (node, name, at) in &styling.uses {
+            let Some((_, style)) = class(name) else {
+                let _: Step<()> = self.fail(*at, format!("no `classDef` named `{name}`"));
+                continue;
+            };
+            match self.chart.nodes.iter_mut().find(|n| &n.id == node) {
+                Some(n) => n.style.apply(style),
+                None => {
+                    let _: Step<()> = self.fail(*at, format!("no node `{node}` to style"));
+                }
+            }
+        }
+        for (node, style, at) in &styling.styles {
+            match self.chart.nodes.iter_mut().find(|n| &n.id == node) {
+                Some(n) => n.style.apply(style),
+                None => {
+                    let _: Step<()> = self.fail(*at, format!("no node `{node}` to style"));
+                }
+            }
+        }
+    }
+
+    /// A comma-separated list of names (`a,b,c`), each made of id characters.
+    fn names(&mut self) -> Step<Vec<(String, usize)>> {
+        let mut out = Vec::new();
+        loop {
+            self.skip_inline_ws();
+            let at = self.pos;
+            while self.peek().is_some_and(|c| is_id_char(c) || c == '-') {
+                self.pos += 1;
+            }
+            let name: String = self.text[at..self.pos].iter().collect();
+            if name.is_empty() {
+                return self.fail(at, "expected a name");
+            }
+            out.push((name, at));
+            self.skip_inline_ws();
+            if self.peek() == Some(',') {
+                self.pos += 1;
+            } else {
+                return Ok(out);
+            }
+        }
+    }
+
+    /// The rest of the statement as a style property list.
+    fn properties(&mut self) -> Step<NodeStyle> {
+        self.skip_inline_ws();
+        let at = self.pos;
+        while !self.at_statement_end() {
+            self.pos += 1;
+        }
+        let text: String = self.text[at..self.pos].iter().collect();
+        if text.trim().is_empty() {
+            return self.fail(at, "expected style properties such as `fill:#f96`");
+        }
+        style::parse(text.trim_end()).map_err(|(offset, message)| {
+            let offset = text[..offset.min(text.len())].chars().count();
+            self.issues.push(self.lines.issue(at + offset, message));
+            Skip
+        })
+    }
+
+    /// `classDef`, `class` and `style`, after their keyword.
+    fn styling_statement(&mut self, keyword: &str) -> Step<()> {
+        match keyword {
+            "classDef" => {
+                let names = self.names()?;
+                let style = self.properties()?;
+                for (name, _) in names {
+                    self.styling.classes.push((name, style.clone()));
+                }
+            }
+            "class" => {
+                let nodes = self.names()?;
+                let classes = self.names()?;
+                for (class, at) in classes {
+                    for (node, _) in &nodes {
+                        self.styling.uses.push((node.clone(), class.clone(), at));
+                    }
+                }
+            }
+            _ => {
+                let nodes = self.names()?;
+                let style = self.properties()?;
+                for (node, at) in nodes {
+                    self.styling.styles.push((node, style.clone(), at));
+                }
+            }
+        }
+        if !self.at_statement_end() {
+            let at = self.pos;
+            return self.fail(at, "unexpected text after the statement");
+        }
+        Ok(())
     }
 
     fn statements(&mut self) {
@@ -358,6 +482,19 @@ impl Parser<'_> {
         }
         let word: String = self.text[start..end].iter().collect();
         let next = self.text.get(end).copied();
+        // A styling keyword followed by a name; `class --> b` is a node called `class`.
+        let mut after = end;
+        while matches!(self.text.get(after), Some(' ' | '\t')) {
+            after += 1;
+        }
+        let names_follow = self.text.get(after).is_some_and(|&c| is_id_char(c));
+        if matches!(word.as_str(), "classDef" | "class" | "style")
+            && matches!(next, Some(' ' | '\t'))
+            && names_follow
+        {
+            self.pos = end;
+            return self.styling_statement(&word);
+        }
         if let Some((_, message)) = UNSUPPORTED_STATEMENTS.iter().find(|(k, _)| *k == word) {
             // `end` and `class` are also fine node ids in front of a shape or link... except
             // that Mermaid itself rejects `end`, and `class` followed by a space is a statement.
@@ -426,17 +563,30 @@ impl Parser<'_> {
             return self.fail(start, "`end` cannot be a node id (Mermaid reserves it)");
         }
         let shape = self.shape()?;
-        if self.starts_with(":::") {
+        let mut classes = Vec::new();
+        while self.starts_with(":::") {
+            self.pos += 3;
             let at = self.pos;
-            return self.fail(at, "styling (`:::class`) is not supported");
+            while self.peek().is_some_and(|c| is_id_char(c) || c == '-') {
+                self.pos += 1;
+            }
+            let class: String = self.text[at..self.pos].iter().collect();
+            if class.is_empty() {
+                return self.fail(at, "expected a class name after `:::`");
+            }
+            classes.push((class, at));
+        }
+        for (class, at) in classes {
+            self.styling.uses.push((id.clone(), class, at));
         }
         let index = match self.chart.nodes.iter().position(|n| n.id == id) {
             Some(i) => i,
             None => {
                 self.chart.nodes.push(Node {
                     label: id.clone(),
-                    id,
+                    id: id.clone(),
                     shape: NodeShape::Rect,
+                    style: NodeStyle::default(),
                 });
                 self.chart.nodes.len() - 1
             }
@@ -1020,10 +1170,14 @@ mod tests {
             ("graph TD\nA>flag]", "asymmetric"),
             ("graph TD\nA(((x)))", "double circle"),
             ("graph TD\nA@{ shape: rect }", "@{"),
-            ("graph TD\nA:::warn --> B", ":::class"),
+            ("graph TD\nA:::warn --> B", "no `classDef` named `warn`"),
+            ("graph TD\nA --> B\nlinkStyle 0 stroke:#f00", "linkStyle"),
+            (
+                "graph TD\nA\nstyle A stroke-dasharray: 5 5",
+                "stroke-dasharray",
+            ),
+            ("graph TD\nA\nstyle B fill:#f00", "no node `B`"),
             ("graph TD\nA ~~~ B", "invisible"),
-            ("graph TD\nclassDef x fill:#f00", "classDef"),
-            ("graph TD\nstyle A fill:#f00", "style"),
             ("graph TD\nclick A call()", "click"),
             ("graph TD\nA[\"`**md**`\"]", "markdown"),
             ("graph TD\nA[a <b>bold</b>]", "HTML"),
@@ -1043,6 +1197,36 @@ mod tests {
         assert!(e[0].message.contains("unclosed node shape"));
         assert!(e[1].message.contains("expected a node after the link"));
         assert!(e[2].message.contains("link"));
+    }
+
+    #[test]
+    fn classes_and_styles() {
+        let f = ok("flowchart TD
+            classDef default fill:#eee,color:#111
+            classDef hot,urgent fill:#f96,stroke:#333,stroke-width:2px
+            A:::hot --> B --> C
+            class B,C urgent
+            classDef urgent color:white
+            style C fill:red");
+        let st = |i: usize| &f.nodes[i].style;
+        assert_eq!(st(0).fill.as_deref(), Some("#ff9966"));
+        assert_eq!(st(0).color.as_deref(), Some("#111111"));
+        assert_eq!(st(0).stroke_width, Some(2.0));
+        // `urgent` was redefined later: the last definition is the one used.
+        assert_eq!(st(1).fill.as_deref(), Some("#eeeeee"));
+        assert_eq!(st(1).color.as_deref(), Some("#ffffff"));
+        // `style` wins over classes.
+        assert_eq!(st(2).fill.as_deref(), Some("#ff0000"));
+        // A node named `class` or `style` is still a node.
+        let f = ok("graph TD\nclass --> style");
+        assert_eq!(ids(&f), ["class", "style"]);
+    }
+
+    #[test]
+    fn style_problems_point_at_the_property() {
+        let e = err("graph TD\nA\nclassDef x fill:#f96, font-size:20px");
+        assert_eq!((e[0].line, e[0].column), (3, 23));
+        assert!(e[0].message.contains("`font-size` is not supported"));
     }
 
     #[test]

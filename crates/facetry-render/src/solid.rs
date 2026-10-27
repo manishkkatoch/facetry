@@ -190,12 +190,19 @@ pub struct CurtainVertex {
     pub color: [f32; 4],
 }
 
-/// The curtains (`style.area`) of the polylines that have one: for every segment, a vertical
-/// quad from the line down to its baseline (two triangles), translucent. Later series are
+/// The curtains (`style.area`) of the polylines that have one, after the floor shadows of the
+/// scene: for every segment, a vertical quad from the line down to its baseline (two
+/// triangles), translucent. Later series are
 /// emitted first, so with the first series on the front row the farther curtains are blended
 /// first and the nearer ones over them (right for the default camera).
 pub fn curtain_vertices(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec<CurtainVertex> {
     let mut out = Vec::new();
+    // Soft shadows on the floor (a glossy diagram's) share the curtains' translucent pass:
+    // just above the floor, so nothing standing on it is darkened.
+    let floor = scene.size[1] * 1e-3;
+    for s in &scene.shadows {
+        crate::arc::shadow(s, encode(s.color), floor, &mut out);
+    }
     for line in scene.polylines.iter().rev() {
         let Some(base) = line.area else { continue };
         let mut color = encode(line.color);
@@ -479,7 +486,7 @@ impl SlicePipeline {
         });
         let (layout, bind_group) = globals_only(device, "mesh3d", globals);
         let attrs = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32, 4 => Float32
         ];
         let pipeline = pipeline(
             device,
@@ -533,6 +540,9 @@ impl SlicePipeline {
         }
         for p in &scene.decor {
             crate::arc::prism(p, encode(p.color), &mut self.vertices);
+        }
+        for r in &scene.ribbons {
+            crate::arc::ribbon(r, encode(r.color), &mut self.vertices);
         }
         self.buffer.set(device, queue, &self.vertices);
     }

@@ -1,5 +1,5 @@
 import { Chart, FacetryError, type ChartOptions, type ChartSpec } from "facetry";
-import { diagram } from "facetry/diagrams";
+import { diagram, type DiagramStyle } from "facetry/diagrams";
 
 // The same files the Rust snapshot tests and the golden-image test use.
 const modules = import.meta.glob<ChartSpec>("../../specs/*.json", { eager: true, import: "default" });
@@ -19,11 +19,17 @@ const examples = new Map<string, Example>([
   ),
 ]);
 
-/** A spec as it is, or Mermaid text laid out by the diagrams add-on. */
+const styleSelect = document.querySelector<HTMLSelectElement>("#style")!;
+
+/** A spec as it is, or Mermaid text laid out by the diagrams add-on in the chosen style. */
 const toSpec = (example: Example): Promise<ChartSpec> =>
-  typeof example === "string" ? diagram.fromMermaid(example) : Promise.resolve(example);
+  typeof example === "string"
+    ? diagram.fromMermaid(example, { style: styleSelect.value as DiagramStyle })
+    : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
+// ?style=glossy draws Mermaid diagrams in the glossy style.
+styleSelect.value = params.get("style") === "glossy" ? "glossy" : "flat";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
 // ?example=<name> picks the starting spec; ?ui=0 hides everything but the chart.
@@ -144,6 +150,11 @@ select.addEventListener("change", () => {
   const spec = examples.get(select.value)!;
   show(spec);
   void apply(spec);
+});
+
+// A new style lays the Mermaid text in the editor out again.
+styleSelect.addEventListener("change", () => {
+  if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
 });
 
 applyButton.addEventListener("click", () => {

@@ -92,3 +92,32 @@ test("the diagrams module is only downloaded by pages that lay out a diagram", a
   await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
   expect(urls.filter((u) => /facetry_diagrams_bg-.*\.wasm/.test(u))).toHaveLength(1);
 });
+
+test("the glossy style starts in perspective, and its slabs report hover like the flat ones", async ({
+  page,
+}) => {
+  await page.goto("/?backend=webgl2&style=glossy&example=mermaid/26-styled");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const camera = await page.evaluate(() => (window as any).facetryChart.camera);
+  expect(camera.type).toBe("perspective");
+  expect(camera.azimuth).toBeGreaterThan(0);
+  const p = await where(page, "backorder");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText("backorder");
+  await expect(page.locator("#hover")).toContainText('"label":"Backorder"');
+});
+
+test("changing the style lays the Mermaid text out again", async ({ page }) => {
+  await open(page, "mermaid/01-decision");
+  const before = await page.evaluate(() => (window as any).facetryChart.markPosition("D"));
+  await page.locator("#style").selectOption("glossy");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).facetryChart.camera.type))
+    .toBe("perspective");
+  const after = await page.evaluate(() => (window as any).facetryChart.markPosition("D"));
+  expect(after).not.toEqual(before);
+  await page.locator("#style").selectOption("flat");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).facetryChart.camera.type))
+    .toBe("orthographic");
+});

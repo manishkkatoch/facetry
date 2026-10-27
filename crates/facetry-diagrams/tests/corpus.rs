@@ -7,7 +7,12 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use facetry_diagrams::from_mermaid;
+use facetry_core::spec::DiagramStyle;
+use facetry_diagrams::{Options, build, flowchart, from_mermaid, from_mermaid_with};
+
+const GLOSSY: Options = Options {
+    style: DiagramStyle::Glossy,
+};
 
 fn corpus() -> Vec<(String, String)> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/diagrams/flowchart");
@@ -63,6 +68,52 @@ fn quality_metrics() {
         report,
         "TOTAL crossings {} edge-node overlaps {} label overlaps {} bends {}",
         total[0], total[1], total[2], total[3]
+    )
+    .unwrap();
+    insta::assert_snapshot!(report);
+}
+
+#[test]
+fn every_diagram_routes_square_cornered_in_the_glossy_style() {
+    for (name, source) in corpus() {
+        let chart = flowchart::parse(&source).unwrap();
+        let built = build::build(&chart, &GLOSSY);
+        for (i, c) in built.control.iter().enumerate() {
+            for w in c.windows(2) {
+                let (dx, dy) = ((w[0][0] - w[1][0]).abs(), (w[0][1] - w[1][1]).abs());
+                assert!(
+                    dx < 1e-6 || dy < 1e-6,
+                    "{name}: edge {i} has a slanted segment {w:?}"
+                );
+            }
+        }
+        let d = from_mermaid_with(&source, &GLOSSY).unwrap();
+        assert_eq!(d.metrics.node_overlaps, 0, "{name}");
+        assert_eq!(
+            d.to_json(),
+            from_mermaid_with(&source, &GLOSSY).unwrap().to_json()
+        );
+        let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
+        assert!(facetry_core::validate(&spec).is_empty(), "{name}");
+        assert_eq!(spec.diagram.unwrap().style, DiagramStyle::Glossy);
+    }
+}
+
+#[test]
+fn glossy_quality_metrics() {
+    let mut report = String::new();
+    let mut total = [0usize; 3];
+    for (name, source) in corpus() {
+        let m = from_mermaid_with(&source, &GLOSSY).unwrap().metrics;
+        writeln!(report, "{name:<26} {m}").unwrap();
+        total[0] += m.crossings;
+        total[1] += m.edge_node_overlaps;
+        total[2] += m.label_overlaps;
+    }
+    writeln!(
+        report,
+        "TOTAL crossings {} edge-node overlaps {} label overlaps {}",
+        total[0], total[1], total[2]
     )
     .unwrap();
     insta::assert_snapshot!(report);

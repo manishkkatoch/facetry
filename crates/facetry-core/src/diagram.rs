@@ -25,7 +25,8 @@ use crate::scene3d::{
 };
 use crate::spec::{
     CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
-    DiagramSpec, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE, NodeShape,
+    DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
+    MAX_NODE_STROKE_WIDTH, NodeShape,
 };
 use crate::text::TextMeasure;
 use crate::validate::{Issue, pointer};
@@ -36,8 +37,9 @@ pub const PLAN_LONG: f64 = 2.0;
 pub const MIN_PLAN: f64 = 480.0;
 /// Empty floor round the drawing, layout units.
 const MARGIN: f64 = 12.0;
-/// How tall the nodes stand, in font sizes.
+/// How tall the nodes stand, in font sizes: blocks in the flat style, slabs in the glossy one.
 const NODE_HEIGHT: f64 = 1.0;
+const GLOSSY_NODE_HEIGHT: f64 = 0.7;
 /// Edges run this far above the node tops (layout units), so they never flicker against a
 /// top face they cross the rim of.
 const EDGE_LIFT: f64 = 0.6;
@@ -67,13 +69,19 @@ const EDGE_LABEL_SCALE: f64 = 0.9;
 const MIN_LABEL_PX: f64 = 7.0;
 const MAX_LABEL_PX: f64 = 32.0;
 
-/// The starting camera of a diagram, where the spec leaves a field out: orthographic (no
+/// The starting camera of a flat diagram, where the spec leaves a field out: orthographic (no
 /// perspective distortion: what documentation wants), square on to the page (turning it
 /// tilts the ranks, which then no longer read as rows) and looking well down onto the floor.
 pub const DIAGRAM_AZIMUTH: f64 = 0.0;
 pub const DIAGRAM_ELEVATION: f64 = 50.0;
-/// Share of the canvas the diagram may fill at the starting distance.
+/// A glossy diagram's: through a perspective lens, turned and lower, like a product shot.
+/// Its labels are printed on the slabs, so they turn with the page and stay readable.
+pub const GLOSSY_AZIMUTH: f64 = 28.0;
+pub const GLOSSY_ELEVATION: f64 = 40.0;
+/// Share of the canvas (from the centre to each edge) the diagram may fill at the starting
+/// distance.
 const FILL: f64 = 0.92;
+const PERSPECTIVE_FILL: f64 = 0.9;
 /// Most CSS pixels per layout unit at the starting distance: a small diagram is drawn at
 /// about its natural size (labels a little above `fontSize` px) instead of blown up to fill
 /// the canvas.
@@ -162,9 +170,21 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
                 ));
             }
         }
-        if let Some(hex) = &node.color {
-            if let Err(e) = Color::from_hex(hex) {
-                issues.push(Issue::new(at("color"), e.to_string()));
+        for (field, value) in [
+            ("color", &node.color),
+            ("stroke", &node.stroke),
+            ("textColor", &node.text_color),
+        ] {
+            if let Some(Err(e)) = value.as_deref().map(Color::from_hex) {
+                issues.push(Issue::new(at(field), e.to_string()));
+            }
+        }
+        if let Some(w) = node.stroke_width {
+            if !(w.is_finite() && (0.0..=MAX_NODE_STROKE_WIDTH).contains(&w)) {
+                issues.push(Issue::new(
+                    at("strokeWidth"),
+                    format!("strokeWidth must be between 0 and {MAX_NODE_STROKE_WIDTH}"),
+                ));
             }
         }
     }
@@ -291,16 +311,18 @@ fn dedup(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 
 /// How layout units map to the world: `world = (layout - origin) * scale`.
 #[derive(Debug, Clone, Copy)]
-struct Plan {
+pub(crate) struct Plan {
     origin: [f64; 2],
-    scale: f64,
+    pub(crate) scale: f64,
     /// World size of the floor, `[x, z]`.
     floor: [f64; 2],
-    font: f64,
+    pub(crate) font: f64,
+    /// Node height, in font sizes.
+    node_height: f64,
 }
 
 impl Plan {
-    fn new(diagram: &DiagramSpec) -> Self {
+    pub(crate) fn new(diagram: &DiagramSpec) -> Self {
         let mut lo = [f64::INFINITY; 2];
         let mut hi = [f64::NEG_INFINITY; 2];
         let mut add = |p: [f64; 2]| {
@@ -333,11 +355,15 @@ impl Plan {
             scale,
             floor: [extent[0] * scale, extent[1] * scale],
             font: diagram.font_size.unwrap_or(DEFAULT_DIAGRAM_FONT_SIZE),
+            node_height: match diagram.style {
+                DiagramStyle::Flat => NODE_HEIGHT,
+                DiagramStyle::Glossy => GLOSSY_NODE_HEIGHT,
+            },
         }
     }
 
     /// A layout point on the floor at world height `y`.
-    fn world(&self, p: [f64; 2], y: f64) -> [f32; 3] {
+    pub(crate) fn world(&self, p: [f64; 2], y: f64) -> [f32; 3] {
         [
             ((p[0] - self.origin[0]) * self.scale) as f32,
             y as f32,
@@ -345,22 +371,22 @@ impl Plan {
         ]
     }
 
-    fn floor_point(&self, p: [f64; 2]) -> [f32; 2] {
+    pub(crate) fn floor_point(&self, p: [f64; 2]) -> [f32; 2] {
         let [x, _, z] = self.world(p, 0.0);
         [x, z]
     }
 
     /// A length in layout units, in world units.
-    fn len(&self, v: f64) -> f64 {
+    pub(crate) fn len(&self, v: f64) -> f64 {
         v * self.scale
     }
 
-    fn node_top(&self) -> f64 {
-        self.len(NODE_HEIGHT * self.font)
+    pub(crate) fn node_top(&self) -> f64 {
+        self.len(self.node_height * self.font)
     }
 
     /// The plot box: the floor, as high as the nodes.
-    fn size(&self) -> [f32; 3] {
+    pub(crate) fn size(&self) -> [f32; 3] {
         [
             self.floor[0] as f32,
             self.node_top() as f32,
@@ -370,43 +396,99 @@ impl Plan {
 }
 
 /// The camera distance (in box radii, see [`framing_radius`]) at which the diagram, seen from
-/// `azimuth`/`elevation` degrees through the orthographic lens, fills a canvas of
-/// `viewport_px` device pixels, but no closer than [`MAX_ZOOM`] allows.
+/// `azimuth`/`elevation` degrees through `kind` of lens, fills `fill` of a canvas of
+/// `viewport_px` device pixels, but no closer than [`MAX_ZOOM`] allows. Found by projecting the
+/// corners of the plot box exactly as the renderer's camera does (the same eye, target and
+/// lenses) for a candidate distance and bisecting.
 fn fitting_distance(
     plan: &Plan,
+    kind: CameraKind,
     azimuth: f64,
     elevation: f64,
+    fill: f64,
     viewport_px: (u32, u32),
     dpr: f32,
 ) -> f64 {
-    let size = plan.size();
-    let [w, h, d] = size.map(f64::from);
+    let size = plan.size().map(f64::from);
+    let radius = f64::from(framing_radius(plan.size()));
+    let centre = [size[0] / 2.0, size[1] / 2.0 - FRAMING_LIFT, size[2] / 2.0];
     let (az, el) = (azimuth.to_radians(), elevation.to_radians());
-    let across = w * az.cos().abs() + d * az.sin().abs();
-    let deep = w * az.sin().abs() + d * az.cos().abs();
-    // The camera aims a little below the box's centre (see `FRAMING_LIFT`), which moves the
-    // picture up: leave room for that at the top.
-    let tall = deep * el.sin() + h * el.cos() + 2.0 * FRAMING_LIFT * el.cos();
-    let radius = f64::from(framing_radius(size));
+    let dir = [az.sin() * el.cos(), el.sin(), az.cos() * el.cos()];
     let (vw, vh) = (
         f64::from(viewport_px.0.max(1)),
         f64::from(viewport_px.1.max(1)),
     );
-    // The visible height at distance `k` is `2 k radius tan(fov / 2)` world units.
+    let aspect = vw / vh;
     let tan = (FOV_Y_DEGREES / 2.0).to_radians().tan();
-    let unit = 2.0 * radius * tan;
-    let fit = (tall / (unit * FILL)).max(across / (unit * FILL * vw / vh));
-    // At distance k a layout unit is `vh / (k unit) * scale` pixels.
+    // The camera's axes: looking along -dir, y up.
+    let forward = [-dir[0], -dir[1], -dir[2]];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let norm = |a: [f64; 3]| {
+        let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-12);
+        [a[0] / l, a[1] / l, a[2] / l]
+    };
+    let right = norm(cross(forward, [0.0, 1.0, 0.0]));
+    let up = cross(right, forward);
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let corners: Vec<[f64; 3]> = (0..8)
+        .map(|k| {
+            [
+                if k & 1 == 0 { 0.0 } else { size[0] },
+                if k & 2 == 0 { 0.0 } else { size[1] },
+                if k & 4 == 0 { 0.0 } else { size[2] },
+            ]
+        })
+        .collect();
+    // Whether every corner lands inside `fill` of the canvas at distance `k` radii.
+    let fits = |k: f64| {
+        let d = k * radius;
+        let eye = [
+            centre[0] + dir[0] * d,
+            centre[1] + dir[1] * d,
+            centre[2] + dir[2] * d,
+        ];
+        corners.iter().all(|c| {
+            let v = [c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]];
+            let (x, y, z) = (dot(v, right), dot(v, up), dot(v, forward));
+            let half = match kind {
+                CameraKind::Perspective if z <= 1e-9 => return false,
+                CameraKind::Perspective => z * tan,
+                CameraKind::Orthographic => d * tan,
+            };
+            x.abs() <= half * aspect * fill && y.abs() <= half * fill
+        })
+    };
+    let (mut lo, mut hi) = (0.3f64, 20.0f64);
+    if fits(lo) {
+        hi = lo;
+    } else {
+        for _ in 0..40 {
+            let mid = (lo + hi) / 2.0;
+            if fits(mid) {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+    }
+    // At distance k (orthographic) a layout unit is `vh / (2 k radius tan) * scale` pixels.
     let s = f64::from(dpr).clamp(0.25, 16.0);
-    let closest = vh * plan.scale / (unit * MAX_ZOOM * s);
-    fit.max(closest)
+    let closest = vh * plan.scale / (2.0 * radius * tan * MAX_ZOOM * s);
+    hi.max(closest)
 }
 
 impl ChartSpec {
-    /// The camera to start from: the spec's own, with a diagram's defaults (orthographic,
-    /// [`DIAGRAM_AZIMUTH`], [`DIAGRAM_ELEVATION`], and a distance that fits the diagram in a
-    /// canvas of `viewport_px` device pixels at `dpr`) filling the fields it leaves out. Charts
-    /// start from their spec's camera as it is.
+    /// The camera to start from: the spec's own, with a diagram's defaults filling the fields
+    /// it leaves out: orthographic, [`DIAGRAM_AZIMUTH`] and [`DIAGRAM_ELEVATION`] for a flat
+    /// diagram, perspective, [`GLOSSY_AZIMUTH`] and [`GLOSSY_ELEVATION`] for a glossy one, and a
+    /// distance that fits the diagram in a canvas of `viewport_px` device pixels at `dpr`.
+    /// Charts start from their spec's camera as it is.
     pub fn start_camera(&self, viewport_px: (u32, u32), dpr: f32) -> Option<CameraSpec> {
         let Some(diagram) = &self.diagram else {
             return self.camera.clone();
@@ -417,13 +499,30 @@ impl ChartSpec {
             elevation: None,
             distance: None,
         });
-        let azimuth = given.azimuth.unwrap_or(DIAGRAM_AZIMUTH);
-        let elevation = given.elevation.unwrap_or(DIAGRAM_ELEVATION);
+        let (kind, azimuth, elevation) = match diagram.style {
+            DiagramStyle::Flat => (CameraKind::Orthographic, DIAGRAM_AZIMUTH, DIAGRAM_ELEVATION),
+            DiagramStyle::Glossy => (CameraKind::Perspective, GLOSSY_AZIMUTH, GLOSSY_ELEVATION),
+        };
+        let kind = given.kind.unwrap_or(kind);
+        let azimuth = given.azimuth.unwrap_or(azimuth);
+        let elevation = given.elevation.unwrap_or(elevation);
+        let fill = match kind {
+            CameraKind::Orthographic => FILL,
+            CameraKind::Perspective => PERSPECTIVE_FILL,
+        };
         let distance = given.distance.unwrap_or_else(|| {
-            fitting_distance(&Plan::new(diagram), azimuth, elevation, viewport_px, dpr)
+            fitting_distance(
+                &Plan::new(diagram),
+                kind,
+                azimuth,
+                elevation,
+                fill,
+                viewport_px,
+                dpr,
+            )
         });
         Some(CameraSpec {
-            kind: Some(given.kind.unwrap_or(CameraKind::Orthographic)),
+            kind: Some(kind),
             azimuth: Some(azimuth),
             elevation: Some(elevation),
             distance: Some(distance),
@@ -439,7 +538,7 @@ pub fn build_diagram_3d(
     spec: &ChartSpec,
     viewport_px: (u32, u32),
     dpr: f32,
-    _measure: &dyn TextMeasure,
+    measure: &dyn TextMeasure,
     theme: &Theme,
 ) -> Scene3d {
     let s = f64::from(dpr).clamp(0.25, 16.0);
@@ -447,8 +546,12 @@ pub fn build_diagram_3d(
         nodes: Vec::new(),
         edges: Vec::new(),
         font_size: None,
+        style: DiagramStyle::Flat,
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
+    if diagram.style == DiagramStyle::Glossy {
+        return crate::diagram_glossy::build(spec, diagram, viewport_px, dpr, measure, theme);
+    }
     let plan = Plan::new(diagram);
     let palette = Palette::new(theme);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
@@ -495,11 +598,7 @@ fn push_node(
 ) {
     let (outline, smooth) = shape_outline(node.shape, node.width, node.height);
     let at = |p: &[f64; 2]| [node.x + p[0], node.y + p[1]];
-    let color = node
-        .color
-        .as_deref()
-        .and_then(|hex| Color::from_hex(hex).ok())
-        .unwrap_or(palette.node);
+    let color = parse_color(&node.color).unwrap_or(palette.node);
     scene.prisms.push(PrismMark {
         key: node.id.clone(),
         color,
@@ -507,32 +606,18 @@ fn push_node(
         base: 0.0,
         top: top as f32,
         smooth,
+        gloss: 0.0,
         node: index,
     });
     // The rim: the top face's outline, a hair above it so the face does not hide it.
-    let lift = top + plan.len(0.15);
-    for k in 0..outline.len() {
-        let (a, b) = (&outline[k], &outline[(k + 1) % outline.len()]);
-        scene.lines.push(Line3 {
-            key: format!("{}/rim/{k}", node.id),
-            kind: RuleKind::Axis,
-            a: plan.world(at(a), lift),
-            b: plan.world(at(b), lift),
-            width_px: (RIM_WIDTH * s) as f32,
-            color: palette.rim,
-            azimuths: None,
-        });
-    }
+    let rim = parse_color(&node.stroke).unwrap_or(palette.rim);
+    let rim_width = node.stroke_width.unwrap_or(RIM_WIDTH);
+    push_rim(scene, plan, node, &outline, top, rim, rim_width * s);
     // The label, one Text3 per line, centred on the top face.
     let label = node.label.as_deref().unwrap_or(&node.id);
     let lines: Vec<&str> = label.split('\n').collect();
     let step = f64::from(label_px) * LINE_HEIGHT;
-    let fill = color;
-    let ink = if palette.text.contrast(fill) >= Color::linear(1.0, 1.0, 1.0, 1.0).contrast(fill) {
-        palette.text
-    } else {
-        Color::linear(1.0, 1.0, 1.0, 1.0)
-    };
+    let ink = parse_color(&node.text_color).unwrap_or_else(|| ink_on(color, palette.text));
     for (k, line) in lines.iter().enumerate() {
         if line.is_empty() {
             continue;
@@ -550,6 +635,52 @@ fn push_node(
             azimuths: None,
             role: LabelRole::Fixed,
             halo: false,
+            flat: None,
+        });
+    }
+}
+
+/// A node's colour from the spec, if it gave a valid one.
+pub(crate) fn parse_color(hex: &Option<String>) -> Option<Color> {
+    hex.as_deref().and_then(|h| Color::from_hex(h).ok())
+}
+
+/// The dark text colour, or white where white reads better on `fill`.
+pub(crate) fn ink_on(fill: Color, dark: Color) -> Color {
+    let white = Color::linear(1.0, 1.0, 1.0, 1.0);
+    if dark.contrast(fill) >= white.contrast(fill) {
+        dark
+    } else {
+        white
+    }
+}
+
+/// The rim round a node's top face, `width_px` device pixels, a hair above the face so it does
+/// not hide it. Nothing for a width of 0.
+pub(crate) fn push_rim(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    node: &DiagramNode,
+    outline: &[[f64; 2]],
+    top: f64,
+    color: Color,
+    width_px: f64,
+) {
+    if width_px <= 0.0 {
+        return;
+    }
+    let at = |p: &[f64; 2]| [node.x + p[0], node.y + p[1]];
+    let lift = top + plan.len(0.15);
+    for k in 0..outline.len() {
+        let (a, b) = (&outline[k], &outline[(k + 1) % outline.len()]);
+        scene.lines.push(Line3 {
+            key: format!("{}/rim/{k}", node.id),
+            kind: RuleKind::Axis,
+            a: plan.world(at(a), lift),
+            b: plan.world(at(b), lift),
+            width_px: width_px as f32,
+            color,
+            azimuths: None,
         });
     }
 }
@@ -638,6 +769,7 @@ fn push_edge(
                 azimuths: None,
                 role: LabelRole::Fixed,
                 halo: true,
+                flat: None,
             });
         }
     }
@@ -645,7 +777,7 @@ fn push_edge(
 
 /// The nearest point before `points[i]` (stepping by `dir`) that is not on top of it, for the
 /// direction an edge arrives in.
-fn previous_distinct(points: &[[f64; 2]], i: usize, dir: isize) -> [f64; 2] {
+pub(crate) fn previous_distinct(points: &[[f64; 2]], i: usize, dir: isize) -> [f64; 2] {
     let p = points[i];
     let mut j = i as isize + dir;
     while j >= 0 && (j as usize) < points.len() {
@@ -692,6 +824,7 @@ fn push_end(
                 base: plan.node_top() as f32,
                 top: (plan.node_top() + plan.len(ARROW_HEIGHT)) as f32,
                 smooth: false,
+                gloss: 0.0,
                 node: 0,
             });
         }
@@ -708,6 +841,7 @@ fn push_end(
                 base: plan.node_top() as f32,
                 top: (plan.node_top() + plan.len(ARROW_HEIGHT)) as f32,
                 smooth: true,
+                gloss: 0.0,
                 node: 0,
             });
         }
@@ -744,7 +878,7 @@ fn push_end(
 
 /// Shortens a path by `by` layout units at its last (or first) end, never by more than half
 /// its length.
-fn trim_end(points: &mut Vec<[f64; 2]>, by: f64, at_end: bool) {
+pub(crate) fn trim_end(points: &mut Vec<[f64; 2]>, by: f64, at_end: bool) {
     if !at_end {
         points.reverse();
     }
@@ -771,7 +905,7 @@ fn trim_end(points: &mut Vec<[f64; 2]>, by: f64, at_end: bool) {
     }
 }
 
-fn path_length(points: &[[f64; 2]]) -> f64 {
+pub(crate) fn path_length(points: &[[f64; 2]]) -> f64 {
     points
         .windows(2)
         .map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]))
@@ -779,7 +913,7 @@ fn path_length(points: &[[f64; 2]]) -> f64 {
 }
 
 /// The point halfway along a path.
-fn midpoint(points: &[[f64; 2]]) -> [f64; 2] {
+pub(crate) fn midpoint(points: &[[f64; 2]]) -> [f64; 2] {
     let mut left = path_length(points) / 2.0;
     for w in points.windows(2) {
         let seg = (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]);
@@ -796,7 +930,7 @@ fn midpoint(points: &[[f64; 2]]) -> [f64; 2] {
 }
 
 /// A path cut into dashes `dash` long with `gap` between them, following its bends.
-fn dashes(points: &[[f64; 2]], dash: f64, gap: f64) -> Vec<Vec<[f64; 2]>> {
+pub(crate) fn dashes(points: &[[f64; 2]], dash: f64, gap: f64) -> Vec<Vec<[f64; 2]>> {
     let mut out = Vec::new();
     let mut current: Vec<[f64; 2]> = vec![points[0]];
     let mut drawing = true;

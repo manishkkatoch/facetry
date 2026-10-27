@@ -268,6 +268,8 @@ pub fn build_scene_3d_with_theme(
         slices: Vec::new(),
         prisms: Vec::new(),
         decor: Vec::new(),
+        ribbons: Vec::new(),
+        shadows: Vec::new(),
         lines: Vec::new(),
         polylines: Vec::new(),
         points: Vec::new(),
@@ -405,6 +407,7 @@ pub fn build_scene_3d_with_theme(
                 LabelRole::Fixed
             },
             halo: !pending.inside,
+            flat: None,
         };
         scene.labels.push(MarkLabel3 {
             mark: pending.mark,
@@ -553,6 +556,7 @@ pub fn build_scene_3d_with_theme(
                             // Hidden while a bar is in front of the point.
                             role: LabelRole::OnPoint,
                             halo: true,
+                            flat: None,
                         },
                     });
                 }
@@ -757,6 +761,7 @@ pub fn build_scene_3d_with_theme(
             azimuths,
             role,
             halo: true,
+            flat: None,
         });
     };
 

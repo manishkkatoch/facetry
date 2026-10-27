@@ -8,7 +8,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::scene::ArcMark;
-use facetry_core::scene3d::{PrismMark, SliceMark};
+use facetry_core::scene3d::{PrismMark, RibbonMark, ShadowMark, SliceMark};
 
 /// Widest angular step of a slice's rim.
 const MAX_STEP: f32 = 2.0 * std::f32::consts::PI / 180.0;
@@ -54,6 +54,8 @@ pub struct Vertex3 {
     pub normal: [f32; 3],
     pub color: [f32; 4],
     pub hover: f32,
+    /// Specular strength (0: matte, as the bars and slices are).
+    pub gloss: f32,
 }
 
 /// Appends the triangles of an extruded slice: the top face, the outer wall, the inner wall
@@ -73,6 +75,7 @@ pub fn slice(s: &SliceMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
         normal,
         color,
         hover: 0.0,
+        gloss: 0.0,
     };
     let up = [0.0, 1.0, 0.0];
     let radial = |a: f32| [a.sin(), 0.0, -a.cos()];
@@ -162,18 +165,36 @@ pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
         normal,
         color,
         hover: 0.0,
+        gloss: p.gloss,
     };
     let at = |i: usize, y: f32| {
         let [x, z] = p.outline[i % n];
         [x, y, z]
     };
     let up = [0.0, 1.0, 0.0];
+    // A glossy top face is brightest at its far side and fades toward the viewer (the
+    // reflection of a bright sky behind the scene); the shader reads the vertex's gloss as
+    // how much sheen it gets. Linear in z, so a fan over a convex face draws it exactly.
+    let (z0, z1) = p
+        .outline
+        .iter()
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), q| {
+            (a.min(q[1]), b.max(q[1]))
+        });
+    let sheen = |i: usize| {
+        let t = if z1 > z0 {
+            (z1 - p.outline[i % n][1]) / (z1 - z0)
+        } else {
+            0.5
+        };
+        p.gloss * (0.2 + 0.8 * t)
+    };
+    let top = |i: usize| Vertex3 {
+        gloss: sheen(i),
+        ..v(at(i, p.top), up)
+    };
     for i in 1..n - 1 {
-        out.extend([
-            v(at(0, p.top), up),
-            v(at(i, p.top), up),
-            v(at(i + 1, p.top), up),
-        ]);
+        out.extend([top(0), top(i), top(i + 1)]);
     }
     let [cx, cz] = p.centre();
     // The outward normal of side i (from point i to point i + 1).
@@ -202,13 +223,171 @@ pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
         };
         let (b0, b1) = (at(i, p.base), at(i + 1, p.base));
         let (t0, t1) = (at(i, p.top), at(i + 1, p.top));
+        // Walls catch less of the sky than the top.
+        let wall = |pos, normal| Vertex3 {
+            gloss: p.gloss * 0.25,
+            ..v(pos, normal)
+        };
         out.extend([
-            v(b0, na),
-            v(b1, nb),
-            v(t0, na),
-            v(t0, na),
-            v(b1, nb),
-            v(t1, nb),
+            wall(b0, na),
+            wall(b1, nb),
+            wall(t0, na),
+            wall(t0, na),
+            wall(b1, nb),
+            wall(t1, nb),
+        ]);
+    }
+}
+
+/// Appends the triangles of a ribbon (a thick edge on the floor): the top face, both side
+/// walls and the two end caps. Corners are mitred, the mitre capped at twice the half width so a
+/// sharp turn does not spike; normals of the walls follow the mitre, which shades the rounded
+/// bends of a routed edge smoothly.
+pub fn ribbon(r: &RibbonMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
+    let pts = &r.path;
+    let n = pts.len();
+    if n < 2 || r.top <= r.base || r.width <= 0.0 {
+        return;
+    }
+    let v = |pos: [f32; 3], normal: [f32; 3]| Vertex3 {
+        pos,
+        normal,
+        color,
+        hover: 0.0,
+        gloss: r.gloss,
+    };
+    let half = r.width / 2.0;
+    // The unit left-hand normal of segment i (seen from above, x right and z toward the viewer).
+    let seg = |i: usize| {
+        let ([ax, az], [bx, bz]) = (pts[i], pts[i + 1]);
+        let (dx, dz) = (bx - ax, bz - az);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-12);
+        [dz / len, -dx / len]
+    };
+    // Per point: the offset to the left edge (mitred) and the wall normal there.
+    let mut offsets = Vec::with_capacity(n);
+    for i in 0..n {
+        let a = seg(i.saturating_sub(1).min(n - 2));
+        let b = seg(i.min(n - 2));
+        let (mx, mz) = (a[0] + b[0], a[1] + b[1]);
+        let ml = (mx * mx + mz * mz).sqrt();
+        let (ux, uz) = if ml < 1e-6 {
+            (b[0], b[1])
+        } else {
+            (mx / ml, mz / ml)
+        };
+        // Length along the mitre that keeps the edge `half` from both segments.
+        let cos = (ux * b[0] + uz * b[1]).max(0.5);
+        let k = half / cos;
+        offsets.push(([ux * k, uz * k], [ux, 0.0, uz]));
+    }
+    let left = |i: usize, y: f32| [pts[i][0] + offsets[i].0[0], y, pts[i][1] + offsets[i].0[1]];
+    let right = |i: usize, y: f32| [pts[i][0] - offsets[i].0[0], y, pts[i][1] - offsets[i].0[1]];
+    let up = [0.0, 1.0, 0.0];
+    let neg = |n: [f32; 3]| [-n[0], -n[1], -n[2]];
+    for i in 0..n - 1 {
+        let (j, top, base) = (i + 1, r.top, r.base);
+        out.extend([
+            v(left(i, top), up),
+            v(right(i, top), up),
+            v(left(j, top), up),
+            v(left(j, top), up),
+            v(right(i, top), up),
+            v(right(j, top), up),
+        ]);
+        let (ni, nj) = (offsets[i].1, offsets[j].1);
+        out.extend([
+            v(left(i, base), ni),
+            v(left(j, base), nj),
+            v(left(i, top), ni),
+            v(left(i, top), ni),
+            v(left(j, base), nj),
+            v(left(j, top), nj),
+        ]);
+        let (ni, nj) = (neg(ni), neg(nj));
+        out.extend([
+            v(right(i, base), ni),
+            v(right(j, base), nj),
+            v(right(i, top), ni),
+            v(right(i, top), ni),
+            v(right(j, base), nj),
+            v(right(j, top), nj),
+        ]);
+    }
+    // End caps, facing back along the path at the start and forward at the end.
+    for (i, sign) in [(0usize, -1.0f32), (n - 1, 1.0)] {
+        let s = seg(i.min(n - 2));
+        // The direction of travel is the left normal turned a quarter clockwise.
+        let normal = [-s[1] * sign, 0.0, s[0] * sign];
+        out.extend([
+            v(left(i, r.base), normal),
+            v(right(i, r.base), normal),
+            v(left(i, r.top), normal),
+            v(left(i, r.top), normal),
+            v(right(i, r.base), normal),
+            v(right(i, r.top), normal),
+        ]);
+    }
+}
+
+/// A vertex of a translucent floor shadow: position and colour with its alpha (the layout of
+/// the curtain pipeline's vertices).
+pub type ShadowVertex = crate::solid::CurtainVertex;
+
+/// Appends the triangles of a soft shadow: the outline, shrunk by half the blur, filled with
+/// the shadow's colour, and a ring out to half the blur beyond the outline fading to nothing.
+pub fn shadow(s: &ShadowMark, color: [f32; 4], y: f32, out: &mut Vec<ShadowVertex>) {
+    let n = s.outline.len();
+    if n < 3 {
+        return;
+    }
+    let c = {
+        let (x, z) = s
+            .outline
+            .iter()
+            .fold((0.0, 0.0), |(x, z), p| (x + p[0], z + p[1]));
+        [x / n as f32, z / n as f32]
+    };
+    // The outward unit normal at every vertex (the average of its two sides').
+    let side = |i: usize| {
+        let ([ax, az], [bx, bz]) = (s.outline[i % n], s.outline[(i + 1) % n]);
+        let (dx, dz) = (bx - ax, bz - az);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-12);
+        let (mut nx, mut nz) = (dz / len, -dx / len);
+        if nx * ((ax + bx) / 2.0 - c[0]) + nz * ((az + bz) / 2.0 - c[1]) < 0.0 {
+            (nx, nz) = (-nx, -nz);
+        }
+        [nx, nz]
+    };
+    let normal: Vec<[f32; 2]> = (0..n)
+        .map(|i| {
+            let (a, b) = (side(i + n - 1), side(i));
+            let (x, z) = (a[0] + b[0], a[1] + b[1]);
+            let l = (x * x + z * z).sqrt().max(1e-12);
+            [x / l, z / l]
+        })
+        .collect();
+    let at = |i: usize, d: f32| {
+        let (p, nm) = (s.outline[i % n], normal[i % n]);
+        [p[0] + nm[0] * d, y, p[1] + nm[1] * d]
+    };
+    let clear = [color[0], color[1], color[2], 0.0];
+    let half = s.blur / 2.0;
+    let centre = ShadowVertex {
+        pos: [c[0], y, c[1]],
+        color,
+    };
+    let vert = |pos, color| ShadowVertex { pos, color };
+    for i in 0..n {
+        let j = i + 1;
+        out.extend([centre, vert(at(i, -half), color), vert(at(j, -half), color)]);
+        out.extend([
+            vert(at(i, -half), color),
+            vert(at(i, half), clear),
+            vert(at(j, -half), color),
+            vert(at(j, -half), color),
+            vert(at(i, half), clear),
+            vert(at(j, half), clear),
         ]);
     }
 }
@@ -397,8 +576,9 @@ mod tests {
 
     #[test]
     fn vertex_layout_matches_the_shader() {
-        assert_eq!(std::mem::size_of::<Vertex3>(), 44);
+        assert_eq!(std::mem::size_of::<Vertex3>(), 48);
         assert_eq!(std::mem::offset_of!(Vertex3, hover), 40);
+        assert_eq!(std::mem::offset_of!(Vertex3, gloss), 44);
     }
 
     fn prism(outline: &[[f32; 2]], smooth: bool) -> PrismMark {
@@ -409,6 +589,7 @@ mod tests {
             base: 0.0,
             top: 0.5,
             smooth,
+            gloss: 0.0,
             node: 0,
         }
     }
@@ -464,5 +645,48 @@ mod tests {
         flat.top = 0.0;
         super::prism(&flat, [1.0; 4], &mut v);
         assert!(v.is_empty());
+    }
+
+    #[test]
+    fn a_ribbon_has_a_top_two_walls_per_segment_and_two_caps() {
+        let r = RibbonMark {
+            key: "r".into(),
+            color: Color::linear(0.0, 0.0, 0.0, 1.0),
+            path: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+            width: 0.2,
+            base: 0.0,
+            top: 0.05,
+            gloss: 0.5,
+        };
+        let mut v = Vec::new();
+        super::ribbon(&r, [1.0; 4], &mut v);
+        // 2 segments x (top + 2 walls) x 2 triangles, plus 2 caps x 2 triangles.
+        assert_eq!(v.len(), (2 * 3 * 2 + 2 * 2) * 3);
+        // The top stays within half the width of the path (the mitre at the corner reaches
+        // half a width along both sides).
+        for p in v.iter().filter(|p| p.normal[1] > 0.5) {
+            assert!(p.pos[1] == 0.05);
+            assert!((-0.1 - 1e-5..=1.1 + 1e-5).contains(&p.pos[0]));
+            assert!((-0.1 - 1e-5..=1.0 + 1e-5).contains(&p.pos[2]));
+        }
+        assert!(v.iter().all(|p| p.gloss == 0.5));
+    }
+
+    #[test]
+    fn a_shadow_is_dark_inside_and_fades_out() {
+        let s = ShadowMark {
+            outline: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            blur: 0.2,
+            color: Color::linear(0.0, 0.0, 0.0, 0.3),
+        };
+        let mut v = Vec::new();
+        super::shadow(&s, [0.0, 0.0, 0.0, 0.3], 0.001, &mut v);
+        assert_eq!(v.len(), 4 * 3 * 3);
+        for p in &v {
+            let outside = p.pos[0] < 0.0 || p.pos[0] > 1.0 || p.pos[2] < 0.0 || p.pos[2] > 1.0;
+            // Clear outside the outline, dark inside it.
+            assert_eq!(p.color[3] == 0.0, outside, "{p:?}");
+            assert_eq!(p.pos[1], 0.001);
+        }
     }
 }

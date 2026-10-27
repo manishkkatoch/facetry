@@ -209,3 +209,72 @@ fn small_diagrams_are_not_blown_up_and_big_ones_shrink_to_fit() {
     let wide = label_px(8, (1600, 500));
     assert!(wide > big * 1.5, "{wide} {big}");
 }
+
+fn glossy() -> ChartSpec {
+    spec(&broken(
+        r#""diagram": {"#,
+        r#""diagram": { "style": "glossy","#,
+    ))
+}
+
+#[test]
+fn the_glossy_style_draws_slabs_ribbons_cards_shadows_and_printed_labels() {
+    let s = glossy();
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    assert_eq!(scene.prisms.len(), 2);
+    assert!(scene.prisms.iter().all(|p| p.gloss > 0.0));
+    // Thinner than the flat style's blocks.
+    let flat = build_scene_3d(&spec(GOOD), (800, 500), 1.0, FontMetrics::inter());
+    assert!(scene.prisms[0].top < flat.prisms[0].top);
+    // The edge is a ribbon on the floor, not a screen-space line.
+    assert!(scene.polylines.is_empty());
+    assert_eq!(scene.ribbons.len(), 1);
+    assert_eq!(scene.ribbons[0].base, 0.0);
+    // An arrowhead and the label's card.
+    assert_eq!(scene.decor.len(), 2);
+    // A shadow under each node and the card.
+    assert_eq!(scene.shadows.len(), 3);
+    // Every label is printed on its surface.
+    assert_eq!(scene.texts.len(), 3);
+    assert!(scene.texts.iter().all(|t| t.flat.is_some() && !t.halo));
+    // The node without a colour is coloured by its shape; the one with keeps it.
+    assert_ne!(scene.prisms[0].color, flat.prisms[0].color);
+    assert_eq!(scene.prisms[1].color, flat.prisms[1].color);
+}
+
+#[test]
+fn glossy_diagrams_start_in_perspective_at_an_angle() {
+    let c = glossy().start_camera((800, 500), 1.0).unwrap();
+    assert_eq!(c.kind, Some(CameraKind::Perspective));
+    assert!(c.azimuth.unwrap() > 0.0);
+    assert!(c.elevation.unwrap() < 50.0);
+}
+
+#[test]
+fn node_colours_strokes_and_text_colours_are_used() {
+    let s = spec(&broken(
+        r#""label": "Alpha","#,
+        r##""label": "Alpha", "stroke": "#ff0000", "strokeWidth": 3, "textColor": "#00ff00","##,
+    ));
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    let rim: Vec<_> = scene
+        .lines
+        .iter()
+        .filter(|l| l.key.starts_with("a/rim"))
+        .collect();
+    assert!(!rim.is_empty());
+    assert!(
+        rim.iter()
+            .all(|l| l.width_px == 3.0
+                && l.color == facetry_core::Color::from_hex("#ff0000").unwrap())
+    );
+    let label = scene
+        .texts
+        .iter()
+        .find(|t| t.key.starts_with("a/"))
+        .unwrap();
+    assert_eq!(
+        label.color,
+        facetry_core::Color::from_hex("#00ff00").unwrap()
+    );
+}

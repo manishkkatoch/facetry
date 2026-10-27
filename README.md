@@ -17,7 +17,8 @@ hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)).
 
 **Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
 small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
-extruded nodes with edges and labels (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
+extruded nodes with edges and labels, flat or in a glossy style with thick arrows, shadows and
+printed labels (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
 the design in [docs/diagrams-3d.md](docs/diagrams-3d.md)).
 
 ```ts
@@ -481,7 +482,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 80 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 93 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -495,10 +496,16 @@ that can be stored and drawn later without the add-on.
 - links `-->`, `---`, `-.->`, `-.-`, `==>`, `===`, circle and cross heads (`--o`, `--x`), two-headed
   links (`<-->`, `o--o`, `x--x`), longer links (`--->` spans an extra rank), and labels
   (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
-- chains (`a --> b --> c`) and groups (`a & b --> c & d`).
+- chains (`a --> b --> c`) and groups (`a & b --> c & d`);
+- colours: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
+  `classDef default ...`, which applies to every node), `class a,b name`, `a:::name`, and
+  `style a fill:#f96`. Properties `fill`, `stroke`, `stroke-width` (px, up to 20) and `color`
+  (the label), with `#rgb`/`#rrggbb` colours or common CSS names. Classes apply in the order
+  written, `style` over classes; a class may be defined after the nodes that use it.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
-(subgraphs, `style`/`classDef`/`class`/`:::`, `click`, `linkStyle`, invisible `~~~` links, the
+(subgraphs, other style properties such as `stroke-dasharray` or `font-size`, `click`,
+`linkStyle`, invisible `~~~` links, the
 `[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, the `@{ shape: ... }` syntax,
 markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
 never drawn with parts silently missing. Sequence and architecture diagrams are planned
@@ -513,7 +520,22 @@ children). Edges leave and enter through the real node outline and are smoothed 
 B-spline Mermaid uses. Spacing follows Mermaid's defaults (50 between nodes and between ranks). The
 same text always gives the same layout.
 
-**Drawing.** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
+**Styles.** `diagram.fromMermaid(text, { style })` picks how the diagram looks (and, for the
+glossy style, how its edges are routed):
+
+- `"flat"` (the default): light blocks with a rim, thin curved edges, labels that face the
+  viewer; square on through an orthographic lens. Described below.
+- `"glossy"`: polished coloured slabs (by shape unless `classDef`/`style` say otherwise: red
+  start and end, blue steps, magenta decisions, amber stores, green preparation, violet
+  input/output) with a sheen and a light catch-light along their top edge, soft shadows on the
+  floor, thick arrows lying on the floor with solid heads, routed at right angles with rounded
+  corners and stopping short of the nodes, edge labels on small cards, and every label printed
+  on its surface (so it turns and zooms with the scene and hides behind what stands in front);
+  seen in perspective from 28 degrees round and 40 degrees up. Square-cornered routing gives
+  each edge its own port along a node's side and its own track where several turn in the same
+  gap, ordered so that turns do not cross needlessly.
+
+**Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
 it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
 orthographic camera looking square on and 50 degrees down, at a distance that fits the diagram
@@ -523,17 +545,22 @@ any of this, and orbit, zoom and `setCamera` work as for charts. Hover lightens 
 and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 
 **Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
-`nodes: [{ id, label?, shape?, x, y, width, height, color? }]` (centre and size in layout units,
-y down the page) and `edges: [{ from, to, points: [[x, y], ...], label?, labelPosition?, stroke?:
-"solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" | "cross", tail? }]`, plus
-`fontSize` (default 14). Validation reports problems at their JSON pointer
+`nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor? }]`
+(centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
+label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
+"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"` or `"glossy"`;
+`examples/specs/diagram-glossy.json`). Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (25 flowcharts in the
-style of real documentation) is laid out by `crates/facetry-diagrams/tests/corpus.rs`, which
-checks that nodes never overlap and output is deterministic and valid, and snapshots per-diagram
-metrics: edge crossings, edges through nodes, label overlaps, bends, total edge length and size.
-Any change to the layout shows in that snapshot's diff, diagram by diagram.
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (26 flowcharts in the
+style of real documentation) is laid out in both styles by
+`crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
+deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
+for each style: edge crossings, edges through nodes, label overlaps, bends, total edge length and
+size. Any change to the layout shows in those snapshots' diffs, diagram by diagram. Today: no node
+or label overlaps and no edge through a node in either style; 9 crossings in the whole corpus with
+curved edges and 15 with square-cornered ones (right angles cannot always slip past each other the
+way curves do).
 
 ## Value labels, hover and click
 
@@ -683,7 +710,8 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
 and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
-`mermaid/01-decision`), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
+`mermaid/01-decision`), `?style=glossy` (draw Mermaid in the glossy style; also a **Style**
+dropdown), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
 (anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
 their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
@@ -699,7 +727,8 @@ console.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
   `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
-  the diagrams `diagram-01-decision` and `diagram-02-ci-pipeline` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
+  the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision` and
+  `diagram-glossy-26-styled` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -731,15 +760,17 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 710,604 B (694 KiB) | 319,196 B (312 KiB) | 264,169 B (258 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,320,338 B (2266 KiB) | 961,769 B (939 KiB) | 760,309 B (742 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 176,872 B (173 KiB) | 79,765 B (78 KiB) | 68,749 B (67 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 730,726 B (714 KiB) | 327,112 B (319 KiB) | 270,172 B (264 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,340,462 B (2286 KiB) | 969,807 B (947 KiB) | 766,762 B (749 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 211,147 B (206 KiB) | 92,598 B (90 KiB) | 79,174 B (77 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
 319,196 B gzip (+16,529, +5.5%), WebGL2 944,952 to 961,769 (+16,817, +1.8%), measured against the
 previous commit with the same toolchain (rustc 1.99). The parser and the layout live in the
-add-on only.
+add-on only. The glossy style (S1) added 7,916 B gzip to the WebGPU module (ribbons, shadows,
+gloss, printed text) and 12,833 to the add-on (styling and square-cornered routing), after
+replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
