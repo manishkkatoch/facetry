@@ -23,6 +23,13 @@ pub struct Metrics {
     pub edge_length: f64,
     pub width: f64,
     pub height: f64,
+    /// Groups (subgraph boxes).
+    pub groups: usize,
+    /// Pairs of group boxes that overlap without one holding the other, and nodes that a
+    /// box's edge cuts through (should always be 0).
+    pub group_overlaps: usize,
+    /// Edges passing through a group box that holds neither of their ends.
+    pub edges_through_groups: usize,
 }
 
 impl Metrics {
@@ -54,8 +61,21 @@ impl std::fmt::Display for Metrics {
             self.edge_length,
             self.width,
             self.height,
-        )
+        )?;
+        if self.groups > 0 {
+            write!(
+                f,
+                " | groups {} group overlaps {} edges through groups {}",
+                self.groups, self.group_overlaps, self.edges_through_groups
+            )?;
+        }
+        Ok(())
     }
+}
+
+/// Whether `a` holds `b` entirely.
+fn holds(a: &Rect, b: &Rect) -> bool {
+    a[0] <= b[0] + 1e-6 && a[1] <= b[1] + 1e-6 && a[2] >= b[2] - 1e-6 && a[3] >= b[3] - 1e-6
 }
 
 type Rect = [f64; 4]; // x0 y0 x1 y1
@@ -232,6 +252,64 @@ pub fn measure(spec: &DiagramSpec, control: &[Vec<[f64; 2]>], font: f64) -> Metr
         .iter()
         .flat_map(|e| &e.points)
         .for_each(|&p| add(p));
+    // Groups: boxes, and what an edge's end is (a node's box or a group's).
+    let boxes: Vec<Rect> = spec
+        .groups
+        .iter()
+        .map(|g| {
+            [
+                g.x - g.width / 2.0,
+                g.y - g.height / 2.0,
+                g.x + g.width / 2.0,
+                g.y + g.height / 2.0,
+            ]
+        })
+        .collect();
+    let mut group_overlaps = 0;
+    for (i, a) in boxes.iter().enumerate() {
+        for b in &boxes[i + 1..] {
+            if overlaps(a, b) && !holds(a, b) && !holds(b, a) {
+                group_overlaps += 1;
+            }
+        }
+        for r in &rects {
+            if overlaps(a, r) && !holds(a, r) {
+                group_overlaps += 1;
+            }
+        }
+    }
+    let end_box = |id: &str| -> Option<Rect> {
+        index(id).map(|i| rects[i]).or_else(|| {
+            spec.groups
+                .iter()
+                .position(|g| g.id == id)
+                .map(|g| boxes[g])
+        })
+    };
+    let mut edges_through_groups = 0;
+    for e in &spec.edges {
+        let ends: Vec<Rect> = [&e.from, &e.to]
+            .iter()
+            .filter_map(|id| end_box(id))
+            .collect();
+        for b in &boxes {
+            // A box holding either end (or being it) may be crossed.
+            if ends.iter().any(|r| holds(b, r)) {
+                continue;
+            }
+            let inner = [b[0] + 2.0, b[1] + 2.0, b[2] - 2.0, b[3] - 2.0];
+            if e.points
+                .windows(2)
+                .any(|s| segment_hits_rect(s[0], s[1], &inner))
+            {
+                edges_through_groups += 1;
+            }
+        }
+    }
+    for b in &boxes {
+        add([b[0], b[1]]);
+        add([b[2], b[3]]);
+    }
     let (width, height) = if lo[0].is_finite() {
         (hi[0] - lo[0], hi[1] - lo[1])
     } else {
@@ -248,6 +326,9 @@ pub fn measure(spec: &DiagramSpec, control: &[Vec<[f64; 2]>], font: f64) -> Metr
         edge_length,
         width,
         height,
+        groups: spec.groups.len(),
+        group_overlaps,
+        edges_through_groups,
     }
 }
 

@@ -1,0 +1,12 @@
+flowchart TB
+    ceo[CEO] --> cto & cfo
+    subgraph tech [Technology]
+        cto[CTO] --> eng1[Platform] & eng2[Product]
+        subgraph platform [Platform team]
+            eng1 --> infra[Infra] & sec[Security]
+        end
+    end
+    subgraph finance [Finance]
+        cfo[CFO] --> acc[Accounting]
+    end
+    sec -.-> acc

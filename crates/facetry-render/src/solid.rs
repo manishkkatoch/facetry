@@ -236,7 +236,7 @@ pub fn curtain_vertices(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> 
     // just above the floor, so nothing standing on it is darkened.
     let floor = scene.size[1] * 1e-3;
     for s in &scene.shadows {
-        crate::arc::shadow(s, encode(s.color), floor, &mut out);
+        crate::arc::shadow(s, encode(s.color), floor + s.lift, &mut out);
     }
     for line in scene.polylines.iter().rev() {
         let Some(base) = line.area else { continue };

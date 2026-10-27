@@ -605,7 +605,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 106 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 113 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -620,6 +620,11 @@ that can be stored and drawn later without the add-on.
   links (`<-->`, `o--o`, `x--x`), longer links (`--->` spans an extra rank), and labels
   (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
 - chains (`a --> b --> c`) and groups (`a & b --> c & d`);
+- subgraphs: `subgraph id [Title] ... end` (also `subgraph id`, `subgraph "Title"` or
+  `subgraph Some title`), nested to any depth, with `direction` inside them (read, but the
+  diagram keeps its own direction), and edges to or from a whole subgraph by its id
+  (`a --> sub`). A node belongs to the innermost subgraph that mentions it, as in Mermaid.
+  `style` and `class` apply to subgraphs too (their `fill`, `stroke` and title `color`);
 - colours: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
   `classDef default ...`, which applies to every node), `class a,b name`, `a:::name`, and
   `style a fill:#f96`. Properties `fill`, `stroke`, `stroke-width` (px, up to 20) and `color`
@@ -667,7 +672,7 @@ with `code: "invalid-options"`, naming the icon and where its path goes wrong; a
 the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-icons`).
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
-(subgraphs, other style properties such as `stroke-dasharray` or `font-size`, `click`,
+(other style properties such as `stroke-dasharray` or `font-size`, `click`,
 `linkStyle`, invisible `~~~` links, the
 `[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
 markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
@@ -736,7 +741,9 @@ and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 
 **Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
 `nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor?, icon?,
-card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }`
+card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }`,
+`groups?: [{ id, label?, x, y, width, height, parent?, color?, stroke?, textColor? }]` (boxes
+round nodes, `parent` naming the group around it; an edge's `from` or `to` may name a group)
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
 "cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
@@ -745,14 +752,26 @@ icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (30 flowcharts in the
+**Subgraphs** are laid out like dagre's clusters: a group's nodes stay together in every rank
+and its box is a rectangle with room for its title at the top (on the side that becomes the top
+in every direction), nested boxes inside their parents, and an edge between nodes outside a
+group never runs through it. Each style draws a group as a base under its nodes with the title
+printed at its top left (shrunk if the box is narrow): a pale slab with an outline (flat), a
+rounded glossy tray (glossy), a plate tinted from the palette (isometric), or a concrete pad
+inside a fence (schematic). Bases step up a little with each level of nesting; soft shadows of
+what stands on a base are lifted onto it.
+
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (35 flowcharts in the
 style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
 for each style: edge crossings, edges through nodes, label overlaps, bends, total edge length and
-size. Any change to the layout shows in those snapshots' diffs, diagram by diagram. Today: no node
-or label overlaps and no edge through a node in either style, and with cards no card overlapping
-a node or another card and no edge over a card; 9 crossings in the whole corpus with
+size, and for diagrams with subgraphs group overlaps (boxes overlapping without one holding the
+other, or a box's edge cutting a node) and edges through a group that holds neither of their
+ends. Any change to the layout shows in those snapshots' diffs, diagram by diagram. Today: no node
+or label overlaps and no edge through a node in either style, with cards no card overlapping
+a node or another card and no edge over a card, and no group overlaps and no edge through a
+group; 9 crossings in the whole corpus with
 curved edges and 15 with square-cornered ones (right angles cannot always slip past each other the
 way curves do).
 
@@ -940,7 +959,9 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-glossy-26-styled`, `diagram-isometric-27-timeline`, `diagram-isometric-01-decision`,
   `diagram-isometric-29-icons`, `diagram-isometric-cards-28-roadmap`, `diagram-schematic-30-plant`
   `diagram-schematic-29-icons`, and `diagram-schematic-31-custom-icons` and
-  `diagram-isometric-cards-31-custom-icons` with the example icons of your own): Playwright screenshots these examples (3D ones at their
+  `diagram-isometric-cards-31-custom-icons` with the example icons of your own, and the
+  subgraph diagrams `diagram-groups-36-org`, `diagram-glossy-groups-33-nested`,
+  `diagram-isometric-groups-33-nested` and `diagram-schematic-groups-34-group-edges`): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -972,9 +993,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 909,155 B (888 KiB) | 401,702 B (392 KiB) | 329,259 B (322 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,516,311 B (2457 KiB) | 1,043,769 B (1019 KiB) | 822,503 B (803 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 244,536 B (239 KiB) | 105,707 B (103 KiB) | 90,648 B (89 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 927,158 B (905 KiB) | 407,103 B (398 KiB) | 332,657 B (325 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,534,180 B (2475 KiB) | 1,049,275 B (1025 KiB) | 826,880 B (808 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 261,162 B (255 KiB) | 112,561 B (110 KiB) | 96,285 B (94 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1001,6 +1022,12 @@ link the standard one); they are kept as a list of pairs rather than a map, whic
 WebGL2 one and 1,627 to the add-on (which checks icons but never triangulates them); the
 triangulation is under 1 KB since it sorts with a small insertion sort of its own (the
 standard library's sorts had cost 5 KB).
+
+Subgraphs (D2) added 5,401 B gzip to the WebGPU module (groups in the spec, their validation
+and drawing in four styles), 5,506 to the WebGL2 one, and 6,854 to the add-on (parsing, the
+compound layout and edges to groups). The add-on would have grown 13 KB: a group-aware sort
+of its own instead of the standard one saved 2.7 KB, and leaving the layout quality metrics
+(computed for the tests, never returned to JavaScript) out of the module saved 3.5 KB.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

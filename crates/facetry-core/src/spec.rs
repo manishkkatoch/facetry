@@ -593,6 +593,57 @@ pub struct DiagramSpec {
     /// a map type of its own would add kilobytes to the wasm.)
     #[cfg_attr(feature = "ts", tsify(optional, type = "Record<string, CustomIcon>"))]
     pub icons: Vec<(String, CustomIcon)>,
+    /// Boxes round groups of nodes (Mermaid's subgraphs), drawn under them with their titles.
+    /// Edges may start or end at a group, by its id.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub groups: Vec<DiagramGroup>,
+}
+
+/// A box round some of a diagram's nodes: a Mermaid subgraph, laid out.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramGroup {
+    /// Unique among the nodes' and the groups' ids.
+    pub id: String,
+    /// The title, lines separated by `\n`; the id if absent.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label: Option<String>,
+    /// Centre and size of the box, layout units.
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// The group it is nested in.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub parent: Option<String>,
+    /// Fill, border and title colour (`#rgb` or `#rrggbb`); the style's own when absent.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub color: Option<String>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stroke: Option<String>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text_color: Option<String>,
+}
+
+impl DiagramSpec {
+    /// How deep group `g` is nested: 0 for a group at the top level (a broken `parent` chain
+    /// stops counting).
+    pub fn group_depth(&self, g: usize) -> usize {
+        let mut depth = 0;
+        let mut at = self.groups[g].parent.as_deref();
+        while let Some(id) = at {
+            let Some(p) = self.groups.iter().find(|h| h.id == id) else {
+                break;
+            };
+            depth += 1;
+            if depth > self.groups.len() {
+                break;
+            }
+            at = p.parent.as_deref();
+        }
+        depth
+    }
 }
 
 /// An icon brought by the user, as SVG path data: lines drawn like the built-in icons'

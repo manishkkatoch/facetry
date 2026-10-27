@@ -10,6 +10,11 @@
 //!
 //! Everything is deterministic and ties keep the current order, so the author's node order
 //! survives wherever it does not cost crossings.
+//!
+//! With groups (subgraphs) every layer is **regrouped** after each step: the members of a group
+//! are gathered into one run, the group's border nodes at its ends, and the runs and the nodes
+//! around them keep the order of their mean positions. Transposition only swaps two nodes of
+//! the same innermost group, so a step never breaks a group apart.
 
 /// Sweeps without an improvement before giving up, and sweeps at most.
 const PATIENCE: usize = 4;
@@ -22,6 +27,121 @@ pub struct Layers {
     pub layers: Vec<Vec<usize>>,
     pub down: Vec<Vec<(usize, f64)>>,
     pub up: Vec<Vec<(usize, f64)>>,
+    /// Groups, if the graph has any.
+    pub nest: Option<Nest>,
+}
+
+/// A node being regrouped: itself, its position in the layer, and the groups round it
+/// (outermost first).
+type Item = (usize, f64, Vec<usize>);
+
+/// Which side of its group a border node marks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+/// The groups of a layered graph: every node's innermost group, which nodes are a group's
+/// border, and each group's parent.
+#[derive(Debug, Clone)]
+pub struct Nest {
+    pub member: Vec<Option<usize>>,
+    pub border: Vec<Option<(usize, Side)>>,
+    pub parent: Vec<Option<usize>>,
+}
+
+impl Nest {
+    /// The groups around `v`, outermost first.
+    fn path(&self, v: usize) -> Vec<usize> {
+        let mut path = Vec::new();
+        let mut g = self.member[v];
+        while let Some(i) = g {
+            path.push(i);
+            g = self.parent[i];
+        }
+        path.reverse();
+        path
+    }
+
+    /// `layer` with every group's members together and its borders at its ends; otherwise
+    /// in the order of the current positions (a run counts at the mean of its members').
+    pub fn regroup(&self, layer: &[usize]) -> Vec<usize> {
+        let items: Vec<Item> = layer
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| (v, i as f64, self.path(v)))
+            .collect();
+        let mut out = Vec::with_capacity(layer.len());
+        self.arrange(&items, 0, &mut out);
+        out
+    }
+
+    /// Lays out `items`, which all share their first `depth` groups.
+    fn arrange(&self, items: &[Item], depth: usize, out: &mut Vec<usize>) {
+        // Entries at this level: a node directly here, or the run of a group one level in.
+        let mut entries: Vec<(f64, Option<usize>, Vec<&Item>)> = Vec::new();
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        for item in items {
+            let (v, _, path) = item;
+            match path.get(depth) {
+                // A border of the group we are in: at its end.
+                None if depth > 0 && self.border[*v].is_some() => {
+                    match self.border[*v].map(|b| b.1) {
+                        Some(Side::Left) => left.push(*v),
+                        _ => right.push(*v),
+                    }
+                }
+                None => entries.push((item.1, None, vec![item])),
+                Some(&g) => match entries.iter_mut().find(|e| e.1 == Some(g)) {
+                    Some(e) => e.2.push(item),
+                    None => entries.push((0.0, Some(g), vec![item])),
+                },
+            }
+        }
+        // A run counts at the mean position of what it holds; its borders only follow the
+        // borders above them, so they would pin the runs in their first order.
+        for e in &mut entries {
+            if e.1.is_some() {
+                let inner: Vec<f64> =
+                    e.2.iter()
+                        .filter(|i| self.border[i.0].is_none())
+                        .map(|i| i.1)
+                        .collect();
+                let keys: Vec<f64> = if inner.is_empty() {
+                    e.2.iter().map(|i| i.1).collect()
+                } else {
+                    inner
+                };
+                e.0 = keys.iter().sum::<f64>() / keys.len() as f64;
+            }
+        }
+        // Stable, by key: an insertion sort (a layer holds few runs, and the standard library's
+        // sort would add kilobytes of wasm for this one entry type).
+        for i in 1..entries.len() {
+            let mut j = i;
+            while j > 0 && entries[j - 1].0 > entries[j].0 {
+                entries.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+        out.extend(left);
+        for (_, group, members) in entries {
+            match group {
+                None => out.push(members[0].0),
+                Some(_) => {
+                    let inner: Vec<Item> = members.into_iter().cloned().collect();
+                    self.arrange(&inner, depth + 1, out);
+                }
+            }
+        }
+        out.extend(right);
+    }
+
+    /// Whether swapping neighbours `a` and `b` keeps every group together.
+    fn may_swap(&self, a: usize, b: usize) -> bool {
+        self.member[a] == self.member[b] && self.border[a].is_none() && self.border[b].is_none()
+    }
 }
 
 impl Layers {
@@ -82,6 +202,7 @@ impl Layers {
     /// Orders every layer.
     pub fn order(&mut self) {
         self.initial_order();
+        self.regroup();
         let mut best = self.layers.clone();
         let mut best_crossings = self.crossings();
         let mut idle = 0;
@@ -91,6 +212,7 @@ impl Layers {
             }
             let downward = sweep % 2 == 0;
             self.sweep(downward);
+            self.regroup();
             self.transpose();
             let c = self.crossings();
             if c < best_crossings {
@@ -102,6 +224,15 @@ impl Layers {
             }
         }
         self.layers = best;
+    }
+
+    /// Gathers every group's members (see [`Nest::regroup`]); nothing without groups.
+    fn regroup(&mut self) {
+        if let Some(nest) = &self.nest {
+            for layer in &mut self.layers {
+                *layer = nest.regroup(layer);
+            }
+        }
     }
 
     /// Depth-first from the nodes of the first layers, in input order: connected nodes start
@@ -177,6 +308,9 @@ impl Layers {
                 for i in 1..self.layers[r].len() {
                     let pos = self.positions();
                     let (a, b) = (self.layers[r][i - 1], self.layers[r][i]);
+                    if self.nest.as_ref().is_some_and(|n| !n.may_swap(a, b)) {
+                        continue;
+                    }
                     let before = self.pair_crossings(a, b, &pos);
                     let after = self.pair_crossings(b, a, &pos);
                     if after < before {
@@ -243,7 +377,35 @@ mod tests {
             layers: layers.iter().map(|l| l.to_vec()).collect(),
             down,
             up,
+            nest: None,
         }
+    }
+
+    #[test]
+    fn groups_stay_together_with_their_borders_at_the_ends() {
+        // Groups 0 (outer) and 1 (in 0). Nodes 0..6; 4 and 5 borders of group 1.
+        let nest = Nest {
+            member: vec![None, Some(0), Some(1), None, Some(1), Some(1), Some(0)],
+            border: vec![
+                None,
+                None,
+                None,
+                None,
+                Some((1, Side::Left)),
+                Some((1, Side::Right)),
+                None,
+            ],
+            parent: vec![None, Some(0)],
+        };
+        // Scattered: 1 (in 0) .. 3 (out) .. 2 (in 1) .. 6 (in 0)...
+        let got = nest.regroup(&[1, 5, 3, 2, 0, 6, 4]);
+        // Group 0's run: 1, then group 1's run [4, 2, 5], then 6; around it 3 and 0.
+        let at = |v: usize| got.iter().position(|&x| x == v).unwrap();
+        assert!(at(4) + 1 == at(2) && at(2) + 1 == at(5), "{got:?}");
+        let run: Vec<usize> =
+            got[at(1).min(at(6)).min(at(4))..=at(1).max(at(6)).max(at(5))].to_vec();
+        assert_eq!(run.len(), 5, "group 0 together: {got:?}");
+        assert!(!nest.may_swap(1, 4) && !nest.may_swap(1, 3) && nest.may_swap(0, 3));
     }
 
     #[test]

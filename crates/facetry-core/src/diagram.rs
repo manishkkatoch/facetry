@@ -176,6 +176,12 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
                 format!("duplicate node id {:?}", node.id),
             ));
         }
+        if diagram.groups.iter().any(|g| g.id == node.id) {
+            issues.push(Issue::new(
+                at("id"),
+                format!("{:?} is the id of a group too", node.id),
+            ));
+        }
         for (field, v) in [("x", node.x), ("y", node.y)] {
             if !v.is_finite() {
                 issues.push(Issue::new(
@@ -243,12 +249,18 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
             }
         }
     }
+    validate_groups(diagram, issues);
     for (i, edge) in diagram.edges.iter().enumerate() {
         let n = i.to_string();
         let at = |field: &str| pointer(&["diagram", "edges", &n, field]);
         for (field, id) in [("from", &edge.from), ("to", &edge.to)] {
-            if !diagram.nodes.iter().any(|m| &m.id == id) {
-                issues.push(Issue::new(at(field), format!("no node has the id {id:?}")));
+            let known = diagram.nodes.iter().any(|m| &m.id == id)
+                || diagram.groups.iter().any(|g| &g.id == id);
+            if !known {
+                issues.push(Issue::new(
+                    at(field),
+                    format!("no node or group has the id {id:?}"),
+                ));
             }
         }
         if edge.points.len() < 2 {
@@ -266,6 +278,78 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
                 at("labelPosition"),
                 "labelPosition must be finite numbers",
             ));
+        }
+    }
+}
+
+/// Groups: unique ids, a box of finite position and positive size, valid colours, and a
+/// `parent` that is another group without going round in a circle.
+fn validate_groups(diagram: &DiagramSpec, issues: &mut Vec<Issue>) {
+    for (i, group) in diagram.groups.iter().enumerate() {
+        let n = i.to_string();
+        let at = |field: &str| pointer(&["diagram", "groups", &n, field]);
+        if group.id.is_empty() {
+            issues.push(Issue::new(at("id"), "a group id must not be empty"));
+        } else if diagram.groups[..i].iter().any(|g| g.id == group.id) {
+            issues.push(Issue::new(
+                at("id"),
+                format!("duplicate group id {:?}", group.id),
+            ));
+        }
+        for (field, v) in [("x", group.x), ("y", group.y)] {
+            if !v.is_finite() {
+                issues.push(Issue::new(
+                    at(field),
+                    format!("{field} must be a finite number"),
+                ));
+            }
+        }
+        for (field, v) in [("width", group.width), ("height", group.height)] {
+            if !(v.is_finite() && v > 0.0) {
+                issues.push(Issue::new(
+                    at(field),
+                    format!("{field} must be a positive number"),
+                ));
+            }
+        }
+        for (field, value) in [
+            ("color", &group.color),
+            ("stroke", &group.stroke),
+            ("textColor", &group.text_color),
+        ] {
+            if let Some(Err(e)) = value.as_deref().map(Color::from_hex) {
+                issues.push(Issue::new(at(field), e.to_string()));
+            }
+        }
+        if let Some(parent) = &group.parent {
+            if !diagram.groups.iter().any(|g| &g.id == parent) {
+                issues.push(Issue::new(
+                    at("parent"),
+                    format!("no group has the id {parent:?}"),
+                ));
+            } else {
+                // Follow the parents: back to this group means a circle.
+                let mut seen = 0;
+                let mut cur = Some(parent.as_str());
+                while let Some(id) = cur {
+                    if id == group.id {
+                        issues.push(Issue::new(
+                            at("parent"),
+                            format!("group {:?} is nested in itself", group.id),
+                        ));
+                        break;
+                    }
+                    seen += 1;
+                    if seen > diagram.groups.len() {
+                        break;
+                    }
+                    cur = diagram
+                        .groups
+                        .iter()
+                        .find(|g| g.id == id)
+                        .and_then(|g| g.parent.as_deref());
+                }
+            }
         }
     }
 }
@@ -400,6 +484,10 @@ impl Plan {
                 add(p);
             }
         }
+        for g in &diagram.groups {
+            add([g.x - g.width / 2.0, g.y - g.height / 2.0]);
+            add([g.x + g.width / 2.0, g.y + g.height / 2.0]);
+        }
         if !lo[0].is_finite() {
             lo = [0.0; 2];
             hi = [0.0; 2];
@@ -455,6 +543,14 @@ impl Plan {
             ((p[0] - self.origin[0]) * self.scale) as f32,
             y as f32,
             ((p[1] - self.origin[1]) * self.scale) as f32,
+        ]
+    }
+
+    /// The layout point under world point `[x, z]`.
+    pub(crate) fn layout_point(&self, x: f32, z: f32) -> [f64; 2] {
+        [
+            f64::from(x) / self.scale + self.origin[0],
+            f64::from(z) / self.scale + self.origin[1],
         ]
     }
 
@@ -640,6 +736,7 @@ pub fn build_diagram_3d(
         font_size: None,
         style: DiagramStyle::Flat,
         icons: Vec::new(),
+        groups: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
     match diagram.style {
@@ -658,6 +755,7 @@ pub fn build_diagram_3d(
     let palette = Palette::new(theme);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
+    crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);
 
     // How many screen pixels a layout unit is at the starting camera, to size the labels.
     let camera = spec.start_camera(viewport_px, dpr).unwrap_or(CameraSpec {
@@ -678,7 +776,9 @@ pub fn build_diagram_3d(
         push_node(&mut scene, &plan, &palette, i, node, top, s, label_px);
     }
     for (i, edge) in diagram.edges.iter().enumerate() {
-        let known = |id: &str| diagram.nodes.iter().any(|n| n.id == id);
+        let known = |id: &str| {
+            diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
+        };
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }

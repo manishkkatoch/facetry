@@ -257,6 +257,9 @@ pub struct ShadowMark {
     #[serde(serialize_with = "w4")]
     pub blur: f32,
     pub color: Color,
+    /// Height of the surface it falls on (a group's base), world units; 0 for the floor.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub lift: f32,
 }
 
 impl PrismMark {

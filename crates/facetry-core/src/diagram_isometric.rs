@@ -106,10 +106,13 @@ pub(crate) fn build(
     let plan = Plan::new(diagram);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
+    crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);
     let shadow = Color::linear(0.0, 0.0, 0.0, SHADOW_ALPHA);
     // Roads first: they lie under everything.
     for (i, edge) in diagram.edges.iter().enumerate() {
-        let known = |id: &str| diagram.nodes.iter().any(|n| n.id == id);
+        let known = |id: &str| {
+            diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
+        };
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
@@ -118,6 +121,7 @@ pub(crate) fn build(
     for (i, node) in diagram.nodes.iter().enumerate() {
         push_node(&mut scene, &plan, i, node, s, shadow, theme.text, measure);
     }
+    crate::diagram_groups::lift_shadows(&mut scene, &plan, diagram);
     scene
 }
 

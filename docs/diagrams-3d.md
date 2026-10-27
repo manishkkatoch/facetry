@@ -127,12 +127,43 @@ Done in 2D on the floor plane, then lifted into 3D:
 6. **Route** edges as splines through the inter-rank gaps, attached at node borders, with
    arrowheads.
 7. **Subgraphs** as compound nodes: their members are kept contiguous in each rank and boxed;
-   this is the weakest part of Mermaid's output and where most of the effort goes.
+   this is the weakest part of Mermaid's output and where most of the effort goes. See
+   "Subgraphs (D2)" below for how it is done.
 
 The algorithm follows dagre (MIT), ported and adapted rather than wrapped; ELK's layered
 algorithm is better in places but is EPL-licensed and much larger. In 3D, height carries
 structure: each subgraph is a platform raised or inset relative to its parent, and where two
 edges cross in the plan, one arcs over the other so they never intersect visually.
+
+### Subgraphs (D2)
+
+Done as dagre does clusters, inside the same layered pipeline:
+
+* **Membership.** A node belongs to the innermost subgraph that mentions it (the first to
+  close, as in Mermaid). A long edge's dummy nodes belong to the innermost group holding both of
+  its ends, so an edge between outsiders is never placed inside a group. An edge to a whole
+  subgraph (`a --> sub`) is laid out to the subgraph's first node and cut where it meets the
+  box; an empty subgraph gets an invisible stand-in node so it still has a box.
+* **Ordering.** After every barycenter sweep each layer is *regrouped*: a group's members are
+  gathered into one run, its border nodes at the ends, runs and loose nodes in the order of
+  their mean positions (counting only real members: borders would pin the runs in their first
+  order). Transposition only swaps two nodes of the same innermost group.
+* **Rectangles.** Each group has a border node on each side in every rank it spans, chained down
+  the ranks. Brandes–Köpf keeps such chains straight (their segments win type 1 conflicts like
+  any long edge's), so the borders are a rectangle's sides; the separation next to a border is
+  the group's inner room on that side or the space round it, decided by whether the neighbour is
+  inside the group (the right-to-left scans mirror the layers, so sides cannot be read from the
+  order).
+* **Titles and padding.** Room before a group's first rank and after its last is added between
+  the ranks (a group's own plus that of the groups inside it starting on the same rank). The
+  title goes on the side that is the top of the drawing: before the first rank (TB), after the
+  last (BT), or inside the left border (LR, RL, whose layout x becomes the drawing's y).
+* **Drawing.** A base under the nodes, a little thicker per level of nesting and below
+  everything that lies on the floor; soft shadows are lifted onto the base they fall on. The
+  title is printed at the top left and shrinks if the box is narrow.
+* **Measured.** Group overlaps (boxes overlapping without one holding the other, or a box's
+  edge cutting a node) and edges through a group holding neither end are in the corpus metrics
+  and must stay 0.
 
 ### Architecture: constraint grid
 
@@ -219,7 +250,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
-| **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, labels that follow the zoom, themes, `diagram.run()` |
+| **D2** (in progress) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics). Next: edges arcing over crossings, `diagram.run()`; later, labels that follow the zoom and themes |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
 | **D5** | Animation controller, sequence playback, build-in, flow along edges |

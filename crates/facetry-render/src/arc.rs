@@ -770,6 +770,7 @@ mod tests {
             outline: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
             blur: 0.2,
             color: Color::linear(0.0, 0.0, 0.0, 0.3),
+            lift: 0.0,
         };
         let mut v = Vec::new();
         super::shadow(&s, [0.0, 0.0, 0.0, 0.3], 0.001, &mut v);

@@ -45,6 +45,22 @@ pub fn from_mermaid(source: &str) -> Result<Diagram, Vec<DiagramIssue>> {
 
 /// [`from_mermaid`] with options (the style, which also decides how edges are routed).
 pub fn from_mermaid_with(source: &str, options: &Options) -> Result<Diagram, Vec<DiagramIssue>> {
+    let built = lay_out(source, options)?;
+    let metrics = metrics::measure(&built.spec, &built.control, build::FONT);
+    Ok(Diagram {
+        spec: built.spec,
+        metrics,
+    })
+}
+
+/// The spec alone, as JSON for `Chart.create`: what the wasm module returns. The quality
+/// metrics are not measured (they are for the tests), which keeps them out of the module.
+pub fn chart_json(source: &str, options: &Options) -> Result<String, Vec<DiagramIssue>> {
+    Ok(json::chart_spec_json(&lay_out(source, options)?.spec))
+}
+
+/// Parses and lays out.
+fn lay_out(source: &str, options: &Options) -> Result<build::Built, Vec<DiagramIssue>> {
     match flowchart::kind(source).map_err(|i| vec![i])? {
         flowchart::Kind::Flowchart => {}
         kind => {
@@ -62,10 +78,5 @@ pub fn from_mermaid_with(source: &str, options: &Options) -> Result<Diagram, Vec
     }
     let names: Vec<&str> = options.icons.iter().map(|(n, _)| n.as_str()).collect();
     let chart = flowchart::parse_with_icons(source, &names)?;
-    let built = build::build(&chart, options);
-    let metrics = metrics::measure(&built.spec, &built.control, build::FONT);
-    Ok(Diagram {
-        spec: built.spec,
-        metrics,
-    })
+    Ok(build::build(&chart, options))
 }

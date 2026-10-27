@@ -139,3 +139,20 @@ for (const [name, query] of [
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
   });
 }
+
+// Subgraphs: nested groups (33-nested, a cloud region holding two tiers), an org chart with a
+// group in a group (36-org), and edges that start and end at whole groups (34-group-edges), as
+// slabs, trays, tinted plates and fenced pads.
+for (const [name, query] of [
+  ["groups-36-org", "example=mermaid/36-org"],
+  ["glossy-groups-33-nested", "style=glossy&example=mermaid/33-nested"],
+  ["isometric-groups-33-nested", "style=isometric&example=mermaid/33-nested"],
+  ["schematic-groups-34-group-edges", "style=schematic&example=mermaid/34-group-edges"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}

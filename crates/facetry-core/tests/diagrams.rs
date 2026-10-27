@@ -686,3 +686,117 @@ fn filled_icons_are_printed_as_flat_triangles_with_their_holes() {
         );
     }
 }
+
+/// GOOD with its two nodes in group `team` (titled), which sits in group `org`.
+fn grouped() -> String {
+    broken(
+        r#""diagram": {"#,
+        r#""diagram": { "groups": [
+            { "id": "org", "label": "Organisation", "x": 50, "y": 70, "width": 160, "height": 200 },
+            { "id": "team", "label": "Team", "x": 50, "y": 75, "width": 120, "height": 170, "parent": "org" }
+        ],"#,
+    )
+}
+
+#[test]
+fn groups_validate_and_edges_may_end_at_them() {
+    assert_eq!(issues(&grouped()), vec![]);
+    // An edge to a group by its id.
+    let to_group = grouped().replace(r#""to": "b""#, r#""to": "team""#);
+    assert_eq!(issues(&to_group), vec![]);
+    let bad = |from: &str, to: &str| issues(&grouped().replace(from, to));
+    let got = bad(r#""to": "b""#, r#""to": "nobody""#);
+    assert_eq!(got[0].path, "/diagram/edges/0/to");
+    assert_eq!(got[0].message, "no node or group has the id \"nobody\"");
+    let got = bad(r#""id": "team""#, r#""id": "org""#);
+    assert!(
+        got.iter()
+            .any(|i| i.path == "/diagram/groups/1/id" && i.message.contains("duplicate group id"))
+    );
+    let got = bad(r#""id": "team""#, r#""id": "a""#);
+    assert!(
+        got.iter()
+            .any(|i| i.path == "/diagram/nodes/0/id" && i.message.contains("id of a group too"))
+    );
+    let got = bad(r#""parent": "org""#, r#""parent": "nowhere""#);
+    assert_eq!(got[0].path, "/diagram/groups/1/parent");
+    let got = bad(
+        r#""label": "Organisation","#,
+        r#""label": "Organisation", "parent": "team","#,
+    );
+    assert!(
+        got.iter().any(|i| i.message.contains("nested in itself")),
+        "{got:?}"
+    );
+    let got = bad(r#""width": 120"#, r#""width": 0"#);
+    assert_eq!(got[0].path, "/diagram/groups/1/width");
+    let got = bad(
+        r#""label": "Team","#,
+        r#""label": "Team", "color": "blue","#,
+    );
+    assert_eq!(got[0].path, "/diagram/groups/1/color");
+}
+
+#[test]
+fn every_style_draws_groups_as_bases_with_their_titles() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = grouped().replace(r#""groups""#, &format!(r#""style": "{style}", "groups""#));
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let base = |id: &str| {
+            scene
+                .decor
+                .iter()
+                .find(|p| p.key == format!("{id}/base"))
+                .unwrap_or_else(|| panic!("{style}: no base for {id}"))
+        };
+        // The inner group's base stands on the outer's.
+        assert!(base("team").top > base("org").top, "{style}");
+        assert!(base("org").top > 0.0);
+        for title in ["Organisation", "Team"] {
+            let t = scene.texts.iter().find(|t| t.text == title).expect(title);
+            assert!(t.flat.is_some(), "{style}: {title} is printed");
+        }
+        // Outlined.
+        assert!(
+            scene.polylines.iter().any(|p| p.key == "team/edge"),
+            "{style}"
+        );
+        // The nodes are still the marks.
+        assert_eq!(scene.prisms.len(), 2, "{style}");
+        if style == "schematic" {
+            assert!(scene.decor.iter().any(|p| p.key.starts_with("org/post/")));
+            assert!(scene.ribbons.iter().any(|r| r.key == "org/rail/0"));
+        }
+        if style == "glossy" || style == "isometric" {
+            // Shadows of what stands on a base are lifted onto it.
+            let team_top = base("team").top;
+            assert!(
+                scene
+                    .shadows
+                    .iter()
+                    .any(|s| (s.lift - team_top).abs() < 1e-6),
+                "{style}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_long_group_title_shrinks_to_fit_its_box() {
+    let json = grouped().replace(
+        r#""label": "Team""#,
+        r#""label": "A very long title that will not fit""#,
+    );
+    let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+    let long = scene
+        .texts
+        .iter()
+        .find(|t| t.text.starts_with("A very"))
+        .unwrap();
+    let short = scene
+        .texts
+        .iter()
+        .find(|t| t.text == "Organisation")
+        .unwrap();
+    assert!(long.size_px < short.size_px);
+}

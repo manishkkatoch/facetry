@@ -1,0 +1,12 @@
+flowchart TD
+    start([Start]) --> build
+    subgraph build [Build]
+        direction LR
+        compile --> test
+    end
+    subgraph ship [Ship]
+        package --> publish
+    end
+    build --> ship
+    ship --> done([Done])
+    test --> package
