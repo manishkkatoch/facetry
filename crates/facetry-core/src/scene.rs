@@ -3,7 +3,10 @@
 //! top-left, y down.
 //!
 //! Every item carries a `key` that identifies it across rebuilds (`layer0/Q1`,
-//! `axis:y/tick:100`). Nothing uses keys yet; they are the hook for picking and transitions.
+//! `axis:y/tick:100`). Hover and click use them, and so do transitions: the keys of the scene
+//! on screen and of the new one decide which marks enter, move and exit (see
+//! [`crate::transition`]). A few `#[serde(skip)]` fields (`base`, `tick`, [`Scene::axes`]) carry
+//! what a transition needs beyond the geometry; they are not part of the snapshots.
 
 use serde::{Serialize, Serializer};
 
@@ -47,6 +50,57 @@ impl Bounds {
     }
 }
 
+/// Where a bar grows from (or shrinks to) when it enters or exits: the edge of the bar that
+/// sits at `y0`, the data value at which it starts (0, or the top of the stack below it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Base {
+    /// Index into [`Scene::axes`] of the value axis the bar is measured on.
+    pub axis: usize,
+    pub y0: f64,
+    /// Whether `y0` is the bar's bottom edge (a positive bar), else its top edge.
+    pub from_bottom: bool,
+}
+
+/// A tick's place on a value axis, so a transition can slide it along the old or the new scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TickRef {
+    /// Index into [`Scene::axes`].
+    pub axis: usize,
+    pub value: f64,
+}
+
+/// A linear axis as a pixel mapping: `value -> range.0 + (value - domain.0) / (domain.1 -
+/// domain.0) * (range.1 - range.0)`. A scene lists its axes so that a transition can ask where
+/// the *other* scene's scale would put a value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AxisMap {
+    pub id: String,
+    /// A value axis on the left or right runs along y; a numeric bottom axis along x.
+    pub vertical: bool,
+    pub domain: (f64, f64),
+    pub range: (f64, f64),
+}
+
+impl AxisMap {
+    /// The pixel for `value`, not limited to the domain (the scale extended past its ends).
+    pub fn px_unclamped(&self, value: f64) -> f64 {
+        let span = self.domain.1 - self.domain.0;
+        if span == 0.0 {
+            return self.range.0;
+        }
+        self.range.0 + (value - self.domain.0) / span * (self.range.1 - self.range.0)
+    }
+
+    /// The pixel for `value`, clamped to the domain like the bars are.
+    pub fn px(&self, value: f64) -> f64 {
+        let (lo, hi) = (
+            self.domain.0.min(self.domain.1),
+            self.domain.0.max(self.domain.1),
+        );
+        self.px_unclamped(value.clamp(lo, hi))
+    }
+}
+
 /// A filled rectangle (a bar).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Rect {
@@ -65,6 +119,9 @@ pub struct Rect {
     /// the first row's data with its y value replaced by this.
     #[serde(skip)]
     pub sum: Option<f64>,
+    /// What a transition grows the bar from (and shrinks it to).
+    #[serde(skip)]
+    pub base: Option<Base>,
 }
 
 /// A line layer's series: one or more runs of connected points (a missing value ends a run
@@ -81,6 +138,15 @@ pub struct Polyline {
     /// The layer it belongs to; the renderer draws one batch per layer.
     #[serde(skip)]
     pub layer: usize,
+    /// How much of the line is drawn, from its start: 1 all of it. A transition draws a new
+    /// line on by taking this from 0 to 1; the scene builders always make 1.
+    #[serde(skip)]
+    pub reveal: f32,
+    /// The key of the data point at each vertex, in the order of `runs` flattened (empty for
+    /// lines that are not a data series). It lets a transition match vertices of two versions
+    /// of a line by point, so a point that stays on the line moves with it.
+    #[serde(skip)]
+    pub keys: Vec<String>,
 }
 
 fn runs<S: Serializer>(v: &[Vec<[f32; 2]>], s: S) -> Result<S::Ok, S::Error> {
@@ -239,6 +305,9 @@ pub struct Rule {
     #[serde(flatten)]
     pub bounds: Bounds,
     pub color: Color,
+    /// For a tick or gridline of a value axis: which value it marks.
+    #[serde(skip)]
+    pub tick: Option<TickRef>,
 }
 
 /// Which point of the text sits at the anchor position, along the reading direction.
@@ -273,6 +342,9 @@ pub struct Text {
     pub color: Color,
     pub anchor: Anchor,
     pub rotation: Rotation,
+    /// For the label of a tick of a value axis: which value it marks.
+    #[serde(skip)]
+    pub tick: Option<TickRef>,
 }
 
 /// A value label that belongs to a bar. The text is laid out like any other, but whether it
@@ -311,6 +383,9 @@ pub struct Scene {
     /// How close (device pixels) the pointer must be to a point to pick it.
     #[serde(skip)]
     pub pick_radius: f32,
+    /// The linear axes, for transitions (see [`AxisMap`]).
+    #[serde(skip)]
+    pub axes: Vec<AxisMap>,
     /// Where the legend's entries can be clicked (empty without a legend, or with
     /// `legend.interactive: false`). Not part of the snapshot: the legend's swatches are.
     #[serde(skip)]
@@ -344,6 +419,7 @@ impl Scene {
             points: Vec::new(),
             arcs: Vec::new(),
             pick_radius: 0.0,
+            axes: Vec::new(),
             legend_hits: Vec::new(),
         }
     }

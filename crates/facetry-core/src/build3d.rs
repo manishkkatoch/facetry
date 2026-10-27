@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::Theme;
 use crate::scale::{Band, Linear, Ticks, format_number, format_percent, format_value};
-use crate::scene::{Anchor, RuleKind};
+use crate::scene::{Anchor, AxisMap, Base, RuleKind, TickRef};
 use crate::scene3d::*;
 use crate::spec::{ChartSpec, DEFAULT_POINT_SIZE, DEFAULT_STROKE_WIDTH, Mark, Orient, Position};
 use crate::text::TextMeasure;
@@ -275,9 +275,21 @@ pub fn build_scene_3d_with_theme(
         polylines: Vec::new(),
         points: Vec::new(),
         pick_radius: (crate::build::POINT_PICK_RADIUS * s) as f32,
+        axes: Vec::new(),
         texts: Vec::new(),
         labels: Vec::new(),
     };
+    // The y axis as a mapping to the box's height, for transitions.
+    let y_map = y_axis.map(|i| {
+        scene.axes.push(AxisMap {
+            id: spec.axes[i].id.clone(),
+            vertical: true,
+            domain: y_scale.domain(),
+            range: y_scale.range(),
+        });
+        scene.axes.len() - 1
+    });
+    let y_tick = |v: f64| y_map.map(|axis| TickRef { axis, value: v });
     // Value labels wait until the pixel sizes below are known.
     let mut value_labels: Vec<PendingLabel> = Vec::new();
 
@@ -337,6 +349,11 @@ pub fn build_scene_3d_with_theme(
                 ],
                 max: [(left + width_x) as f32, y_a.max(y_b) as f32, z1 as f32],
                 color: bar.color,
+                base: y_map.map(|axis| Base {
+                    axis,
+                    y0: bar.y0,
+                    from_bottom: bar.y1 >= bar.y0,
+                }),
             });
         }
     }
@@ -408,6 +425,7 @@ pub fn build_scene_3d_with_theme(
                 LabelRole::Fixed
             },
             halo: !pending.inside,
+            tick: None,
             flat: None,
             upright: None,
         };
@@ -505,6 +523,7 @@ pub fn build_scene_3d_with_theme(
             }
             let mut runs: Vec<Vec<[f32; 3]>> = Vec::new();
             let mut current: Vec<[f32; 3]> = Vec::new();
+            let mut vertex_keys: Vec<String> = Vec::new();
             for &(_, x, z, row) in &rows {
                 let value = layer.y[row];
                 // A missing value ends the run: the line has a gap there.
@@ -558,11 +577,13 @@ pub fn build_scene_3d_with_theme(
                             // Hidden while a bar is in front of the point.
                             role: LabelRole::OnPoint,
                             halo: true,
+                            tick: None,
                             flat: None,
                             upright: None,
                         },
                     });
                 }
+                vertex_keys.push(key.clone());
                 scene.points.push(PointMark3 {
                     key,
                     pos,
@@ -584,27 +605,34 @@ pub fn build_scene_3d_with_theme(
                     runs,
                     area,
                     layer: layer.index,
+                    reveal: 1.0,
+                    keys: vertex_keys,
                 });
             }
         }
     }
 
-    let mut line =
-        |key: String, kind: RuleKind, a: [f32; 3], b: [f32; 3], azimuths: Option<AzimuthRange>| {
-            let (width_px, color) = match kind {
-                RuleKind::Grid => (hair, theme.grid),
-                RuleKind::Axis | RuleKind::Tick | RuleKind::Swatch => (heavy, theme.axis),
-            };
-            scene.lines.push(Line3 {
-                key,
-                kind,
-                a,
-                b,
-                width_px,
-                color,
-                azimuths,
-            });
+    let mut line = |key: String,
+                    kind: RuleKind,
+                    a: [f32; 3],
+                    b: [f32; 3],
+                    azimuths: Option<AzimuthRange>,
+                    tick: Option<TickRef>| {
+        let (width_px, color) = match kind {
+            RuleKind::Grid => (hair, theme.grid),
+            RuleKind::Axis | RuleKind::Tick | RuleKind::Swatch => (heavy, theme.axis),
         };
+        scene.lines.push(Line3 {
+            key,
+            kind,
+            a,
+            b,
+            width_px,
+            color,
+            azimuths,
+            tick,
+        });
+    };
 
     // --- back walls and floor ---------------------------------------------------------------
     // A wall is a *back* wall while the camera is on the far side of the box centre from it:
@@ -648,6 +676,7 @@ pub fn build_scene_3d_with_theme(
                 a,
                 b,
                 Some(range),
+                y_tick(v),
             );
         }
         // The wall's bottom edge doubles as the floor's border.
@@ -656,7 +685,14 @@ pub fn build_scene_3d_with_theme(
         } else {
             ([0.0, 0.0, at], [w, 0.0, at])
         };
-        line(format!("floor:{name}"), RuleKind::Grid, a, b, Some(range));
+        line(
+            format!("floor:{name}"),
+            RuleKind::Grid,
+            a,
+            b,
+            Some(range),
+            None,
+        );
     }
     // Where two back walls meet.
     let corners = [
@@ -672,18 +708,19 @@ pub fn build_scene_3d_with_theme(
             [x, 0.0, z],
             [x, 1.0, z],
             Some(range),
+            None,
         );
     }
     // Cell borders on the floor (the outer border is drawn above).
     for k in 1..nx {
         let x = (k as f64 * cell) as f32;
         let (a, b) = ([x, 0.0, 0.0], [x, 0.0, d]);
-        line(format!("floor:x{k}"), RuleKind::Grid, a, b, None);
+        line(format!("floor:x{k}"), RuleKind::Grid, a, b, None, None);
     }
     for k in 1..nz {
         let z = (k as f64 * cell) as f32;
         let (a, b) = ([0.0, 0.0, z], [w, 0.0, z]);
-        line(format!("floor:z{k}"), RuleKind::Grid, a, b, None);
+        line(format!("floor:z{k}"), RuleKind::Grid, a, b, None, None);
     }
     // A numeric x has no cells: its ticks get floor lines instead, to read positions along it.
     if let Some((scale, ticks)) = &x_scale {
@@ -691,7 +728,7 @@ pub fn build_scene_3d_with_theme(
             let x = scale.map(v) as f32;
             if x > 0.0 && x < w {
                 let (a, b) = ([x, 0.0, 0.0], [x, 0.0, d]);
-                line(format!("floor:x:{label}"), RuleKind::Grid, a, b, None);
+                line(format!("floor:x:{label}"), RuleKind::Grid, a, b, None, None);
             }
         }
     }
@@ -747,7 +784,8 @@ pub fn build_scene_3d_with_theme(
                     align,
                     valign,
                     azimuths,
-                    role| {
+                    role,
+                    tick: Option<TickRef>| {
         scene.texts.push(Text3 {
             key,
             text: text.to_owned(),
@@ -764,6 +802,7 @@ pub fn build_scene_3d_with_theme(
             azimuths,
             role,
             halo: true,
+            tick,
             flat: None,
             upright: None,
         });
@@ -851,6 +890,7 @@ pub fn build_scene_3d_with_theme(
                 point(0.0, 0.0),
                 point(e.length, 0.0),
                 range,
+                None,
             );
             let step = e.domain.len().div_ceil(MAX_LABELS_PER_AXIS).max(1);
             let count = e.domain.len().div_ceil(step) as u16;
@@ -868,6 +908,7 @@ pub fn build_scene_3d_with_theme(
                     point(t, 0.0),
                     end,
                     range,
+                    None,
                 );
                 if i % step == 0 {
                     let (offset, align, valign) = if e.bottom {
@@ -891,6 +932,7 @@ pub fn build_scene_3d_with_theme(
                             index: (i / step) as u16,
                             count,
                         },
+                        None,
                     );
                 }
             }
@@ -924,6 +966,7 @@ pub fn build_scene_3d_with_theme(
                     valign,
                     range,
                     LabelRole::Title { group: e.group },
+                    None,
                 );
             }
         }
@@ -947,6 +990,7 @@ pub fn build_scene_3d_with_theme(
                 at(0.0, [0.0; 3]),
                 at(1.0, [0.0; 3]),
                 range,
+                None,
             );
             for (index, (&v, label)) in y_ticks.values.iter().zip(&y_labels).enumerate() {
                 let y = y_scale.map(v) as f32;
@@ -958,6 +1002,7 @@ pub fn build_scene_3d_with_theme(
                     at(y, [0.0; 3]),
                     end,
                     range,
+                    y_tick(v),
                 );
                 text(
                     format!("axis:{id}/label:{name}@{q}"),
@@ -973,6 +1018,7 @@ pub fn build_scene_3d_with_theme(
                         index: index as u16,
                         count: y_labels.len() as u16,
                     },
+                    y_tick(v),
                 );
             }
             if let Some(t) = &spec.axes[i].title {
@@ -986,6 +1032,7 @@ pub fn build_scene_3d_with_theme(
                     VAlign::Middle,
                     range,
                     LabelRole::Title { group: AXIS_Y },
+                    None,
                 );
             }
         }

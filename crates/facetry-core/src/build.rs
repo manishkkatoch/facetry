@@ -19,7 +19,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::Theme;
 use crate::scale::{Band, Linear, Ordinal, Ticks, format_number, format_percent, format_value};
 use crate::scene::{
-    Anchor, Bounds, MarkLabel, PointMark, Polyline, Rect, Rotation, Rule, RuleKind, Scene, Text,
+    Anchor, AxisMap, Base, Bounds, MarkLabel, PointMark, Polyline, Rect, Rotation, Rule, RuleKind,
+    Scene, Text, TickRef,
 };
 use crate::spec::{
     AxisSpec, ChartSpec, DEFAULT_POINT_SIZE, DEFAULT_STROKE_WIDTH, LabelSpec, Mark, Orient,
@@ -373,14 +374,34 @@ pub fn build_scene_with_theme(
         points: Vec::new(),
         arcs: Vec::new(),
         pick_radius: (POINT_PICK_RADIUS * s) as f32,
+        axes: Vec::new(),
         legend_hits: Vec::new(),
     };
+    // The linear axes as pixel mappings, for transitions. `axis_map[p]` is where plan `p`'s
+    // is in `scene.axes`.
+    let axis_map: Vec<Option<usize>> = plans
+        .iter()
+        .map(|p| match &p.scale {
+            AxisScale::Linear { scale, .. } => {
+                let (d0, d1) = scale.domain();
+                scene.axes.push(AxisMap {
+                    id: p.spec.id.clone(),
+                    vertical: p.spec.orient != Orient::Bottom,
+                    domain: (d0, d1),
+                    range: scale.range(),
+                });
+                Some(scene.axes.len() - 1)
+            }
+            AxisScale::Band(_) => None,
+        })
+        .collect();
     let snap = |v: f64| v.round();
     let rule = |key: String, kind, x: f64, y: f64, w: f64, h: f64, color| Rule {
         key,
         kind,
         bounds: Bounds::new(x, y, w, h),
         color,
+        tick: None,
     };
     let text =
         |key: String, text: String, x: f64, y: f64, size: f32, color, anchor, rotation| Text {
@@ -392,6 +413,7 @@ pub fn build_scene_with_theme(
             color,
             anchor,
             rotation,
+            tick: None,
         };
     let has_left = plan_index(&plans, Orient::Left).is_some();
     let has_right = plan_index(&plans, Orient::Right).is_some();
@@ -405,6 +427,7 @@ pub fn build_scene_with_theme(
         let AxisScale::Linear { scale, ticks } = &plans[pi].scale else {
             unreachable!("grid_plan is a linear axis");
         };
+        let tick_at = |v: f64| axis_map[pi].map(|axis| TickRef { axis, value: v });
         let (d0, _) = scale.domain();
         for &v in &ticks.values {
             let y = snap(scale.map(v)) - (line / 2.0).floor();
@@ -416,8 +439,8 @@ pub fn build_scene_with_theme(
             };
             // A tick at 0 with negative values below it doubles as the zero baseline, so it is
             // drawn in the axis colour and in front of the bars.
-            if v == 0.0 && d0 < 0.0 {
-                scene.rules.push(rule(
+            let mut r = if v == 0.0 && d0 < 0.0 {
+                rule(
                     key("zero"),
                     RuleKind::Axis,
                     plot_left,
@@ -425,9 +448,9 @@ pub fn build_scene_with_theme(
                     plot_right - plot_left,
                     line,
                     theme.axis,
-                ));
+                )
             } else {
-                scene.rules.push(rule(
+                rule(
                     key("grid"),
                     RuleKind::Grid,
                     plot_left,
@@ -435,8 +458,10 @@ pub fn build_scene_with_theme(
                     plot_right - plot_left,
                     line,
                     theme.grid,
-                ));
-            }
+                )
+            };
+            r.tick = tick_at(v);
+            scene.rules.push(r);
         }
     }
 
@@ -454,6 +479,10 @@ pub fn build_scene_with_theme(
             continue;
         };
         let (d0, d1) = scale.domain();
+        let value_axis = plans
+            .iter()
+            .position(|p| p.spec_index == layer.y_axis)
+            .and_then(|pi| axis_map[pi]);
         let label_spec = spec.layers[layer.index].label.as_ref();
         // `group` splits each x band into one slot per series (all series, so a series
         // keeps its slot at x values where it has no row).
@@ -550,6 +579,11 @@ pub fn build_scene_with_theme(
                 layer: layer.index,
                 row: bar.row,
                 sum: bar.sum,
+                base: value_axis.map(|axis| Base {
+                    axis,
+                    y0: bar.y0,
+                    from_bottom: bar.y1 >= bar.y0,
+                }),
             });
         }
     }
@@ -613,6 +647,7 @@ pub fn build_scene_with_theme(
             let color = color_of(series);
             let mut runs: Vec<Vec<[f32; 2]>> = Vec::new();
             let mut current: Vec<[f32; 2]> = Vec::new();
+            let mut vertex_keys: Vec<String> = Vec::new();
             for &(_, px, row) in &rows {
                 let value = layer.y[row];
                 // A missing value ends the run: the line has a gap there.
@@ -671,6 +706,7 @@ pub fn build_scene_with_theme(
                         ),
                     });
                 }
+                vertex_keys.push(key.clone());
                 scene.points.push(PointMark {
                     key,
                     x: px as f32,
@@ -695,6 +731,8 @@ pub fn build_scene_with_theme(
                     width: width as f32,
                     runs,
                     layer: layer.index,
+                    reveal: 1.0,
+                    keys: vertex_keys,
                 });
             }
         }
@@ -768,10 +806,15 @@ pub fn build_scene_with_theme(
                     theme.axis,
                 ));
                 let baseline = plot_bottom + line + tick_len + label_gap + label_asc;
+                let pi = plans
+                    .iter()
+                    .position(|q| q.spec_index == p.spec_index)
+                    .unwrap_or(0);
                 for (&v, label) in ticks.values.iter().zip(&x_tick_text) {
                     let cx = scale.map(v);
                     let name = format_number(v, ticks.decimals, false);
-                    scene.rules.push(rule(
+                    let at = axis_map[pi].map(|axis| TickRef { axis, value: v });
+                    let mut tick_rule = rule(
                         format!("axis:{id}/tick:{name}"),
                         RuleKind::Tick,
                         snap(cx) - (line / 2.0).floor(),
@@ -779,8 +822,10 @@ pub fn build_scene_with_theme(
                         line,
                         tick_len,
                         theme.axis,
-                    ));
-                    scene.texts.push(text(
+                    );
+                    tick_rule.tick = at;
+                    scene.rules.push(tick_rule);
+                    let mut tick_text = text(
                         format!("axis:{id}/label:{name}"),
                         label.clone(),
                         cx,
@@ -789,7 +834,9 @@ pub fn build_scene_with_theme(
                         theme.text_muted,
                         Anchor::Middle,
                         Rotation::None,
-                    ));
+                    );
+                    tick_text.tick = at;
+                    scene.texts.push(tick_text);
                 }
                 if let Some(t) = title {
                     scene.texts.push(text(
@@ -834,7 +881,8 @@ pub fn build_scene_with_theme(
                 for (&v, label) in ticks.values.iter().zip(&y_text[&pi].labels) {
                     let y = snap(scale.map(v));
                     let key = format!("tick:{}", format_number(v, ticks.decimals, false));
-                    scene.rules.push(rule(
+                    let at = axis_map[pi].map(|axis| TickRef { axis, value: v });
+                    let mut tick_rule = rule(
                         format!("axis:{id}/{key}"),
                         RuleKind::Tick,
                         tick_x,
@@ -842,8 +890,10 @@ pub fn build_scene_with_theme(
                         tick_len,
                         line,
                         theme.axis,
-                    ));
-                    scene.texts.push(text(
+                    );
+                    tick_rule.tick = at;
+                    scene.rules.push(tick_rule);
+                    let mut tick_text = text(
                         format!(
                             "axis:{id}/label:{}",
                             format_number(v, ticks.decimals, false)
@@ -855,7 +905,9 @@ pub fn build_scene_with_theme(
                         theme.text_muted,
                         if left { Anchor::End } else { Anchor::Start },
                         Rotation::None,
-                    ));
+                    );
+                    tick_text.tick = at;
+                    scene.texts.push(tick_text);
                 }
                 if let Some(t) = title {
                     // Rotated text: glyph tops point left, so the baseline is the title's right edge.

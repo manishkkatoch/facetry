@@ -166,6 +166,7 @@ pub(crate) fn print_aligned(
         }
         let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
         scene.texts.push(Text3 {
+            tick: None,
             key: format!("{key}/label/{k}"),
             text: (*line).to_owned(),
             anchor: plan.world(at, y + plan.len(PRINT_LIFT)),

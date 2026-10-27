@@ -85,14 +85,26 @@ pub fn arc_mesh(scene: &Scene, encode: impl Fn(Color) -> [f32; 4]) -> MeshData {
 /// A marker: a disc in the background colour with a smaller one in the point's colour on
 /// top, which reads as a dot with a clean rim over the line and the bars.
 pub fn push_marker(mesh: &mut MeshData, p: &PointMark, scale: f32, rim: [f32; 4], color: [f32; 4]) {
+    marker(mesh, &mut Vec::new(), p, scale, rim, color);
+}
+
+/// [`push_marker`] with a scratch buffer to build the triangles in, for drawing many.
+fn marker(
+    mesh: &mut MeshData,
+    tris: &mut Vec<[f32; 2]>,
+    p: &PointMark,
+    scale: f32,
+    rim: [f32; 4],
+    color: [f32; 4],
+) {
     let radius = p.size / 2.0 * scale;
     let ring = (radius * 0.22).max(1.0);
-    let mut tris = Vec::new();
-    stroke::disc([p.x, p.y], radius, &mut tris);
-    mesh.push_triangles(&tris, rim);
     tris.clear();
-    stroke::disc([p.x, p.y], (radius - ring).max(radius * 0.4), &mut tris);
-    mesh.push_triangles(&tris, color);
+    stroke::disc([p.x, p.y], radius, tris);
+    mesh.push_triangles(tris, rim);
+    tris.clear();
+    stroke::disc([p.x, p.y], (radius - ring).max(radius * 0.4), tris);
+    mesh.push_triangles(tris, color);
 }
 
 /// The markers of the layers that asked for them, as one draw call.
@@ -102,8 +114,9 @@ pub fn point_mesh(
     background: [f32; 4],
 ) -> MeshData {
     let mut mesh = MeshData::default();
+    let mut tris = Vec::new();
     for p in scene.points.iter().filter(|p| p.visible) {
-        push_marker(&mut mesh, p, 1.0, background, encode(p.color));
+        marker(&mut mesh, &mut tris, p, 1.0, background, encode(p.color));
     }
     mesh.close_range(0);
     mesh

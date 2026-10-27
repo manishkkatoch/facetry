@@ -125,6 +125,32 @@ impl Camera {
         self.distance = self.distance.clamp(self.min_distance, MAX_DISTANCE);
     }
 
+    /// The camera `e` of the way from this one to `to` (`e` is eased progress, 0 here and 1
+    /// there, and may overshoot): azimuth the short way round, elevation and distance
+    /// directly, the lens of `to`. Clamped like any camera.
+    pub fn tween(&self, to: &Camera, e: f32) -> Camera {
+        // The pan glides too, and the lens and closest distance are the destination's.
+        let mut camera = Camera {
+            projection: to.projection,
+            min_distance: to.min_distance,
+            pan: [
+                facetry_core::anim::lerp(self.pan[0], to.pan[0], e),
+                facetry_core::anim::lerp(self.pan[1], to.pan[1], e),
+            ],
+            ..*self
+        };
+        camera.set(
+            Some(facetry_core::anim::lerp_angle_deg(
+                self.azimuth,
+                to.azimuth,
+                e,
+            )),
+            Some(facetry_core::anim::lerp(self.elevation, to.elevation, e)),
+            Some(facetry_core::anim::lerp(self.distance, to.distance, e)),
+        );
+        camera
+    }
+
     /// A drag of `(dx, dy)` pixels. The scene follows the pointer: dragging right turns the
     /// chart to the right (the camera moves left), dragging down tips it toward you (the
     /// camera rises).
@@ -391,6 +417,19 @@ mod tests {
         let p = c.pan;
         c.move_pan([f32::NAN, 0.0], size);
         assert_eq!(c.pan, p);
+    }
+
+    #[test]
+    fn a_tween_glides_the_pan_and_ends_with_the_destinations_limits() {
+        let size = [2.0, 0.1, 2.0];
+        let from = Camera::default();
+        let mut to = Camera::from_spec_with_min(None, CLOSE_UP_DISTANCE);
+        to.move_pan([0.8, -0.4], size);
+        let half = from.tween(&to, 0.5);
+        assert!((half.pan[0] - 0.4).abs() < 1e-6 && (half.pan[1] + 0.2).abs() < 1e-6);
+        let end = from.tween(&to, 1.0);
+        assert_eq!(end.pan, to.pan);
+        assert_eq!(end.min_distance, to.min_distance);
     }
 
     #[test]

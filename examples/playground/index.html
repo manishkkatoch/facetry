@@ -38,6 +38,9 @@
         <label title="Isometric style: a card beside each node"><input id="cards" type="checkbox" /> Cards</label>
         <button id="apply" type="button">Apply</button>
         <button id="save-png" type="button" title="Download the chart as it is now (current camera) as a PNG">Save PNG</button>
+        <button id="randomize" type="button" title="Change the numbers, and sometimes add or remove a category, then update the chart: watch the marks move, enter and leave">Randomize data</button>
+        <label title="Animate updates (the spec's transition; off: every update jumps)"><input id="animate" type="checkbox" checked /> Animate</label>
+        <button id="spin" type="button" title="Turn the 3D camera a quarter turn (a camera tween)" hidden>Spin</button>
         <span id="camera" hidden title="Drag to orbit, wheel to zoom, double-click to reset"></span>
         <span id="hover" aria-live="polite" title="The bar under the pointer (hover event)"></span>
         <span id="status">Starting…</span>

@@ -50,6 +50,12 @@ pub struct ChartSpec {
     /// How the viewer may move the camera (3D only; ignored in 2D).
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub interaction: Option<InteractionSpec>,
+    /// How `Chart.update` (and hiding a series) moves from the old picture to the new one:
+    /// `false` for no animation, or `{ "duration": ms, "easing": "...", "stagger": ms }`.
+    /// Absent: 400 ms, `cubicInOut`, no stagger. `Chart.update(spec, { transition })` overrides
+    /// it for one call.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub transition: Option<TransitionSpec>,
     /// A laid-out diagram (nodes and routed edges) instead of `layers`. Usually written by
     /// `facetry/diagrams` from Mermaid text rather than by hand. Needs `dimension: "3d"`; a
     /// diagram spec has no `data`, `axes`, `layers` or `legend`.
@@ -96,6 +102,94 @@ impl ChartSpec {
                 .and_then(|i| i.orbit)
                 .unwrap_or(true)
     }
+}
+
+/// `transition`: `false` (no animation), `true` (the defaults) or a configuration.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(untagged))]
+pub enum TransitionSpec {
+    /// `false` turns animation off; `true` is the same as leaving the option out.
+    Enabled(bool),
+    Config(TransitionConfig),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+pub struct TransitionConfig {
+    /// How long each mark takes to move, in milliseconds (default 400). `0` is no animation.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub duration: Option<f64>,
+    /// The speed curve (default `"cubicInOut"`).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub easing: Option<Easing>,
+    /// Spreads the start of the marks over this many milliseconds, in drawing order (the
+    /// first mark starts at once, the last one `stagger` ms later). The whole transition then
+    /// lasts `duration + stagger`. Default 0: every mark moves together.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub stagger: Option<f64>,
+}
+
+/// How progress through a transition maps to progress of the movement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub enum Easing {
+    /// Constant speed.
+    Linear,
+    /// Slow start, fast middle, slow end.
+    #[default]
+    CubicInOut,
+    /// Fast start, slow end.
+    CubicOut,
+    /// Like `cubicOut`, but overshoots the target a little and settles back.
+    BackOut,
+}
+
+/// A transition with its defaults filled in. See [`TransitionSpec::resolve`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Timing {
+    pub duration_ms: f32,
+    pub easing: Easing,
+    pub stagger_ms: f32,
+}
+
+/// Default duration of a transition, in milliseconds.
+pub const DEFAULT_DURATION_MS: f64 = 400.0;
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            duration_ms: DEFAULT_DURATION_MS as f32,
+            easing: Easing::default(),
+            stagger_ms: 0.0,
+        }
+    }
+}
+
+impl TransitionSpec {
+    /// The timing to animate with, or `None` when animation is off (`false`, or a duration of
+    /// 0 without a stagger). `None` as a whole spec (no `transition` field) is the default
+    /// timing, see [`resolve_transition`].
+    pub fn resolve(&self) -> Option<Timing> {
+        match self {
+            Self::Enabled(false) => None,
+            Self::Enabled(true) => Some(Timing::default()),
+            Self::Config(c) => {
+                let timing = Timing {
+                    duration_ms: c.duration.unwrap_or(DEFAULT_DURATION_MS) as f32,
+                    easing: c.easing.unwrap_or_default(),
+                    stagger_ms: c.stagger.unwrap_or(0.0) as f32,
+                };
+                (timing.duration_ms > 0.0).then_some(timing)
+            }
+        }
+    }
+}
+
+/// The timing for an optional `transition` field: absent means animate with the defaults.
+pub fn resolve_transition(spec: Option<&TransitionSpec>) -> Option<Timing> {
+    spec.map_or_else(|| Some(Timing::default()), TransitionSpec::resolve)
 }
 
 /// `legend`: `false`, `true` or a configuration.

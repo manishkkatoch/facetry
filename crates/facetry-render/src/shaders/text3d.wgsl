@@ -26,6 +26,8 @@ struct Globals {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
+    // Animation clock, see ease.wgsl.
+    anim: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -50,8 +52,14 @@ struct Vertex {
     @location(6) color: vec4<f32>,
     @location(7) show: vec2<f32>,    // azimuth range [from, to) in which to draw
     @location(8) slot: f32,          // index into `labels`, or -1 for none
-    @location(9) flat: f32,          // > 0: printed on the floor plane, world units per pixel
-    @location(10) upright: vec2<f32>, // non-zero: printed upright instead, reading along [x, z]
+    // Where the glyph starts when it is animating (`anchor`, `origin` and `color` are where it
+    // ends), and its start delay in milliseconds. At rest from == to.
+    @location(9) from_anchor: vec3<f32>,
+    @location(10) from_origin: vec2<f32>,
+    @location(11) from_color: vec4<f32>,
+    @location(12) delay: f32,
+    @location(13) flat: f32,          // > 0: printed on the floor plane, world units per pixel
+    @location(14) upright: vec2<f32>, // non-zero: printed upright instead, reading along [x, z]
 }
 
 struct Varying {
@@ -96,7 +104,11 @@ fn vs_main(v: Vertex) -> Varying {
         }
         nudge = state.yz;
     }
-    let clip = globals.view_proj * vec4<f32>(v.anchor, 1.0);
+    let t = anim_t(v.delay);
+    let anchor = v.from_anchor * (1.0 - t) + v.anchor * t;
+    let origin = v.from_origin * (1.0 - t) + v.origin * t;
+    let color = clamp(v.from_color * (1.0 - t) + v.color * t, vec4<f32>(0.0), vec4<f32>(1.0));
+    let clip = globals.view_proj * vec4<f32>(anchor, 1.0);
     let ndc = clip.xy / clip.w;
     // Projected anchor in pixels (y down), rounded to a whole pixel so glyph edges stay
     // sharp instead of shimmering as the camera moves a sub-pixel amount.
@@ -104,12 +116,12 @@ fn vs_main(v: Vertex) -> Varying {
         (ndc.x * 0.5 + 0.5) * globals.viewport.x,
         (0.5 - ndc.y * 0.5) * globals.viewport.y,
     ));
-    let px = anchor_px + nudge + v.origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
+    let px = anchor_px + nudge + origin + v.corner.x * v.axis_x + v.corner.y * v.axis_y;
     let out_clip = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,
     );
-    return Varying(vec4<f32>(out_clip, 0.0, 1.0), uv, v.color);
+    return Varying(vec4<f32>(out_clip, 0.0, 1.0), uv, color);
 }
 
 fn median(r: f32, g: f32, b: f32) -> f32 {

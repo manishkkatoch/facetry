@@ -13,10 +13,11 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramNode, DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding, FillRule,
-    IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
+    DiagramNode, DiagramSpec, DiagramStyle, Dimension, Easing, EdgeEnd, EdgeStroke, Encoding,
+    FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
     LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig,
     PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -277,6 +278,7 @@ fn read_chart_spec(v: Value) -> Read<ChartSpec> {
         legend [def] = "legend" => opt(read_legend),
         camera [def] = "camera" => opt(read_camera),
         interaction [def] = "interaction" => opt(read_interaction),
+        transition [def] = "transition" => opt(read_transition),
         diagram [def] = "diagram" => opt(read_diagram);
         hidden_override = None
     })
@@ -406,6 +408,42 @@ fn read_camera_kind(v: Value) -> Read<CameraKind> {
         &[
             ("perspective", CameraKind::Perspective),
             ("orthographic", CameraKind::Orthographic),
+        ],
+    )
+}
+
+/// Reads a `transition` value on its own (the `transition` option of `Chart.update`). Errors
+/// are paths *inside* the value, e.g. `/duration`.
+pub fn parse_transition_value(v: Value) -> Result<TransitionSpec, Vec<Issue>> {
+    read_transition(v).map_err(|f| {
+        let path: String = f.path.iter().rev().map(String::as_str).collect();
+        vec![Issue::new(path, f.message)]
+    })
+}
+
+/// `false | true | { ... }`, like the other untagged options but with the error pointing into
+/// the object (`/transition/easing`), where an editor should underline it.
+fn read_transition(v: Value) -> Read<TransitionSpec> {
+    match v {
+        Value::Bool(b) => Ok(TransitionSpec::Enabled(b)),
+        Value::Object(_) => object!(v, "TransitionConfig", TransitionConfig {
+            duration [def] = "duration" => opt(number),
+            easing [def] = "easing" => opt(read_easing),
+            stagger [def] = "stagger" => opt(number),
+        })
+        .map(TransitionSpec::Config),
+        other => Err(bad_type(&other, "a boolean or a transition object")),
+    }
+}
+
+fn read_easing(v: Value) -> Read<Easing> {
+    variant(
+        v,
+        &[
+            ("linear", Easing::Linear),
+            ("cubicInOut", Easing::CubicInOut),
+            ("cubicOut", Easing::CubicOut),
+            ("backOut", Easing::BackOut),
         ],
     )
 }

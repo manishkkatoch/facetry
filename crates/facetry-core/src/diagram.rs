@@ -741,6 +741,7 @@ fn push_node(
         }
         let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
         scene.texts.push(Text3 {
+            tick: None,
             key: format!("{}/label/{k}", node.id),
             text: (*line).to_owned(),
             anchor: plan.world(label_at, top),
@@ -897,6 +898,8 @@ pub(crate) fn push_icon_shape(
 ) {
     if !shape.lines.is_empty() {
         scene.polylines.push(Polyline3 {
+            reveal: 1.0,
+            keys: Vec::new(),
             key: key.to_owned(),
             color,
             width_px: width_px as f32,
@@ -952,6 +955,7 @@ pub(crate) fn push_rim(
     for k in 0..outline.len() {
         let (a, b) = (&outline[k], &outline[(k + 1) % outline.len()]);
         scene.lines.push(Line3 {
+            tick: None,
             key: format!("{}/rim/{k}", node.id),
             kind: RuleKind::Axis,
             a: plan.world(at(a), lift),
@@ -996,6 +1000,8 @@ fn push_edge(
         _ => EDGE_WIDTH,
     };
     scene.polylines.push(Polyline3 {
+        reveal: 1.0,
+        keys: Vec::new(),
         key: key.clone(),
         color: palette.edge,
         width_px: (width * s) as f32,
@@ -1036,6 +1042,7 @@ fn push_edge(
         for (k, line) in lines.iter().enumerate() {
             let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
             scene.texts.push(Text3 {
+                tick: None,
                 key: format!("{key}/label/{k}"),
                 text: (*line).to_owned(),
                 anchor: plan.world(at, lift),
@@ -1146,6 +1153,8 @@ fn push_end(
                 ],
             ];
             scene.polylines.push(Polyline3 {
+                reveal: 1.0,
+                keys: Vec::new(),
                 key: format!("{key}/{name}"),
                 color: palette.edge,
                 width_px: width_px as f32,

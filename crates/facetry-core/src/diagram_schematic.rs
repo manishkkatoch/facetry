@@ -309,6 +309,8 @@ fn push_grid(scene: &mut Scene3d, plan: &Plan, s: f64) {
         z += GRID;
     }
     scene.polylines.push(Polyline3 {
+        reveal: 1.0,
+        keys: Vec::new(),
         key: "grid".into(),
         color: grid_color(),
         width_px: s as f32,
@@ -421,6 +423,8 @@ fn push_edges_of(
         );
     }
     scene.polylines.push(Polyline3 {
+        reveal: 1.0,
+        keys: Vec::new(),
         key: format!("{id}/edge/{k}"),
         color,
         width_px: width_px as f32,
@@ -563,6 +567,7 @@ fn push_sign(
         }
         let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
         scene.texts.push(Text3 {
+            tick: None,
             key: format!("{key}/sign/{k}"),
             text: (*line).to_owned(),
             anchor,

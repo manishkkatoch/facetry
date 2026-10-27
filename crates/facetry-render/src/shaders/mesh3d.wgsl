@@ -19,6 +19,8 @@ struct Globals {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
+    // Animation clock, see ease.wgsl.
+    anim: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;

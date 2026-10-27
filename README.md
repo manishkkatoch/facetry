@@ -3,7 +3,7 @@
 GPU-accelerated charts for JS/TS apps, written in Rust and compiled to WebAssembly.
 Rendering uses [wgpu](https://wgpu.rs): WebGPU where the browser really has it, WebGL2 otherwise.
 
-**Status: M1 (2D bar chart), M4 (3D bars) and M2 (more chart types).** A `Chart` draws from a
+**Status: M1 (2D bar chart), M4 (3D bars), M2 (more chart types) and M5 (animated transitions).** A `Chart` draws from a
 declarative JSON spec: validation, band and linear scales with "nice" ticks, layout, axes (lines,
 ticks, gridlines, labels, titles), MSDF text and GPU rendering. Marks: **bars** (overlaid,
 stacked, normalised or grouped), **lines** (categorical or numeric x, markers, gaps; composites
@@ -13,7 +13,8 @@ depth-tested solids and thick lines you can orbit (see [3D charts](#3d-charts) a
 get a [legend](#legend). Marks can carry value labels and report hover and click, and the
 current view can be saved as a PNG (see [Value labels, hover and
 click](#value-labels-hover-and-click) and [PNG snapshots](#png-snapshots)). Clicking a legend entry
-hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)). Animation comes later.
+hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)). Updates, legend toggles
+and camera moves animate (see [Animated transitions](#animated-transitions)).
 
 **Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
 small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
@@ -49,7 +50,7 @@ const chart = await Chart.create(canvas, spec, { backend: "auto" });
 console.log(chart.backend); // "webgpu" | "webgl2"
 
 try {
-  chart.update(newSpec); // re-layout and redraw (no animation yet)
+  chart.update(newSpec); // marks enter, move and leave (see "Animated transitions"); { transition: false } jumps
 } catch (e) {
   if (e instanceof FacetryError && e.code === "invalid-spec") {
     for (const { path, message } of e.issues) console.log(path, message); // e.g. /layers/0/encoding/y/axis
@@ -85,6 +86,8 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
   palette; also the series of stacked/grouped bars and lines). `key` is optional; the default key
   of a bar is `layer<n>/<x value>`. Several layers on the same axes overlay. A missing `x` or `y`
   on a bar or line layer is a validation issue at `/layers/<n>/encoding/x`.
+- `transition` (optional, top level): how `update` moves to the new picture, see
+  [Animated transitions](#animated-transitions).
 - `label` (optional, per layer): value labels on the marks, see
   [below](#value-labels-hover-and-click).
 - Unknown fields are errors, so typos are caught. Empty data is valid: the axes are drawn (numeric
@@ -354,7 +357,8 @@ chart.on("legendclick", ({ series, visible }) => { /* fired after the chart was 
   drawn. A category that only a hidden series used (an x category, or a 3D depth row when `z` and
   `color` are the same field) leaves its axis with it. **Colours never change**: a series keeps its
   palette colour whether others are shown or not. Layout is recomputed (the scene is rebuilt, which
-  is cheap at these sizes); the 3D camera is kept.
+  is cheap at these sizes) and the change animates with the spec's `transition` (a hidden series'
+  marks exit, the rest restack, re-divide or refit); the 3D camera is kept.
 - **The legend entry stays**, drawn at 40% opacity (swatch and text), so it can be clicked back.
 - **The last visible series cannot be hidden**: the click (or `setSeriesVisible`) does nothing and
   returns `false`, and no `legendclick` fires. A blank chart helps nobody. `legend.hidden` naming
@@ -376,6 +380,113 @@ chart.on("legendclick", ({ series, visible }) => { /* fired after the chart was 
   (`Scene::legend_pick`), the same style as bar picking, no GPU read-back. `chart.legendPosition(series)` says where an
   entry is (CSS px), for tests and annotations.
 - Not done: dimming the other series while an entry is hovered.
+
+### Animated transitions
+
+`chart.update(spec)`, a legend click (or `setSeriesVisible`) and camera moves with a duration
+animate instead of jumping. Nothing needs to be turned on: the default is 400 ms, `cubicInOut`.
+
+```jsonc
+{ "transition": false }                                    // updates jump
+{ "transition": { "duration": 600, "easing": "backOut", "stagger": 300 } }   // all fields optional
+```
+
+```ts
+chart.update(spec);                                     // the spec's transition (default 400 ms)
+chart.update(spec, { transition: false });              // jump, whatever the spec says
+chart.update(spec, { transition: { duration: 1200, easing: "linear" } });   // for this call only
+chart.setSeriesVisible("Software", false);              // restacks / re-divides / refits, animated
+chart.setCamera({ azimuth: 120, elevation: 40 }, { duration: 800 });        // a camera tween
+chart.resetCamera({ duration: 500 });
+chart.animating;                                        // true while something is moving
+const chart = await Chart.create(canvas, spec, { animateIn: true });       // animate the first frame too
+```
+
+- **`duration`** (ms, default 400; `0` or `false` jumps), **`easing`** (`linear`, `cubicInOut`,
+  the default, `cubicOut` or `backOut`, which overshoots a little and settles), **`stagger`** (ms,
+  default 0): the start of the marks is spread over this many milliseconds in drawing order (the
+  first mark starts at once, the last one `stagger` ms later; each still takes `duration`), so the
+  whole transition lasts `duration + stagger`. Negative or non-finite numbers and unknown easings
+  are validation issues with a path (`/transition/duration`, `/transition/easing`); a bad
+  `options.transition` is an `invalid-options` error. The per-call `transition` replaces the
+  spec's, it does not merge with it.
+- **What moves.** The scene on screen and the new one are compared by **key** (every mark already
+  has a stable one: `layer0/Q1`, `layer0/Q1/Hardware`, `axis:y/tick:100`, `legend/swatch:Pro`).
+  A key only in the new scene *enters*, in both it *moves*, only in the old one it *exits*:
+
+  | mark | enter | update | exit |
+  |---|---|---|---|
+  | bar (2D and 3D box) | grows from its baseline (a stacked segment: from where the segment under it is, so a new stack grows as one piece) | rectangle and colour | shrinks to its baseline, then is removed |
+  | line (2D and 3D) | drawn on from its start (progressive reveal) | each vertex moves; vertices are matched by data point, so a point that is added or removed grows out of / closes onto its neighbour; lines whose points were reordered or have gaps are resampled by subdividing segments instead | fades out |
+  | line markers | scale and fade in (from the neighbouring point, if their line stays) | move | scale and fade out |
+  | pie and donut slice (2D and 3D) | opens from the seam between its neighbours | start and end angles, radii, colour | closes onto the seam |
+  | text (labels, titles) | fades in | moves, changes colour; a label whose text changed under the same key cross-fades | fades out |
+  | axis tick, gridline and its label | slides in from where the *old* scale would put it, fading in | slides to where the *new* scale puts it | slides toward where the *new* scale would put it, fading out (the d3 axis transition) |
+  | legend entry | fades in | moves, dims or lights up | fades out |
+
+  Pie slices tile the circle at every moment (property-tested), stacked segments stay glued, and
+  a stack of boxes in 3D never inverts. Colours blend in linear light.
+- **Interruption.** An update (or legend click) that arrives mid-transition starts from the
+  picture as it is *at that moment*: what is on screen becomes the new "from", nothing jumps. A
+  bar that was shrinking away and is in the new data again simply grows back from where it is.
+- **Initial render** does not animate unless you ask (`animateIn`: everything enters).
+- **Reduced motion.** If `matchMedia("(prefers-reduced-motion: reduce)")` matches, every
+  transition and camera tween is a jump, and if the viewer turns the setting on while one is
+  running it ends at once.
+- **Resize** never animates: the layout jumps to the new size. A transition that is running
+  carries on in the new layout: the picture it started from (the spec before the update) and the
+  one it is heading for are both laid out again at the new size and it continues from the same
+  moment. A transition that began by interrupting another has no spec to lay out again for its
+  start, so it ends at once.
+- **Hover, click and `markPosition` during a transition address the target state** (where the
+  marks are going, not where they are this frame), so a bar that is still growing can be hovered
+  at its final place. `snapshot()` during a transition renders the target state (and the
+  animation goes on afterwards). A `hover` event fires for the target, and the hovered bar is
+  lightened where it is drawn.
+- **Camera tweens** (`setCamera(cam, { duration, easing })`, `resetCamera({ duration })`; `{}` for
+  the defaults): azimuth takes the shortest way round (350 to 10 passes through 0), elevation and
+  distance move directly, the lens (`type`) changes at once. Dragging or the wheel stops a tween
+  where it is; a new `camera` in the spec on `update` moves the camera with the update's
+  transition. Orbit gestures themselves stay immediate. 3D plot boxes that change size (a
+  category more or less) and legends that change what is left of the canvas are interpolated
+  too, so the camera's framing of the box never jumps.
+- **3D labels.** Which axis labels show, and by how much each is nudged off the box, is decided
+  per frame by the label planner (see [3D charts](#3d-charts)). During a transition it uses the
+  labels of the **target** scene against the box as it is that frame; labels that are leaving
+  are always drawn (fading). So an axis label that the new layout would hide can disappear a
+  moment before its tick has finished moving, and while the box is still the old size a label
+  can be nudged for the new one. Value labels that print on a box (`OnMark`) or hang from a
+  point are hidden or shown by the same ray test against the *target's* boxes. The planner is
+  not re-run on the interpolated scene because its decisions would then flicker with every
+  frame; at the end of the transition the scene is the plain target again, planned as always.
+- **Rendering stays on-dirty.** `requestAnimationFrame` runs only while a transition or camera
+  tween does, then stops (`chart.renderCount` is the number of frames drawn, for tests).
+
+How it works: `facetry_core::transition` (2D) and `transition3d` (3D) diff two scenes into
+`Plan`s: for every item a `Pair` of start and end state (an entering bar starts as a zero-height
+bar on its baseline, an exiting label ends fully transparent, a new tick starts where the old
+scale would put it), with the easing and the stagger delay. The plan is pure data, unit-tested
+natively (enter/update/exit by key for every kind of mark, easings, interruption, pie tiling,
+line matching, tick sliding). **The GPU mixes** bars, boxes, gridlines, axes, legend and text:
+those instances carry `from` and `to` attributes and a start delay, and one uniform (elapsed time,
+duration, easing) drives `mix(from, to, ease(t))` in the vertex shader (`shaders/ease.wgsl`), so a
+frame of a thousand bars changes a handful of bytes. **The CPU re-tessellates** what is not an
+instanced quad (2D lines, markers and slices; 3D lines, pie meshes, data lines, curtains and
+markers) from `Plan::marks_at(t)` each frame, rewriting only the numbers of a scene it keeps.
+`Plan::sample(t)` is the same mix on the CPU for the whole scene; it is what an interrupting
+update starts from. At the end the plain target scene is uploaded, so the final frame is exactly
+the picture a direct render gives (checked: every example reached by animation equals its golden
+image).
+
+Measured on this repo's CI-like sandbox (WebGL2 in headless Chromium, software GL), the CPU time
+of moving a transition to a frame (`chart.__timeFrame`, `tests/transition-cost.spec.ts`): bars,
+stacked bars and 3D boxes (1000 marks): under 0.1 ms (the GPU does the work); a donut with 200
+slices 0.1 ms; the worst case, 4 lines of 250 points with a marker on each (2000 marks), 4 to 7
+ms, almost all of it the markers' discs being tessellated again. Limits: values do not count up
+(a changed label cross-fades), a change between 2D and 3D jumps, an update that changes nothing
+does not animate, and `transition` cannot be turned on for a single mark. Diagrams do not
+animate yet (milestone D5): an update to, from or within a diagram jumps to the new picture,
+while a new starting camera still moves there with the transition.
 
 ### 3D charts
 
@@ -432,6 +543,7 @@ press clicks. From code:
 
 ```ts
 chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance/pan
+chart.setCamera({ azimuth: 120 }, { duration: 800 });   // the same as a tween (see "Animated transitions")
 chart.camera;                                      // { type, azimuth, elevation, distance, pan: [x, z] }
 chart.resetCamera();                               // back to the spec's camera, unpanned
 ```
@@ -725,8 +837,9 @@ real WebGPU device.
 
 ```
 crates/facetry-core     pure Rust: spec + validation, scales, layout (2D, pie, 3D, 3D pie, legend),
-                        data transforms (stack/normalize/aggregate), Scene and Scene3d
-                        (no GPU/browser deps)
+                        data transforms (stack/normalize/aggregate), Scene and Scene3d, and the
+                        transitions between two scenes (anim, transition, transition3d,
+                        pathmorph) (no GPU/browser deps)
 crates/facetry-font     the bundled MSDF font (raw RGB atlas + metrics JSON) and text measuring
 crates/facetry-render   wgpu Renderer: rect, triangle-mesh and MSDF text pipelines (2D); box, lit
                         mesh, line, billboard-disc, curtain and world-text pipelines plus the glam orbit camera (3D); 4x
@@ -741,7 +854,7 @@ packages/facetry        npm package (TypeScript): lazily loads one of two wasm m
                         renders only when dirty
 examples/specs          example chart specs (JSON)
 examples/playground     Vite app + Playwright tests (smoke, playground, golden images, orbit, hover,
-                        snapshot)
+                        snapshot, legend, transitions, camera tweens, frame cost)
 scripts/                build-wasm.sh, wasm-size.sh
 ```
 
@@ -783,17 +896,31 @@ Set `CHROMIUM_PATH` to run the Playwright tests with an already-installed Chromi
 Chromium has no WebGPU, so the tests run on the WebGL2 module; WebGPU is covered by the shared Rust
 layout, geometry and shader-validation tests, not by pixels).
 
+Updates animate by default, and most of the tests are about the picture *after* an update, so the
+Playwright config runs them as a viewer who prefers reduced motion (every transition is then a
+jump, as before animation existed). The animation tests (`transition*.spec.ts`,
+`playground-animation.spec.ts`) opt back in with `reducedMotion: "no-preference"` and hold the
+animation clock with `facetryChart.__animationClock(ms)` (or `?clock=manual`), so "200 ms into
+the transition" is exactly that on any machine; a few use the real clock to check that the loop
+runs and stops.
+
 ### Playground
 
 `pnpm dev` (or `pnpm -r build && pnpm --filter playground preview`) serves a page with the chart,
 a dropdown of the example specs, and a JSON editor: edit the spec and press **Apply** to call
-`chart.update`; validation issues are listed with their JSON-pointer paths. URL parameters:
+`chart.update`; validation issues are listed with their JSON-pointer paths. **Randomize data**
+perturbs the numbers of the current spec (and now and then adds or removes a category, so bars
+enter and leave, a line gains a point, a pie a slice) and updates the chart, the **Animate**
+checkbox turns the animation of updates on and off, and **Spin** (3D charts) turns the camera a
+quarter turn as a tween. URL parameters:
 `?backend=webgl2` (force the fallback), `?example=bar-colored` (any file name in
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
 and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
 `mermaid/01-decision`), `?style=glossy`, `?style=isometric` or `?style=schematic` (draw Mermaid in that style; also a **Style**
-dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
+dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the chart), `?seed=1` (a reproducible sequence of Randomize clicks), `?animateIn=1`
+and `?clock=manual` (the animation clock is held until a test moves it with
+`facetryChart.__animationClock(ms)`). The editor takes Mermaid text as well as JSON
 (anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
 their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
@@ -845,9 +972,14 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 799,930 B (781 KiB) | 356,628 B (348 KiB) | 294,559 B (288 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,407,405 B (2351 KiB) | 999,485 B (976 KiB) | 790,255 B (772 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 244,536 B (239 KiB) | 105,706 B (103 KiB) | 90,692 B (89 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 909,155 B (888 KiB) | 401,702 B (392 KiB) | 329,259 B (322 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,516,311 B (2457 KiB) | 1,043,769 B (1019 KiB) | 822,503 B (803 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 244,536 B (239 KiB) | 105,707 B (103 KiB) | 90,648 B (89 KiB) | only when `facetry/diagrams` lays out a diagram |
+
+Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
+they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
+WebGL2 one (988,566 to 1,043,769, +5.6%). The step-by-step numbers below were measured before
+the rebase, against the module as it was then.
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -881,6 +1013,10 @@ Reading the spec by hand instead of through serde, and shipping the font metrics
 instead of JSON, took 99,892 B raw and 36,992 B gzip (-10.9%) off the WebGPU module (769,096 to
 669,204 and 339,694 to 302,702) and 38,053 B gzip off the WebGL2 one (982,766 to 944,713); see
 the last section of `docs/wasm-size.md`.
+
+Animated transitions (M5) grew the WebGPU module from 302,702 to 347,025 B gzip (+14.6%) and the
+WebGL2 one from 944,713 to 988,566 (+4.6%); raw 775,644 and 2,389,848 B, brotli 284,781 and
+780,084 B. `docs/wasm-size.md` has the steps and the per-frame cost.
 
 History of the single combined module (both backends), for comparison:
 

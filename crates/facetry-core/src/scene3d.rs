@@ -11,7 +11,7 @@
 use serde::{Serialize, Serializer};
 
 use crate::Color;
-use crate::scene::{Anchor, RuleKind};
+use crate::scene::{Anchor, AxisMap, Base, RuleKind, TickRef};
 use crate::spec::LabelShow;
 
 /// World units are fractions of the plot box, so 4 decimals is far below a pixel.
@@ -90,6 +90,10 @@ pub struct BoxMark {
     /// [`crate::scene::Rect::sum`]).
     #[serde(skip)]
     pub sum: Option<f64>,
+    /// What a transition grows the box from (and shrinks it to): see [`crate::scene::Base`];
+    /// the axis is one of [`Scene3d::axes`] and its pixels are world heights.
+    #[serde(skip)]
+    pub base: Option<Base>,
 }
 
 /// One slice of an extruded pie. The pie stands on the floor with its axis along `y`: the
@@ -315,6 +319,12 @@ pub struct Polyline3 {
     pub area: Option<f32>,
     #[serde(skip)]
     pub layer: usize,
+    /// How much of the line is drawn, from its start (see [`crate::scene::Polyline::reveal`]).
+    #[serde(skip)]
+    pub reveal: f32,
+    /// The key of the data point at each vertex, in the order of `runs` flattened.
+    #[serde(skip)]
+    pub keys: Vec<String>,
 }
 
 /// Opacity of the curtain under a 3D line (`style.area`).
@@ -370,6 +380,9 @@ pub struct Line3 {
     /// Draw only while the camera azimuth is in this range. `None`: always.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub azimuths: Option<AzimuthRange>,
+    /// For a tick or gridline of the value axis: which value it marks (see [`TickRef`]).
+    #[serde(skip)]
+    pub tick: Option<TickRef>,
 }
 
 fn px<S: Serializer>(v: &f32, s: S) -> Result<S::Ok, S::Error> {
@@ -440,6 +453,9 @@ pub struct Text3 {
     /// of the page colour would swallow letters of the same colour.
     #[serde(skip_serializing_if = "is_true")]
     pub halo: bool,
+    /// For the label of a tick of the value axis: which value it marks.
+    #[serde(skip)]
+    pub tick: Option<TickRef>,
     /// `Some(k)`: the text is printed flat on the horizontal plane through `anchor` instead of
     /// facing the viewer, reading along +x with its lines going down toward +z, `k` world
     /// units per pixel of `size_px` and `offset_px`. It is then hidden by what stands in front
@@ -479,6 +495,39 @@ fn plot_rect<S: Serializer>(v: &Option<[f32; 4]>, s: S) -> Result<S::Ok, S::Erro
 }
 
 impl Scene3d {
+    /// The scalar fields of the scene and nothing else (every list empty): the canvas, the box,
+    /// the background, the sizes.
+    /// Whether the scene draws a diagram (its nodes, or their decoration).
+    pub fn has_diagram(&self) -> bool {
+        !self.prisms.is_empty() || !self.decor.is_empty()
+    }
+
+    pub fn clone_shell(&self) -> Scene3d {
+        Scene3d {
+            fills: Vec::new(),
+            shadows: Vec::new(),
+            ribbons: Vec::new(),
+            width: self.width,
+            height: self.height,
+            plot: self.plot,
+            overlay: Overlay::default(),
+            background: self.background,
+            size: self.size,
+            halo_px: self.halo_px,
+            boxes: Vec::new(),
+            slices: Vec::new(),
+            prisms: Vec::new(),
+            decor: Vec::new(),
+            lines: Vec::new(),
+            polylines: Vec::new(),
+            points: Vec::new(),
+            pick_radius: self.pick_radius,
+            axes: Vec::new(),
+            texts: Vec::new(),
+            labels: Vec::new(),
+        }
+    }
+
     /// The series whose legend entry is under the canvas pixel `(x, y)`.
     pub fn legend_pick(&self, x: f32, y: f32) -> Option<&str> {
         crate::scene::legend_pick(&self.overlay.hits, x, y).map(|h| h.series.as_str())
@@ -509,6 +558,7 @@ impl Scene3d {
     /// An empty scene of `viewport_px` on `background`, for builders to fill in.
     pub fn empty(viewport_px: (u32, u32), background: Color, size: [f32; 3]) -> Self {
         Self {
+            axes: Vec::new(),
             width: viewport_px.0,
             height: viewport_px.1,
             plot: None,
@@ -602,6 +652,10 @@ pub struct Scene3d {
     /// How near (device pixels) the pointer must be to a point's projection to pick it.
     #[serde(skip)]
     pub pick_radius: f32,
+    /// The value axis as a mapping to world units (`vertical`: the y axis, whose range is the
+    /// box's height `0..1`), for transitions.
+    #[serde(skip)]
+    pub axes: Vec<AxisMap>,
     pub texts: Vec<Text3>,
     /// Value labels of the bars that have one.
     #[serde(skip_serializing_if = "Vec::is_empty")]

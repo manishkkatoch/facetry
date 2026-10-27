@@ -7,11 +7,13 @@ use facetry_core::Color;
 use facetry_core::scene3d::Scene3d;
 
 use crate::arc::Vertex3;
-use crate::gpu::{DEPTH_FORMAT, InstanceBuffer, QUAD_LAYOUT, show_range};
+use crate::gpu::{DEPTH_FORMAT, InstanceBuffer, QUAD_LAYOUT, show_range, with_ease};
 use crate::rect::uniform_entry;
 
 /// One bar: opposite corners, a colour and a hover flag (1 lightens it; rewritten alone when
-/// the pointer moves between bars).
+/// the pointer moves between bars). For animation it also carries where it starts (`from_*`)
+/// and how long after the transition begins it starts moving; the vertex shader mixes the two.
+/// A bar at rest has `from == to`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct BoxInstance {
@@ -19,6 +21,44 @@ pub struct BoxInstance {
     pub max: [f32; 3],
     pub color: [f32; 4],
     pub hover: f32,
+    pub from_min: [f32; 3],
+    pub from_max: [f32; 3],
+    pub from_color: [f32; 4],
+    pub delay: f32,
+}
+
+impl BoxInstance {
+    /// A bar that stays where it is.
+    pub fn still(min: [f32; 3], max: [f32; 3], color: [f32; 4]) -> Self {
+        Self {
+            min,
+            max,
+            color,
+            hover: 0.0,
+            from_min: min,
+            from_max: max,
+            from_color: color,
+            delay: 0.0,
+        }
+    }
+}
+
+/// The bars of a transition, new scene's first (so instance `i` is bar `i` of the target, which
+/// hover relies on), then the ones that are leaving.
+pub fn box_pair_instances(
+    plan: &facetry_core::transition3d::Plan3,
+    encode: impl Fn(Color) -> [f32; 4],
+) -> Vec<BoxInstance> {
+    plan.boxes
+        .iter()
+        .map(|p| BoxInstance {
+            from_min: p.from.min,
+            from_max: p.from.max,
+            from_color: encode(p.from.color),
+            delay: p.delay_ms,
+            ..BoxInstance::still(p.to.min, p.to.max, encode(p.to.color))
+        })
+        .collect()
 }
 
 /// Byte offset of [`BoxInstance::hover`] inside an instance.
@@ -42,12 +82,7 @@ pub fn box_instances(scene: &Scene3d, encode: impl Fn(Color) -> [f32; 4]) -> Vec
     scene
         .boxes
         .iter()
-        .map(|b| BoxInstance {
-            min: b.min,
-            max: b.max,
-            color: encode(b.color),
-            hover: 0.0,
-        })
+        .map(|b| BoxInstance::still(b.min, b.max, encode(b.color)))
         .collect()
 }
 
@@ -378,7 +413,7 @@ impl BoxPipeline {
         use wgpu::util::DeviceExt as _;
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("box shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/box.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(with_ease(include_str!("shaders/box.wgsl")).into()),
         });
         let (layout, bind_group) = globals_only(device, "box", globals);
         let cube = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -387,8 +422,10 @@ impl BoxPipeline {
             usage: wgpu::BufferUsages::VERTEX,
         });
         let cube_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
-        let instance_attrs =
-            wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32x4, 5 => Float32];
+        let instance_attrs = wgpu::vertex_attr_array![
+            2 => Float32x3, 3 => Float32x3, 4 => Float32x4, 5 => Float32,
+            6 => Float32x3, 7 => Float32x3, 8 => Float32x4, 9 => Float32
+        ];
         let pipeline = pipeline(
             device,
             &PipelineDesc {
@@ -971,7 +1008,7 @@ mod tests {
 
     #[test]
     fn instance_structs_match_their_vertex_layouts() {
-        assert_eq!(std::mem::size_of::<BoxInstance>(), 44);
+        assert_eq!(std::mem::size_of::<BoxInstance>(), 44 + 4 * 11);
         assert_eq!(BOX_HOVER_OFFSET, 40);
         assert_eq!(std::mem::size_of::<LineInstance>(), 56);
         assert_eq!(std::mem::size_of::<PointInstance>(), 52);

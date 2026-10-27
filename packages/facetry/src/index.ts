@@ -18,6 +18,7 @@ export type {
   CameraKind,
   CameraSpec,
   CameraState,
+  CameraTweenOptions,
   CameraUpdate,
   ChartSpec,
   ColorEncoding,
@@ -26,6 +27,7 @@ export type {
   DiagramSpec,
   DiagramStyle,
   Dimension,
+  Easing,
   EdgeEnd,
   EdgeStroke,
   Encoding,
@@ -48,4 +50,7 @@ export type {
   ScaleSpec,
   StyleSpec,
   ThetaEncoding,
+  TransitionConfig,
+  TransitionSpec,
+  UpdateOptions,
 } from "../wasm/facetry_wasm.js";

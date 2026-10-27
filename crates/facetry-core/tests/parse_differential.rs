@@ -63,7 +63,7 @@ fn equivalent(old: &str, new: &str) -> bool {
     let old = normalise_old(old);
     // The top-level `diagram` field came after the old parser was frozen, so the reader's list
     // of the spec's fields names one more.
-    let new = &new.replace("`interaction`, `diagram`", "`interaction`");
+    let new = &new.replace(", `diagram`", "");
     old == *new
         // A unit enum given a number, bool, null, array or `{}`: serde_json says "expected
         // value" (a syntax-style error); the reader names the type.
@@ -286,6 +286,26 @@ const CASES: &[&str] = &[
     r#"{"camera": {"azimuth": null, "distance": null}}"#,
     r#"{"camera": {"type": 5}}"#,
     r#"{"camera": {"foo": 5}}"#,
+    r#"{"transition": false}"#,
+    r#"{"transition": true}"#,
+    r#"{"transition": null}"#,
+    r#"{"transition": {}}"#,
+    r#"{"transition": 400}"#,
+    r#"{"transition": "fast"}"#,
+    r#"{"transition": []}"#,
+    r#"{"transition": [false]}"#,
+    r#"{"transition": {"duration": 250, "easing": "backOut", "stagger": 120}}"#,
+    r#"{"transition": {"duration": -5}}"#,
+    r#"{"transition": {"duration": "slow"}}"#,
+    r#"{"transition": {"duration": null, "easing": null, "stagger": null}}"#,
+    r#"{"transition": {"easing": "bounce"}}"#,
+    r#"{"transition": {"easing": "cubicinout"}}"#,
+    r#"{"transition": {"easing": ["linear"]}}"#,
+    r#"{"transition": {"easing": {"linear": null}}}"#,
+    r#"{"transition": {"stagger": 1e3, "bogus": 1}}"#,
+    r#"{"transition": {"duration": 1, "duration": 2}}"#,
+    r#"{"transition": {"easing": "linear", "easing": "bounce"}}"#,
+    r#"{"transition": false, "transition": true}"#,
     r#"{"interaction": {"orbit": 1}}"#,
     r#"{"interaction": {"orbit": false}}"#,
     r#"{"interaction": {"orbit": null}}"#,
