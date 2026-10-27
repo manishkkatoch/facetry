@@ -40,6 +40,8 @@ const MARGIN: f64 = 12.0;
 /// How tall the nodes stand, in font sizes: blocks in the flat style, slabs in the glossy one.
 const NODE_HEIGHT: f64 = 1.0;
 const GLOSSY_NODE_HEIGHT: f64 = 0.7;
+/// An isometric pedestal's whole height (see `diagram_isometric`).
+const ISOMETRIC_NODE_HEIGHT: f64 = crate::diagram_isometric::STACK_HEIGHT;
 /// Edges run this far above the node tops (layout units), so they never flicker against a
 /// top face they cross the rim of.
 const EDGE_LIFT: f64 = 0.6;
@@ -78,6 +80,10 @@ pub const DIAGRAM_ELEVATION: f64 = 50.0;
 /// Its labels are printed on the slabs, so they turn with the page and stay readable.
 pub const GLOSSY_AZIMUTH: f64 = 28.0;
 pub const GLOSSY_ELEVATION: f64 = 40.0;
+/// An isometric diagram's: the classic isometric view (45 degrees round, the elevation at
+/// which the three axes are drawn equally foreshortened) through an orthographic lens.
+pub const ISOMETRIC_AZIMUTH: f64 = 45.0;
+pub const ISOMETRIC_ELEVATION: f64 = 35.26;
 /// Share of the canvas (from the centre to each edge) the diagram may fill at the starting
 /// distance.
 const FILL: f64 = 0.92;
@@ -358,6 +364,7 @@ impl Plan {
             node_height: match diagram.style {
                 DiagramStyle::Flat => NODE_HEIGHT,
                 DiagramStyle::Glossy => GLOSSY_NODE_HEIGHT,
+                DiagramStyle::Isometric => ISOMETRIC_NODE_HEIGHT,
             },
         }
     }
@@ -502,6 +509,11 @@ impl ChartSpec {
         let (kind, azimuth, elevation) = match diagram.style {
             DiagramStyle::Flat => (CameraKind::Orthographic, DIAGRAM_AZIMUTH, DIAGRAM_ELEVATION),
             DiagramStyle::Glossy => (CameraKind::Perspective, GLOSSY_AZIMUTH, GLOSSY_ELEVATION),
+            DiagramStyle::Isometric => (
+                CameraKind::Orthographic,
+                ISOMETRIC_AZIMUTH,
+                ISOMETRIC_ELEVATION,
+            ),
         };
         let kind = given.kind.unwrap_or(kind);
         let azimuth = given.azimuth.unwrap_or(azimuth);
@@ -549,8 +561,14 @@ pub fn build_diagram_3d(
         style: DiagramStyle::Flat,
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
-    if diagram.style == DiagramStyle::Glossy {
-        return crate::diagram_glossy::build(spec, diagram, viewport_px, dpr, measure, theme);
+    match diagram.style {
+        DiagramStyle::Flat => {}
+        DiagramStyle::Glossy => {
+            return crate::diagram_glossy::build(spec, diagram, viewport_px, dpr, measure, theme);
+        }
+        DiagramStyle::Isometric => {
+            return crate::diagram_isometric::build(diagram, viewport_px, dpr, measure, theme);
+        }
     }
     let plan = Plan::new(diagram);
     let palette = Palette::new(theme);

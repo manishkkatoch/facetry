@@ -752,6 +752,23 @@ impl Renderer {
         pick::project(vp, (w, h), Vec3::from(point)).map(|(x, y)| [x + ox, y + oy])
     }
 
+    /// The point of the horizontal plane through the point looked at that is under pixel
+    /// `(x, y)` of the surface right now (for zooming toward the pointer). `None` in a 2D
+    /// chart or where the ray misses the plane.
+    pub fn plane_point_3d(&self, x: f32, y: f32) -> Option<[f32; 3]> {
+        let size = self.box_size?;
+        let [ox, oy, w, h] = self.plot_viewport((self.config.width, self.config.height));
+        let vp = self.camera.plot_view_proj(size, (w, h));
+        let ray = pick::ray_through_pixel(vp, (w, h), (x - ox, y - oy))?;
+        let t = pick::ray_plane_y(&ray, self.camera.target(size).y)?;
+        Some((ray.origin + ray.dir * t).to_array())
+    }
+
+    /// The plot box of the 3D scene shown, `None` in 2D.
+    pub fn box_size(&self) -> Option<[f32; 3]> {
+        self.box_size
+    }
+
     /// The largest width or height a surface or snapshot may have.
     pub fn max_dimension(&self) -> u32 {
         self.max_dimension
@@ -759,10 +776,10 @@ impl Renderer {
 
     /// The globals for a frame drawn into a target of `target` pixels, from the camera.
     fn globals_3d(&self, size: [f32; 3], target: (u32, u32)) -> Globals3 {
-        let (centre, radius) = Camera::plot_frame(size);
+        let radius = Camera::plot_frame(size).1;
         // The plot is drawn in its own part of the canvas (see `plot_viewport`).
         let [_, _, w, h] = self.plot_viewport(target);
-        let eye = self.camera.eye(centre, radius);
+        let eye = self.camera.eye(self.camera.target(size), radius);
         let font = FontMetrics::inter();
         Globals3 {
             view_proj: self.camera.plot_view_proj(size, (w, h)).to_cols_array_2d(),

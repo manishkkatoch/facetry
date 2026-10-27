@@ -9,6 +9,7 @@ mod build_arc3d;
 mod color;
 pub mod diagram;
 mod diagram_glossy;
+mod diagram_isometric;
 mod legend;
 pub mod scale;
 pub mod scene;

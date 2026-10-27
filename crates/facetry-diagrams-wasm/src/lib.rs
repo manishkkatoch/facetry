@@ -25,7 +25,7 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-/// Lays out Mermaid `source` in `style` (`"flat"` or `"glossy"`; absent: flat) and returns the
+/// Lays out Mermaid `source` in `style` (`"flat"`, `"glossy"` or `"isometric"`; absent: flat) and returns the
 /// chart spec as JSON text. Throws an `Error` named `FacetryError` with
 /// `code: "invalid-diagram"` and a `diagramIssues` list when the text has problems (or uses
 /// Mermaid features Facetry does not support), and `code: "invalid-options"` for an unknown
@@ -35,9 +35,10 @@ pub fn layout_mermaid(source: &str, style: Option<String>) -> Result<String, JsV
     let style = match style.as_deref() {
         None | Some("flat") => DiagramStyle::Flat,
         Some("glossy") => DiagramStyle::Glossy,
+        Some("isometric") => DiagramStyle::Isometric,
         Some(other) => {
             let error = js_sys::Error::new(&format!(
-                "`style` must be \"flat\" or \"glossy\", got {other:?}"
+                "`style` must be \"flat\", \"glossy\" or \"isometric\", got {other:?}"
             ));
             error.set_name("FacetryError");
             let _ = js_sys::Reflect::set(&error, &"code".into(), &"invalid-options".into());

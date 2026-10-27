@@ -25,7 +25,9 @@ export interface DiagramOptions {
   /**
    * How the diagram looks. `"flat"` (default): light blocks with thin edges, seen square on.
    * `"glossy"`: glossy slabs coloured by shape (or by `classDef`), thick square-cornered
-   * arrows on the floor, soft shadows and labels printed on the slabs, seen at an angle. The
+   * arrows on the floor, soft shadows and labels printed on the slabs, seen at an angle.
+   * `"isometric"`: layered pedestals in palette colours joined by roads with chevrons, long
+   * soft shadows, printed labels, in the classic isometric view. The
    * style also decides how edges are routed, so it is chosen here rather than in the spec.
    */
   style?: DiagramStyle;

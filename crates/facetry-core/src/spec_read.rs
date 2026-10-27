@@ -542,6 +542,7 @@ fn read_diagram_style(v: Value) -> Read<DiagramStyle> {
         &[
             ("flat", DiagramStyle::Flat),
             ("glossy", DiagramStyle::Glossy),
+            ("isometric", DiagramStyle::Isometric),
         ],
     )
 }

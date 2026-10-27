@@ -78,6 +78,15 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
     for (name, source) in corpus() {
         let chart = flowchart::parse(&source).unwrap();
         let built = build::build(&chart, &GLOSSY);
+        // The isometric style routes the same way.
+        let iso = build::build(
+            &chart,
+            &Options {
+                style: DiagramStyle::Isometric,
+            },
+        );
+        assert_eq!(iso.control, built.control, "{name}");
+        assert_eq!(iso.spec.style, DiagramStyle::Isometric);
         for (i, c) in built.control.iter().enumerate() {
             for w in c.windows(2) {
                 let (dx, dy) = ((w[0][0] - w[1][0]).abs(), (w[0][1] - w[1][1]).abs());

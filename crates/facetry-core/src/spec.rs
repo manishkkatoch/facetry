@@ -489,7 +489,7 @@ pub struct DiagramSpec {
     /// the matching screen size for the starting camera, so they fit their nodes.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub font_size: Option<f64>,
-    /// How the diagram looks: `"flat"` (the default) or `"glossy"`.
+    /// How the diagram looks: `"flat"` (the default), `"glossy"` or `"isometric"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub style: DiagramStyle,
 }
@@ -507,6 +507,11 @@ pub enum DiagramStyle {
     /// shadows, thick arrows on the floor routed at right angles, and labels printed on the
     /// slabs; seen at an angle through a perspective camera.
     Glossy,
+    /// An isometric infographic: each node a layered pedestal (a plate, a white body, a
+    /// coloured cap with a white inset the label is printed on), coloured in turn from a
+    /// palette, joined by grey roads on the floor with chevrons showing the way, under long
+    /// soft shadows; seen through an orthographic lens from 45 degrees round.
+    Isometric,
 }
 
 /// Default label size of a diagram, in layout units.

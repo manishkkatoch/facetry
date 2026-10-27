@@ -61,6 +61,8 @@ export interface SnapshotOptions {
 
 /** Pointer movement (CSS pixels) beyond which a press is a drag, not a click. */
 const CLICK_SLOP = 4;
+/** The Rust camera's zoom speed: a wheel delta `d` scales the distance by `exp(d * this)`. */
+const WHEEL_ZOOM_SPEED = 0.0015;
 /** Give up on a snapshot the GPU never finishes copying after this long. */
 const SNAPSHOT_TIMEOUT_MS = 15_000;
 
@@ -327,16 +329,17 @@ export class Chart {
   }
 
   /**
-   * The 3D camera: `{ type, azimuth, elevation, distance }` (degrees; distance in plot-box
-   * radii). For a 2D chart these are the defaults and have no effect.
+   * The 3D camera: `{ type, azimuth, elevation, distance, pan }` (degrees; distance in
+   * plot-box radii; pan `[x, z]` in world units from the plot's centre). For a 2D chart these
+   * are the defaults and have no effect.
    */
   get camera(): CameraState {
     return this.#inner.camera;
   }
 
   /**
-   * Moves the 3D camera; any subset of `type`, `azimuth`, `elevation`, `distance`. Values are
-   * clamped (elevation 5-85 degrees). Does not rebuild the chart, only redraws. Does nothing
+   * Moves the 3D camera; any subset of `type`, `azimuth`, `elevation`, `distance`, `pan`.
+   * Values are clamped (elevation 5-85 degrees; the pan to the plot box). Does not rebuild the chart, only redraws. Does nothing
    * in a 2D chart.
    */
   setCamera(update: CameraUpdate): void {
@@ -401,13 +404,16 @@ export class Chart {
   }
 
   /**
-   * Pointer handling: drag to orbit, wheel to zoom, double-click to reset (3D with
-   * `interaction.orbit` on), and for every chart hover and click on bars. The handlers only
-   * change the camera or the hover inside Rust and ask for a frame; the scene is not rebuilt.
+   * Pointer handling (3D with `interaction.orbit` on): drag to orbit; right-drag or
+   * Shift+drag to pan; the wheel zooms toward the pointer; on touch, two fingers pinch to zoom
+   * and move together to pan; double-click resets. Every chart also gets hover and click on
+   * marks. The handlers only change the camera or the hover inside Rust and ask for a frame;
+   * the scene is not rebuilt.
    *
    * A press becomes a drag once the pointer has moved more than a few pixels; until then it
-   * may still be a click. The orbit then starts from where the press was, so no movement is
-   * lost, and the release does not click.
+   * may still be a click. The drag then starts from where the press was, so no movement is
+   * lost, and the release does not click. A second finger turns the gesture into a pinch,
+   * which never clicks either.
    */
   #attachPointerControls(): () => void {
     const canvas = this.#canvas;
@@ -417,12 +423,18 @@ export class Chart {
       y: number;
       lastX: number;
       lastY: number;
+      /** Pan (right button or Shift) rather than orbit. */
+      pan: boolean;
       /** The legend entry the press started on: it is a legend click, never an orbit or a chart click. */
       legend?: string;
     } | null = null;
+    /** Fingers (and pens) on the canvas, by pointer id, in client pixels. */
+    const touches = new Map<number, { x: number; y: number }>();
+    /** A two-finger gesture: the fingers' last distance and midpoint (client pixels). */
+    let pinch: { distance: number; x: number; y: number } | null = null;
 
     /** Pointer position in CSS pixels from the canvas's top-left. */
-    const at = (e: MouseEvent) => {
+    const at = (e: { clientX: number; clientY: number }) => {
       const box = canvas.getBoundingClientRect();
       // Divides out any CSS transform that scales the canvas.
       return {
@@ -434,10 +446,34 @@ export class Chart {
       this.#dragging = false;
       this.#look();
     };
+    const twoFingers = () => {
+      const [a, b] = [...touches.values()];
+      return { distance: Math.hypot(a!.x - b!.x, a!.y - b!.y), x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 };
+    };
 
     const down = (e: PointerEvent) => {
-      if (e.button !== 0 || press) return;
-      press = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY };
+      if (e.pointerType !== "mouse" && this.#inner.orbitEnabled) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        canvas.setPointerCapture(e.pointerId);
+        if (touches.size === 2) {
+          // A second finger: the gesture is a pinch from now on, and nothing clicks.
+          press = null;
+          pinch = twoFingers();
+          this.#dragging = true;
+          this.#setHover(-1);
+          return;
+        }
+        if (touches.size > 2) return;
+      }
+      if ((e.button !== 0 && e.button !== 2) || press) return;
+      press = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        pan: e.button === 2 || e.shiftKey,
+      };
       this.#pointer = at(e);
       press.legend = this.#inner.legendPick(this.#pointer.x, this.#pointer.y);
       // Capture keeps the drag going when the pointer leaves the canvas (not for a legend
@@ -445,32 +481,61 @@ export class Chart {
       if (this.#inner.orbitEnabled && press.legend === undefined) canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size === 2) {
+        const now = twoFingers();
+        const box = canvas.getBoundingClientRect();
+        const mid = at({ clientX: now.x, clientY: now.y });
+        // Spreading the fingers by a factor zooms in by it (the inverse of the wheel's scale).
+        if (pinch.distance > 0 && now.distance > 0) {
+          this.#inner.zoomAt(-Math.log(now.distance / pinch.distance) / WHEEL_ZOOM_SPEED, mid.x, mid.y);
+        }
+        const scale = canvas.clientWidth / (box.width || 1);
+        this.#inner.pan((now.x - pinch.x) * scale, (now.y - pinch.y) * scale);
+        pinch = now;
+        this.requestRender();
+        return;
+      }
       this.#pointer = at(e);
       if (!press) {
-        this.#look();
+        if (!pinch) this.#look();
         return;
       }
       if (e.pointerId !== press.id || !this.#inner.orbitEnabled || press.legend !== undefined) return;
       if (!this.#dragging) {
         if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= CLICK_SLOP) return;
         this.#dragging = true;
-        canvas.style.cursor = "grabbing";
+        canvas.style.cursor = press.pan ? "move" : "grabbing";
         // The chart is about to move under the pointer: nothing is hovered while it does.
         this.#setHover(-1);
         press.lastX = press.x;
         press.lastY = press.y;
       }
-      // CSS pixels, so a drag turns the chart by the same angle on any screen density.
-      this.#inner.orbit(e.clientX - press.lastX, e.clientY - press.lastY);
+      // CSS pixels, so a drag turns (or moves) the chart by the same amount on any screen.
+      const [dx, dy] = [e.clientX - press.lastX, e.clientY - press.lastY];
+      if (press.pan) this.#inner.pan(dx, dy);
+      else this.#inner.orbit(dx, dy);
       press.lastX = e.clientX;
       press.lastY = e.clientY;
       this.requestRender();
     };
     const up = (e: PointerEvent) => {
+      if (touches.delete(e.pointerId) && pinch) {
+        // The pinch ends with the first finger lifted; the other one does nothing more.
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        if (touches.size === 0) {
+          pinch = null;
+          this.#pointer = null;
+          endDrag();
+          this.#repick();
+        }
+        return;
+      }
       if (!press || e.pointerId !== press.id) return;
       const wasDrag = this.#dragging;
       const legend = press.legend;
       const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+      const button = press.pan && e.button === 2;
       press = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       endDrag();
@@ -484,7 +549,8 @@ export class Chart {
         }
         return;
       }
-      if (wasDrag) {
+      // A drag, or a right-button press without one (a context-menu click), is not a click.
+      if (wasDrag || button) {
         this.#repick();
         return;
       }
@@ -498,7 +564,7 @@ export class Chart {
       }
     };
     const leave = () => {
-      if (press) return;
+      if (press || pinch) return;
       this.#pointer = null;
       this.#look();
     };
@@ -508,7 +574,8 @@ export class Chart {
       e.preventDefault();
       // Normalise to pixels: some mice report lines or pages.
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
-      this.#inner.zoom(e.deltaY * unit);
+      const p = at(e);
+      this.#inner.zoomAt(e.deltaY * unit, p.x, p.y);
       this.#repick();
       this.requestRender();
     };
@@ -517,6 +584,10 @@ export class Chart {
       this.#inner.resetCamera();
       this.#repick();
       this.requestRender();
+    };
+    // Right-drag pans: no context menu over an interactive chart.
+    const contextmenu = (e: Event) => {
+      if (this.#inner.orbitEnabled) e.preventDefault();
     };
 
     canvas.addEventListener("pointerdown", down);
@@ -527,6 +598,7 @@ export class Chart {
     // Not passive: we call preventDefault to stop the page scrolling.
     canvas.addEventListener("wheel", wheel, { passive: false });
     canvas.addEventListener("dblclick", dblclick);
+    canvas.addEventListener("contextmenu", contextmenu);
     return () => {
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
@@ -535,6 +607,7 @@ export class Chart {
       canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("dblclick", dblclick);
+      canvas.removeEventListener("contextmenu", contextmenu);
     };
   }
 

@@ -59,7 +59,7 @@ const SHADOW_ALPHA: f32 = 0.32;
 /// lets the surface show through the letters.
 const PRINT_LIFT: f64 = 0.3;
 
-fn rgb(hex: u32) -> Color {
+pub(crate) fn rgb(hex: u32) -> Color {
     Color::from_srgb8((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 0xff)
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn shape_fill(shape: NodeShape) -> Color {
 }
 
 /// `c` mixed toward white by `t` (0 to 1).
-fn lighten(c: Color, t: f32) -> Color {
+pub(crate) fn lighten(c: Color, t: f32) -> Color {
     let [r, g, b, a] = c.to_array();
     let m = |v: f32| v + (1.0 - v) * t;
     Color::linear(m(r), m(g), m(b), a)
@@ -131,7 +131,7 @@ pub(crate) fn build(
 /// Text printed flat at `at` (layout units) on a surface at world height `y`, one line per
 /// `\n`, centred: in layout units throughout, so `size` is the font size on the page.
 #[allow(clippy::too_many_arguments)]
-fn print(
+pub(crate) fn print(
     scene: &mut Scene3d,
     plan: &Plan,
     key: &str,
@@ -167,12 +167,25 @@ fn print(
 
 /// A soft shadow of the convex `outline` (layout units, absolute) cast onto the floor.
 fn push_shadow(scene: &mut Scene3d, plan: &Plan, outline: &[[f64; 2]], color: Color) {
+    push_shadow_with(scene, plan, outline, SHADOW_OFFSET, SHADOW_BLUR, color);
+}
+
+/// A soft shadow of the convex `outline` (layout units, absolute), moved by `offset` and
+/// blurred over `blur` layout units.
+pub(crate) fn push_shadow_with(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    outline: &[[f64; 2]],
+    offset: [f64; 2],
+    blur: f64,
+    color: Color,
+) {
     scene.shadows.push(ShadowMark {
         outline: outline
             .iter()
-            .map(|p| plan.floor_point([p[0] + SHADOW_OFFSET[0], p[1] + SHADOW_OFFSET[1]]))
+            .map(|p| plan.floor_point([p[0] + offset[0], p[1] + offset[1]]))
             .collect(),
-        blur: plan.len(SHADOW_BLUR) as f32,
+        blur: plan.len(blur) as f32,
         color,
     });
 }
@@ -307,6 +320,27 @@ fn push_edge(
         let at = edge
             .label_position
             .unwrap_or_else(|| crate::diagram::midpoint(&edge.points));
+        push_card(
+            scene, plan, &key, text, at, 0.0, shadow, measure, theme.text,
+        );
+    }
+}
+
+/// An edge's label: printed on a small light card lying at `at` (layout units) on a surface at
+/// world height `base`, with a soft shadow.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn push_card(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    key: &str,
+    text: &str,
+    at: [f64; 2],
+    base: f64,
+    shadow: Color,
+    measure: &dyn TextMeasure,
+    ink: Color,
+) {
+    {
         let size = plan.font * EDGE_LABEL_SCALE;
         let lines: Vec<&str> = text.split('\n').collect();
         let w = lines
@@ -321,18 +355,18 @@ fn push_edge(
         );
         let card: Vec<[f64; 2]> = card.iter().map(|p| [at[0] + p[0], at[1] + p[1]]).collect();
         push_shadow(scene, plan, &card, shadow);
-        let card_top = plan.len(CARD_HEIGHT);
+        let card_top = base + plan.len(CARD_HEIGHT);
         scene.decor.push(PrismMark {
             key: format!("{key}/card"),
             color: card_color(),
             outline: card.iter().map(|&p| plan.floor_point(p)).collect(),
-            base: 0.0,
+            base: base as f32,
             top: card_top as f32,
             smooth: true,
             gloss: CARD_GLOSS,
             node: 0,
         });
-        print(scene, plan, &key, text, at, card_top, size, theme.text);
+        print(scene, plan, key, text, at, card_top, size, ink);
     }
 }
 

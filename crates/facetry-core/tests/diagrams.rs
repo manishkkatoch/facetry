@@ -278,3 +278,70 @@ fn node_colours_strokes_and_text_colours_are_used() {
         facetry_core::Color::from_hex("#00ff00").unwrap()
     );
 }
+
+fn isometric() -> ChartSpec {
+    spec(&broken(
+        r#""diagram": {"#,
+        r#""diagram": { "style": "isometric","#,
+    ))
+}
+
+#[test]
+fn the_isometric_style_stacks_pedestals_on_roads_with_chevrons() {
+    let s = isometric();
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    // Two marks (the caps), each with a plate, a body and an inset as decoration.
+    assert_eq!(scene.prisms.len(), 2);
+    assert_eq!(scene.prisms[0].key, "a");
+    for id in ["a", "b"] {
+        for part in ["plate", "body", "inset"] {
+            assert!(
+                scene.decor.iter().any(|p| p.key == format!("{id}/{part}")),
+                "{id}/{part}"
+            );
+        }
+    }
+    // The layers stack: plate < body < cap < inset.
+    let part = |key: &str| scene.decor.iter().find(|p| p.key == key).unwrap();
+    assert!(part("a/plate").top <= part("a/body").base + 1e-6);
+    assert!(part("a/body").top <= scene.prisms[0].base + 1e-6);
+    assert!(scene.prisms[0].top <= part("a/inset").base + 1e-6);
+    // The edge is a road with a head marker (a long enough road also gets chevrons).
+    assert_eq!(scene.ribbons.len(), 1);
+    assert!(scene.decor.iter().any(|p| p.key == "edge0/head"));
+    // Nodes without a colour take the palette in turn; the one with a colour keeps it.
+    let glossy = build_scene_3d(&glossy(), (800, 500), 1.0, FontMetrics::inter());
+    assert_ne!(scene.prisms[0].color, glossy.prisms[0].color);
+    assert_eq!(scene.prisms[1].color, glossy.prisms[1].color);
+    // Labels are printed.
+    assert!(scene.texts.iter().all(|t| t.flat.is_some()));
+    // A shadow per pedestal and for the card.
+    assert_eq!(scene.shadows.len(), 3);
+}
+
+#[test]
+fn isometric_diagrams_start_in_the_isometric_view() {
+    let c = isometric().start_camera((800, 500), 1.0).unwrap();
+    assert_eq!(c.kind, Some(CameraKind::Orthographic));
+    assert_eq!(c.azimuth, Some(45.0));
+    assert!((c.elevation.unwrap() - 35.26).abs() < 0.01);
+}
+
+#[test]
+fn isometric_labels_stay_readable_on_the_white_inset() {
+    // White text meant for a coloured fill would vanish on the inset: a dark shade is used.
+    let s = spec(
+        &broken(r#""diagram": {"#, r#""diagram": { "style": "isometric","#).replace(
+            r#""label": "Alpha","#,
+            r##""label": "Alpha", "textColor": "#ffffff","##,
+        ),
+    );
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    let white = facetry_core::Color::from_hex("#ffffff").unwrap();
+    let label = scene
+        .texts
+        .iter()
+        .find(|t| t.key.starts_with("a/"))
+        .unwrap();
+    assert!(label.color.contrast(white) >= 3.0);
+}

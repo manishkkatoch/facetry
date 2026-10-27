@@ -7,8 +7,10 @@ use facetry_core::spec::{DiagramSpec, DiagramStyle, EdgeEnd, EdgeStroke};
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
     let mut out = String::with_capacity(256 + 160 * (spec.nodes.len() + spec.edges.len()));
     out.push_str("{\"dimension\":\"3d\",\"diagram\":{");
-    if spec.style == DiagramStyle::Glossy {
-        out.push_str("\"style\":\"glossy\",");
+    match spec.style {
+        DiagramStyle::Flat => {}
+        DiagramStyle::Glossy => out.push_str("\"style\":\"glossy\","),
+        DiagramStyle::Isometric => out.push_str("\"style\":\"isometric\","),
     }
     if let Some(size) = spec.font_size {
         out.push_str("\"fontSize\":");

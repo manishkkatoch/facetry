@@ -121,3 +121,15 @@ test("changing the style lays the Mermaid text out again", async ({ page }) => {
     .poll(() => page.evaluate(() => (window as any).facetryChart.camera.type))
     .toBe("orthographic");
 });
+
+test("the isometric style starts in the isometric view, and its pedestals report hover", async ({ page }) => {
+  await page.goto("/?backend=webgl2&style=isometric&example=mermaid/27-timeline");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const camera = await page.evaluate(() => (window as any).facetryChart.camera);
+  expect(camera.type).toBe("orthographic");
+  expect(camera.azimuth).toBe(45);
+  const p = await where(page, "exec");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText("exec");
+  await expect(page.locator("#hover")).toContainText('"shape":"circle"');
+});

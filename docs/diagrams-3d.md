@@ -213,6 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
+| **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
 | **D2** | Subgraphs (compound layout, platforms), edges arcing over crossings, contact shadows, labels that follow the zoom, themes, `diagram.run()` |
@@ -257,3 +258,21 @@ selects routing, because some looks need square-cornered edges.
 Known limits: square-cornered routing crosses more than curves (15 against 9 in the corpus);
 edges into a narrow node from many sources crowd its top side; wide diagrams print small labels
 at the starting distance (they grow when zooming, being printed).
+
+**Isometric (S2).** After the infographic-timeline reference: each node is a stack of four
+solids of its own shape (plate, body, cap, inset), so circles become the round pedestals of the
+reference and other shapes become tiles of the same make; the cap is the node's mark (hover,
+picking), the rest decoration. Edges reuse the glossy routing but are drawn as roads lying on the
+floor that run under the pedestals: a pedestal hides the end of a road, so direction is shown by
+chevrons painted along the road and a darker one just before the head, rather than by an
+arrowhead at the node. Labels are printed on the inset, so in the 45-degree view they run along
+the drawing's axes like the text of a printed isometric chart. Not yet: the reference's cards
+lying on the floor beside each node (they need room reserved in the layout), icons, and standing
+3D numerals.
+
+**Moving around (S2).** Diagrams are maps more than objects, so orbit alone is not enough: the
+camera got a pan (the point looked at moves across the floor, clamped to the plot box) and zoom
+toward the pointer (the point of the floor under it is kept there by panning after each zoom
+step), and diagrams may come as close as 0.15 box radii. Touch gets pinch (zoom about the
+fingers' midpoint) and two-finger pan. Charts gain the same pan and pointer zoom but keep their
+closest distance.

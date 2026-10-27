@@ -17,8 +17,8 @@ hides or shows its series (see [Hiding series](#hiding-series-from-the-legend)).
 
 **Diagrams (D1).** Mermaid flowcharts drawn in 3D: an opt-in add-on (`facetry/diagrams`, its own
 small wasm module) parses a subset of Mermaid and lays it out, and the chart draws the result as
-extruded nodes with edges and labels, flat or in a glossy style with thick arrows, shadows and
-printed labels (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
+extruded nodes with edges and labels, flat, glossy (thick arrows, shadows, printed labels) or
+isometric (pedestals joined by roads) (see [Diagrams from Mermaid](#diagrams-from-mermaid) and
 the design in [docs/diagrams-3d.md](docs/diagrams-3d.md)).
 
 ```ts
@@ -416,13 +416,24 @@ const spec: ChartSpec = {
   validation errors in 2D (with paths such as `/layers/0/encoding/z`). Right axes are not
   supported in 3D yet.
 
-**Camera controls.** In a 3D chart (with `interaction.orbit` not `false`) drag to orbit, use the
-wheel to zoom and double-click to reset. From code:
+**Camera controls.** In a 3D chart or diagram (with `interaction.orbit` not `false`):
+
+| | mouse | touch |
+|---|---|---|
+| orbit | drag | drag one finger |
+| pan | right-drag, or Shift+drag | drag two fingers |
+| zoom | wheel, toward the pointer (what is under it stays under it) | pinch, toward the fingers |
+| reset | double-click | double-tap, where the browser turns it into a double-click |
+
+Panning moves the point looked at across the floor, never beyond the plot box. Diagrams may
+zoom in to 0.15 box radii (a big diagram is read a corner at a time); charts stop at 1.3. A right
+press never opens the context menu over an interactive chart, and neither a drag nor a right
+press clicks. From code:
 
 ```ts
-chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance
-chart.camera;                                      // { type, azimuth, elevation, distance }
-chart.resetCamera();                               // back to the spec's camera
+chart.setCamera({ azimuth: 120, elevation: 40 }); // any subset of type/azimuth/elevation/distance/pan
+chart.camera;                                      // { type, azimuth, elevation, distance, pan: [x, z] }
+chart.resetCamera();                               // back to the spec's camera, unpanned
 ```
 
 The camera lives in Rust and moving it only rewrites one uniform and asks for a frame: the
@@ -534,6 +545,14 @@ glossy style, how its edges are routed):
   seen in perspective from 28 degrees round and 40 degrees up. Square-cornered routing gives
   each edge its own port along a node's side and its own track where several turn in the same
   gap, ordered so that turns do not cross needlessly.
+- `"isometric"`: an infographic in the classic isometric view (orthographic, 45 degrees round,
+  35.26 up). Every node is a layered pedestal of its shape: a pale plate on the floor, a white
+  body, a coloured cap (the colours of a palette in turn, unless `classDef`/`style` set `fill`)
+  and a white inset on top where the label is printed in a deep shade of the cap's colour. Edges
+  are light grey roads on the floor, routed at right angles like the glossy style's, with
+  chevrons along them pointing the way and a darker one before the head (the pedestal hides the
+  road's end); edge labels sit on cards on the roads; long soft shadows fall toward the viewer's
+  right. A node's `color` is used for its label only if it reads on the white inset.
 
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
@@ -552,7 +571,7 @@ label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | 
 `examples/specs/diagram-glossy.json`). Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (26 flowcharts in the
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (27 flowcharts in the
 style of real documentation) is laid out in both styles by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
@@ -710,7 +729,7 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `examples/specs/`: `bar-stacked`, `bar-stacked-hidden`, `bar-normalized`, `bar-grouped`, `line-basic`, `line-numeric-x`,
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
 and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
-`mermaid/01-decision`), `?style=glossy` (draw Mermaid in the glossy style; also a **Style**
+`mermaid/01-decision`), `?style=glossy` or `?style=isometric` (draw Mermaid in that style; also a **Style**
 dropdown), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
 (anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
 their line and column). 3D examples show the
@@ -727,8 +746,9 @@ console.
 - **Golden images** (`examples/playground/tests/__golden__/`: `bar-basic`, `bar-labels`,
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
   `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
-  the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision` and
-  `diagram-glossy-26-styled` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
+  the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision`,
+  `diagram-glossy-26-styled`, `diagram-isometric-27-timeline` and `diagram-isometric-01-decision`
+  from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -760,9 +780,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 730,726 B (714 KiB) | 327,112 B (319 KiB) | 270,172 B (264 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,340,462 B (2286 KiB) | 969,807 B (947 KiB) | 766,762 B (749 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 211,147 B (206 KiB) | 92,598 B (90 KiB) | 79,174 B (77 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 739,664 B (722 KiB) | 330,932 B (323 KiB) | 273,563 B (267 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,349,389 B (2294 KiB) | 973,650 B (951 KiB) | 769,985 B (752 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 211,251 B (206 KiB) | 92,611 B (90 KiB) | 79,293 B (77 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -770,7 +790,8 @@ spec, its validation, the prism geometry and the diagram scene builder): WebGPU 
 previous commit with the same toolchain (rustc 1.99). The parser and the layout live in the
 add-on only. The glossy style (S1) added 7,916 B gzip to the WebGPU module (ribbons, shadows,
 gloss, printed text) and 12,833 to the add-on (styling and square-cornered routing), after
-replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser.
+replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser. The
+isometric style and panning (S2) added 3,820 B gzip to the WebGPU module.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

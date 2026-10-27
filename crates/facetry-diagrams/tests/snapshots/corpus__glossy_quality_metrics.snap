@@ -28,4 +28,5 @@ expression: report
 24-rl                      nodes 6 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 4 | edge length 541 size 891 x 124
 25-disconnected            nodes 6 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 300 size 483 x 220
 26-styled                  nodes 7 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 8 | edge length 941 size 312 x 589
+27-timeline                nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 270 size 609 x 92
 TOTAL crossings 15 edge-node overlaps 0 label overlaps 0

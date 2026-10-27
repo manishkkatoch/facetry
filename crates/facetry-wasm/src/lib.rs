@@ -8,7 +8,9 @@ use facetry_core::{
     build_scene_with_theme, parse_spec_value, set_series_visible, settle_hidden, validate,
 };
 use facetry_font::FontMetrics;
-use facetry_render::{BackendPreference, Camera, Projection, Renderer, Snapshot};
+use facetry_render::{
+    BackendPreference, CLOSE_UP_DISTANCE, Camera, MIN_DISTANCE, Projection, Renderer, Snapshot,
+};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -21,12 +23,17 @@ export interface ChartOptions {
     clearColor?: string;
 }
 
-/** The 3D camera right now (see `Chart.camera`). Angles are degrees; `distance` is in plot-box radii. */
+/**
+ * The 3D camera right now (see `Chart.camera`). Angles are degrees; `distance` is in plot-box
+ * radii; `pan` is how far the point looked at has been moved from the plot's centre, `[x, z]`
+ * in world units on the floor (`[0, 0]` until the viewer pans).
+ */
 export interface CameraState {
     type: "perspective" | "orthographic";
     azimuth: number;
     elevation: number;
     distance: number;
+    pan: [number, number];
 }
 
 /** What `Chart.setCamera` accepts: any subset. Values are clamped to the supported range. */
@@ -278,7 +285,7 @@ impl Chart {
         let renderer = renderer_for(canvas, preference)
             .await
             .map_err(|e| js_error(e.code(), &e.to_string()))?;
-        let camera = Camera::from_spec(spec.start_camera(renderer.size(), dpr as f32).as_ref());
+        let camera = start_camera(&spec, renderer.size(), dpr as f32);
         let mut chart = Chart {
             renderer,
             camera,
@@ -308,7 +315,7 @@ impl Chart {
         settle_hidden(&mut spec, self.spec.hidden_override.as_deref());
         let (size, dpr) = (self.renderer.size(), self.dpr);
         if spec.start_camera(size, dpr) != self.spec.start_camera(size, dpr) {
-            self.camera = Camera::from_spec(spec.start_camera(size, dpr).as_ref());
+            self.camera = start_camera(&spec, size, dpr);
         }
         self.spec = spec;
         self.relayout();
@@ -406,18 +413,53 @@ impl Chart {
         }
     }
 
-    /// Back to the spec's camera (or the defaults).
-    #[wasm_bindgen(js_name = resetCamera)]
-    pub fn reset_camera(&mut self) {
-        if self.is_3d() {
-            let start = self.spec.start_camera(self.renderer.size(), self.dpr);
-            self.camera = Camera::from_spec(start.as_ref());
+    /// Zooms by `delta` (as `zoom`) toward the point under `(x, y)` (CSS pixels from the
+    /// canvas's top-left): that point of the plane through the point looked at stays under
+    /// the pointer, as in a map. Call `render` afterwards.
+    #[wasm_bindgen(js_name = zoomAt)]
+    pub fn zoom_at(&mut self, delta: f64, x: f64, y: f64) {
+        if !self.is_3d() {
+            return;
+        }
+        let s = f64::from(self.dpr);
+        let (x, y) = ((x * s) as f32, (y * s) as f32);
+        let before = self.renderer.plane_point_3d(x, y);
+        self.camera.zoom(delta as f32);
+        self.renderer.set_camera(self.camera);
+        let after = self.renderer.plane_point_3d(x, y);
+        if let (Some(b), Some(a), Some(size)) = (before, after, self.renderer.box_size()) {
+            self.camera.move_pan([b[0] - a[0], b[2] - a[2]], size);
             self.renderer.set_camera(self.camera);
         }
     }
 
-    /// Sets any of `type`, `azimuth`, `elevation`, `distance`; values are clamped. Throws
-    /// `invalid-options` if a field has the wrong type.
+    /// Pans by a pointer drag of `(dx, dy)` CSS pixels: the floor follows the pointer. The
+    /// point looked at stays inside the plot box. Call `render` afterwards.
+    pub fn pan(&mut self, dx: f64, dy: f64) {
+        let Some(size) = self.renderer.box_size() else {
+            return;
+        };
+        if self.is_3d() {
+            let s = f64::from(self.dpr);
+            let height = self.renderer.size().1 as f32;
+            self.camera
+                .pan_by((dx * s) as f32, (dy * s) as f32, height, size);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Back to the spec's camera (or the defaults).
+    #[wasm_bindgen(js_name = resetCamera)]
+    pub fn reset_camera(&mut self) {
+        if self.is_3d() {
+            self.camera = start_camera(&self.spec, self.renderer.size(), self.dpr);
+            self.renderer.set_camera(self.camera);
+        }
+    }
+
+    /// Sets any of `type`, `azimuth`, `elevation`, `distance` and `pan` (`[x, z]`); values are
+    /// clamped (the pan to the plot box). Throws `invalid-options` if a field has the wrong
+    /// type.
     #[wasm_bindgen(js_name = setCamera)]
     pub fn set_camera(
         &mut self,
@@ -447,11 +489,27 @@ impl Chart {
                 )));
             }
         };
+        let pan = js_sys::Reflect::get(&update, &"pan".into())?;
+        let pan = if pan.is_undefined() || pan.is_null() {
+            None
+        } else {
+            let array = js_sys::Array::from(&pan);
+            let x = array.get(0).as_f64();
+            let z = array.get(1).as_f64();
+            match (js_sys::Array::is_array(&pan), x, z, array.length()) {
+                (true, Some(x), Some(z), 2) => Some([x as f32, z as f32]),
+                _ => return Err(invalid_options("camera `pan` must be [x, z] (two numbers)")),
+            }
+        };
         if self.is_3d() {
             if let Some(p) = projection {
                 self.camera.projection = p;
             }
             self.camera.set(azimuth, elevation, distance);
+            if let (Some([x, z]), Some(size)) = (pan, self.renderer.box_size()) {
+                let current = self.camera.pan;
+                self.camera.move_pan([x - current[0], z - current[1]], size);
+            }
             self.renderer.set_camera(self.camera);
         }
         Ok(())
@@ -474,6 +532,8 @@ impl Chart {
         set("azimuth", round(c.azimuth).into());
         set("elevation", round(c.elevation).into());
         set("distance", round(c.distance).into());
+        let pan = js_sys::Array::of2(&round(c.pan[0]).into(), &round(c.pan[1]).into());
+        set("pan", pan.into());
         object.into()
     }
 
@@ -786,6 +846,17 @@ impl Chart {
         }
         object.into()
     }
+}
+
+/// The camera a spec starts from: its own (with a diagram's defaults, fitted to `size`), and
+/// for a diagram the right to come much closer, to read a corner of a big one.
+fn start_camera(spec: &ChartSpec, size: (u32, u32), dpr: f32) -> Camera {
+    let min = if spec.diagram.is_some() {
+        CLOSE_UP_DISTANCE
+    } else {
+        MIN_DISTANCE
+    };
+    Camera::from_spec_with_min(spec.start_camera(size, dpr).as_ref(), min)
 }
 
 #[cfg(target_arch = "wasm32")]

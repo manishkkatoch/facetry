@@ -28,8 +28,8 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
     : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
-// ?style=glossy draws Mermaid diagrams in the glossy style.
-styleSelect.value = params.get("style") === "glossy" ? "glossy" : "flat";
+// ?style=glossy or ?style=isometric draws Mermaid diagrams in that style.
+styleSelect.value = ["glossy", "isometric"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
 // ?example=<name> picks the starting spec; ?ui=0 hides everything but the chart.

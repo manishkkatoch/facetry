@@ -20,6 +20,9 @@ pub const MIN_ELEVATION: f32 = 5.0;
 pub const MAX_ELEVATION: f32 = 85.0;
 /// Closer than this the box fills the screen and clips the near plane; farther it is a dot.
 pub const MIN_DISTANCE: f32 = 1.3;
+/// How close a camera that may pan (a diagram's) may come: a large diagram is then read a
+/// corner at a time.
+pub const CLOSE_UP_DISTANCE: f32 = 0.15;
 pub const MAX_DISTANCE: f32 = 8.0;
 
 /// See [`facetry_core::scene3d::FRAMING_LIFT`].
@@ -53,8 +56,14 @@ pub struct Camera {
     pub azimuth: f32,
     /// Degrees, within [`MIN_ELEVATION`]..=[`MAX_ELEVATION`].
     pub elevation: f32,
-    /// In box radii, within [`MIN_DISTANCE`]..=[`MAX_DISTANCE`].
+    /// In box radii, within [`min_distance`](Self::min_distance)..=[`MAX_DISTANCE`].
     pub distance: f32,
+    /// How far the point looked at has been moved from the plot box's centre, `[x, z]` world
+    /// units on the floor plane (a pan). Kept within the box.
+    pub pan: [f32; 2],
+    /// The closest `distance` allowed: [`MIN_DISTANCE`], or [`CLOSE_UP_DISTANCE`] for a
+    /// camera that may pan.
+    pub min_distance: f32,
 }
 
 impl Default for Camera {
@@ -64,6 +73,8 @@ impl Default for Camera {
             azimuth: DEFAULT_AZIMUTH as f32,
             elevation: DEFAULT_ELEVATION as f32,
             distance: DEFAULT_DISTANCE as f32,
+            pan: [0.0; 2],
+            min_distance: MIN_DISTANCE,
         }
     }
 }
@@ -71,7 +82,16 @@ impl Default for Camera {
 impl Camera {
     /// The spec's camera with defaults for whatever it leaves out.
     pub fn from_spec(spec: Option<&CameraSpec>) -> Self {
-        let mut camera = Self::default();
+        Self::from_spec_with_min(spec, MIN_DISTANCE)
+    }
+
+    /// [`from_spec`](Self::from_spec) for a camera that may come as close as `min_distance`
+    /// (box radii).
+    pub fn from_spec_with_min(spec: Option<&CameraSpec>, min_distance: f32) -> Self {
+        let mut camera = Self {
+            min_distance,
+            ..Self::default()
+        };
         if let Some(spec) = spec {
             camera.projection = match spec.kind.unwrap_or_default() {
                 CameraKind::Perspective => Projection::Perspective,
@@ -102,7 +122,7 @@ impl Camera {
             self.azimuth = 0.0;
         }
         self.elevation = self.elevation.clamp(MIN_ELEVATION, MAX_ELEVATION);
-        self.distance = self.distance.clamp(MIN_DISTANCE, MAX_DISTANCE);
+        self.distance = self.distance.clamp(self.min_distance, MAX_DISTANCE);
     }
 
     /// A drag of `(dx, dy)` pixels. The scene follows the pointer: dragging right turns the
@@ -124,8 +144,8 @@ impl Camera {
         self.set(None, None, Some(self.distance * factor));
     }
 
-    /// The point the camera looks at and the unit its distance is measured in, for a plot box
-    /// of `size`.
+    /// The point an unpanned camera looks at and the unit its distance is measured in, for a
+    /// plot box of `size`.
     pub fn plot_frame(size: [f32; 3]) -> (Vec3, f32) {
         (
             Vec3::from(size) / 2.0 - Vec3::Y * FRAMING_LIFT,
@@ -133,12 +153,53 @@ impl Camera {
         )
     }
 
+    /// The point this camera looks at, for a plot box of `size`: the frame's centre moved by
+    /// the pan.
+    pub fn target(&self, size: [f32; 3]) -> Vec3 {
+        Self::plot_frame(size).0 + Vec3::new(self.pan[0], 0.0, self.pan[1])
+    }
+
     /// World to clip space for a plot box of `size` shown in a viewport of `viewport` pixels.
     /// The one matrix used for drawing, for placing labels and for picking, so they can never
     /// disagree about where a bar is on screen.
     pub fn plot_view_proj(&self, size: [f32; 3], viewport: (f32, f32)) -> Mat4 {
-        let (centre, radius) = Self::plot_frame(size);
-        self.view_proj(viewport.0 / viewport.1.max(1.0), centre, radius)
+        let radius = Self::plot_frame(size).1;
+        self.view_proj(viewport.0 / viewport.1.max(1.0), self.target(size), radius)
+    }
+
+    /// A pan by a pointer drag of `(dx, dy)` pixels in a viewport `viewport_h` pixels high,
+    /// for a plot box of `size`: the floor follows the pointer (at the point looked at), and
+    /// the point looked at stays inside the box.
+    pub fn pan_by(&mut self, dx_px: f32, dy_px: f32, viewport_h: f32, size: [f32; 3]) {
+        let radius = Self::plot_frame(size).1;
+        // World units per pixel at the point looked at (both lenses show the same height
+        // there, see `view_proj`).
+        let half_tan = (FOV_Y_DEGREES as f32 / 2.0).to_radians().tan();
+        let per_px = 2.0 * self.distance * radius * half_tan / viewport_h.max(1.0);
+        let az = self.azimuth.to_radians();
+        // Screen right, and "toward the viewer" on the floor (foreshortened by the elevation).
+        let right = [az.cos(), -az.sin()];
+        let toward = [az.sin(), az.cos()];
+        let depth = per_px / self.elevation.to_radians().sin().max(0.1);
+        self.move_pan(
+            [
+                -(right[0] * dx_px * per_px) - toward[0] * dy_px * depth,
+                -(right[1] * dx_px * per_px) - toward[1] * dy_px * depth,
+            ],
+            size,
+        );
+    }
+
+    /// Moves the point looked at by `delta` (`[x, z]` world units), staying inside the box.
+    pub fn move_pan(&mut self, delta: [f32; 2], size: [f32; 3]) {
+        let finite = delta.iter().all(|v| v.is_finite());
+        if !finite {
+            return;
+        }
+        self.pan = [
+            (self.pan[0] + delta[0]).clamp(-size[0] / 2.0, size[0] / 2.0),
+            (self.pan[1] + delta[1]).clamp(-size[2] / 2.0, size[2] / 2.0),
+        ];
     }
 
     /// Where the camera is, for a box with this `centre` and `radius`.
@@ -154,10 +215,12 @@ impl Camera {
         let eye = self.eye(centre, radius);
         let view = Mat4::look_at_rh(eye, centre, Vec3::Y);
         let dist = self.distance * radius;
-        // The box (plus a little for tick marks) lies within 1.1 radii of the centre, so
-        // this near/far pair clips nothing and wastes little depth precision.
-        let near = (dist - radius * 1.1).max(0.01);
-        let far = dist + radius * 1.1;
+        // The box (plus a little for tick marks) lies within 1.1 radii of its centre, and the
+        // point looked at is at most the pan away from that, so this near/far pair clips
+        // nothing and wastes little depth precision.
+        let reach = radius * 1.1 + (self.pan[0] * self.pan[0] + self.pan[1] * self.pan[1]).sqrt();
+        let near = (dist - reach).max(dist * 0.01).max(0.001);
+        let far = dist + reach;
         let half_tan = (FOV_Y_DEGREES as f32 / 2.0).to_radians().tan();
         let proj = match self.projection {
             Projection::Perspective => {
@@ -302,5 +365,48 @@ mod tests {
         };
         let clip = c.view_proj(1.0, CENTRE, RADIUS) * Vec3::new(1.0, 0.2, 0.3).extend(1.0);
         assert!((clip.w - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn panning_moves_the_point_looked_at_with_the_pointer_and_stays_in_the_box() {
+        let size = [2.0, 0.1, 1.0];
+        let mut c = Camera {
+            azimuth: 0.0,
+            elevation: 45.0,
+            ..Camera::default()
+        };
+        let centre = c.target(size);
+        // Dragging right moves the picture right: the point looked at moves left (-x).
+        c.pan_by(50.0, 0.0, 500.0, size);
+        assert!(c.target(size).x < centre.x);
+        assert!((c.target(size).z - centre.z).abs() < 1e-6);
+        // Dragging down brings the far side nearer: the point looked at moves away (-z).
+        let before = c.target(size);
+        c.pan_by(0.0, 50.0, 500.0, size);
+        assert!(c.target(size).z < before.z);
+        // A huge drag stops at the box's edge.
+        c.pan_by(1e6, 1e6, 500.0, size);
+        assert!(c.pan[0].abs() <= 1.0 + 1e-6 && c.pan[1].abs() <= 0.5 + 1e-6);
+        // Non-finite input is ignored.
+        let p = c.pan;
+        c.move_pan([f32::NAN, 0.0], size);
+        assert_eq!(c.pan, p);
+    }
+
+    #[test]
+    fn a_panned_camera_still_sees_the_whole_box_between_its_clip_planes() {
+        let size = [2.0, 0.1, 2.0];
+        let mut c = Camera::from_spec_with_min(None, CLOSE_UP_DISTANCE);
+        c.set(None, None, Some(0.2));
+        assert_eq!(c.distance, 0.2);
+        c.move_pan([1.0, 1.0], size);
+        let vp = c.plot_view_proj(size, (800.0, 500.0));
+        // The far corner of the box is not cut off by the far plane.
+        let p = vp * glam::Vec4::new(0.0, 0.0, 0.0, 1.0);
+        assert!(p.z / p.w <= 1.0, "{p:?}");
+        // Charts keep their limit.
+        let mut chart = Camera::default();
+        chart.set(None, None, Some(0.2));
+        assert_eq!(chart.distance, MIN_DISTANCE);
     }
 }

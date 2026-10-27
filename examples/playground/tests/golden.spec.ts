@@ -88,3 +88,14 @@ for (const name of ["01-decision", "26-styled"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-glossy-${name}.png`);
   });
 }
+
+// The isometric style: layered pedestals in palette colours (27-timeline, after infographic
+// timelines) and a flowchart with a cycle and labelled roads, in the classic isometric view.
+for (const name of ["27-timeline", "01-decision"]) {
+  test(`isometric diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=isometric&example=mermaid/${name}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-isometric-${name}.png`);
+  });
+}

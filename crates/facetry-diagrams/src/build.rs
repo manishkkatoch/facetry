@@ -19,7 +19,8 @@ pub struct Options {
     pub style: DiagramStyle,
 }
 
-/// Spacing for the glossy style: its thick arrows need longer runs between ranks.
+/// Spacing for the glossy and isometric styles: their thick edges need longer runs between
+/// ranks.
 const GLOSSY_SPACING: Spacing = Spacing {
     node: 50.0,
     edge: 24.0,
@@ -104,7 +105,8 @@ pub fn node_size(shape: NodeShape, label: &str) -> (f64, f64) {
 
 /// Lays out `chart`.
 pub fn build(chart: &Flowchart, options: &Options) -> Built {
-    let glossy = options.style == DiagramStyle::Glossy;
+    // The glossy and isometric styles draw solid edges on the floor, routed at right angles.
+    let square_routes = options.style != DiagramStyle::Flat;
     let sizes: Vec<(f64, f64)> = chart
         .nodes
         .iter()
@@ -144,14 +146,14 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
     };
     let laid = layout::layout(
         &graph,
-        if glossy {
+        if square_routes {
             GLOSSY_SPACING
         } else {
             Spacing::default()
         },
     );
     let pairs: Vec<(usize, usize)> = chart.edges.iter().map(|e| (e.from, e.to)).collect();
-    let square = glossy.then(|| orthogonal::route(&laid, &graph.nodes, &pairs));
+    let square = square_routes.then(|| orthogonal::route(&laid, &graph.nodes, &pairs));
     let out = |p: [f64; 2]| match chart.direction {
         Direction::TopBottom => p,
         Direction::BottomTop => [p[0], -p[1]],
