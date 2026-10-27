@@ -5,12 +5,12 @@ use facetry_core::diagram::{
     CARD_BADGE, CARD_TEXT, CARD_TEXT_WIDTH, ICON_GAP, ICON_SIZE, card_layout, shape_outline,
 };
 use facetry_core::spec::{
-    CustomIcon, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, DiagramStyle,
-    EdgeEnd, NodeCard, NodeShape,
+    CustomIcon, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramGroup, DiagramNode, DiagramSpec,
+    DiagramStyle, EdgeEnd, NodeCard, NodeShape,
 };
 use facetry_font::FontMetrics;
 
-use crate::flowchart::{Direction, Flowchart};
+use crate::flowchart::{Direction, End, Flowchart};
 use crate::layout::{self, Graph, Size, Spacing};
 use crate::orthogonal;
 use crate::route;
@@ -38,7 +38,16 @@ const GLOSSY_SPACING: Spacing = Spacing {
     node: 50.0,
     edge: 24.0,
     rank: 90.0,
+    group: 30.0,
 };
+
+/// Groups (subgraphs): room inside a group's box round what it holds, the title's size
+/// against the labels', and the room under the title.
+const GROUP_PAD: f64 = 16.0;
+pub const GROUP_TITLE_SCALE: f64 = 0.9;
+const GROUP_TITLE_GAP: f64 = 10.0;
+/// The size of the invisible stand-in that gives an empty group its box.
+const EMPTY_GROUP: (f64, f64) = (60.0, 24.0);
 /// Corner radius of a square-cornered edge.
 const CORNER_RADIUS: f64 = 12.0;
 
@@ -243,14 +252,65 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             None => node,
         }
     };
+    // Groups: an invisible stand-in node gives an empty group its box, and an edge to a group
+    // is laid out to one of its nodes (the first the text names) and cut at the box later.
+    let mut layout_nodes: Vec<Size> = (0..chart.nodes.len()).map(footprint).collect();
+    let mut node_group: Vec<Option<usize>> = chart.nodes.iter().map(|n| n.group).collect();
+    let mut stand_in: Vec<Option<usize>> = vec![None; chart.subgraphs.len()];
+    for (g, slot) in stand_in.iter_mut().enumerate() {
+        let holds = |h: Option<usize>| h.is_some_and(|h| chart.within(h, g));
+        if !node_group.iter().any(|&h| holds(h)) {
+            *slot = Some(layout_nodes.len());
+            layout_nodes.push(rotate_size(EMPTY_GROUP));
+            node_group.push(Some(g));
+        }
+    }
+    let representative = |end: End| match end {
+        End::Node(i) => i,
+        End::Group(g) => chart
+            .nodes
+            .iter()
+            .position(|n| n.group.is_some_and(|h| chart.within(h, g)))
+            .or(stand_in[g])
+            .unwrap_or(0),
+    };
+    // A group's title is at the top of the drawing: in the layout's frame, before its first
+    // rank (TB), after its last (BT), or along its left side (LR, RL).
+    let title_room = |g: usize| {
+        let (_, h) = text_box(&chart.subgraphs[g].title, FONT * GROUP_TITLE_SCALE);
+        GROUP_PAD + h + GROUP_TITLE_GAP
+    };
+    let groups: Vec<layout::Group> = chart
+        .subgraphs
+        .iter()
+        .enumerate()
+        .map(|(g, sub)| {
+            let t = title_room(g);
+            let p = GROUP_PAD;
+            let (before, after, left) = match chart.direction {
+                Direction::TopBottom => (t, p, p),
+                Direction::BottomTop => (p, t, p),
+                Direction::LeftRight | Direction::RightLeft => (p, p, t),
+            };
+            layout::Group {
+                parent: sub.parent,
+                before,
+                after,
+                left,
+                right: p,
+            }
+        })
+        .collect();
     let graph = Graph {
-        nodes: (0..chart.nodes.len()).map(footprint).collect(),
+        nodes: layout_nodes,
+        groups,
+        node_group,
         edges: chart
             .edges
             .iter()
             .map(|e| layout::Edge {
-                from: e.from,
-                to: e.to,
+                from: representative(e.from),
+                to: representative(e.to),
                 minlen: e.length,
                 weight: 1.0,
                 label: e.label.as_deref().map(|l| {
@@ -286,23 +346,57 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
         card_at[i] = Some([c[0] + side * (foot.width - card.width) / 2.0, c[1]]);
     }
     let node_sizes: Vec<Size> = sizes.iter().copied().map(rotate_size).collect();
-    let pairs: Vec<(usize, usize)> = chart.edges.iter().map(|e| (e.from, e.to)).collect();
-    let square = square_routes.then(|| orthogonal::route(&laid, &node_at, &node_sizes, &pairs));
+    // The routers see every layout node (stand-ins included) at its place and size.
+    let mut route_at = node_at.clone();
+    let mut route_sizes = node_sizes.clone();
+    for (i, size) in graph.nodes.iter().enumerate().skip(chart.nodes.len()) {
+        route_at.push(laid.nodes[i]);
+        route_sizes.push(*size);
+    }
+    let ends: Vec<(usize, usize)> = chart
+        .edges
+        .iter()
+        .map(|e| (representative(e.from), representative(e.to)))
+        .collect();
+    let square = square_routes.then(|| orthogonal::route(&laid, &route_at, &route_sizes, &ends));
     let out = |p: [f64; 2]| match chart.direction {
         Direction::TopBottom => p,
         Direction::BottomTop => [p[0], -p[1]],
         Direction::LeftRight => [p[1], p[0]],
         Direction::RightLeft => [-p[1], p[0]],
     };
-    let centres: Vec<[f64; 2]> = node_at.iter().map(|&p| out(p)).collect();
+    let centres: Vec<[f64; 2]> = route_at.iter().map(|&p| out(p)).collect();
+    // Group boxes in the drawing's frame, `[left, top, right, bottom]`.
+    let boxes: Vec<[f64; 4]> = laid
+        .groups
+        .iter()
+        .map(|b| {
+            let (a, c) = (out([b[0], b[1]]), out([b[2], b[3]]));
+            [
+                a[0].min(c[0]),
+                a[1].min(c[1]),
+                a[0].max(c[0]),
+                a[1].max(c[1]),
+            ]
+        })
+        .collect();
     let card_centres: Vec<Option<[f64; 2]>> = card_at.iter().map(|c| c.map(out)).collect();
-    let outlines: Vec<Vec<[f64; 2]>> = chart
+    let mut route_sizes_out: Vec<(f64, f64)> = sizes.clone();
+    route_sizes_out.extend(std::iter::repeat_n(
+        EMPTY_GROUP,
+        graph.nodes.len() - chart.nodes.len(),
+    ));
+    let shapes = chart
         .nodes
         .iter()
-        .zip(&sizes)
+        .map(|n| n.shape)
+        .chain(std::iter::repeat(NodeShape::Rect))
+        .take(graph.nodes.len());
+    let outlines: Vec<Vec<[f64; 2]>> = shapes
+        .zip(&route_sizes_out)
         .zip(&centres)
-        .map(|((n, &(w, h)), c)| {
-            shape_outline(n.shape, w, h)
+        .map(|((shape, &(w, h)), c)| {
+            shape_outline(shape, w, h)
                 .0
                 .into_iter()
                 .map(|p| [c[0] + p[0], c[1] + p[1]])
@@ -313,38 +407,41 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
     let mut control = Vec::with_capacity(chart.edges.len());
     let mut edges = Vec::with_capacity(chart.edges.len());
     for (i, (e, r)) in chart.edges.iter().zip(&laid.edges).enumerate() {
+        let (from, to) = ends[i];
         let (points, drawn) = if let Some(square) = &square {
             // Square corners: from port to port, the ends fitted to the outlines along the
             // first and last segments, then the corners rounded.
             let s = &square[i];
             let mut points: Vec<[f64; 2]> = s.points.iter().map(|&p| out(p)).collect();
             let n = points.len();
-            points[0] = route::clip(&outlines[e.from], out(s.start_inside), points[1]);
-            points[n - 1] = route::clip(&outlines[e.to], out(s.end_inside), points[n - 2]);
+            points[0] = route::clip(&outlines[from], out(s.start_inside), points[1]);
+            points[n - 1] = route::clip(&outlines[to], out(s.end_inside), points[n - 2]);
+            let points = cut_at_groups(points, e.from, e.to, &boxes);
             let drawn = orthogonal::round_corners(&points, CORNER_RADIUS);
             (points, drawn)
         } else {
             let mut points: Vec<[f64; 2]> = r.points.iter().map(|&p| out(p)).collect();
-            if e.from == e.to {
-                let (w, h) = sizes[e.from];
-                points = route::self_loop(centres[e.from], w, h, !sideways);
+            if from == to {
+                let (w, h) = route_sizes_out[from];
+                points = route::self_loop(centres[from], w, h, !sideways);
             }
             // Leave and enter through the outlines, toward the neighbouring control point.
             let n = points.len();
-            let first = route::clip(&outlines[e.from], centres[e.from], points[1.min(n - 1)]);
-            let last = route::clip(&outlines[e.to], centres[e.to], points[n.saturating_sub(2)]);
+            let first = route::clip(&outlines[from], centres[from], points[1.min(n - 1)]);
+            let last = route::clip(&outlines[to], centres[to], points[n.saturating_sub(2)]);
             points[0] = first;
             points[n - 1] = last;
+            let points = cut_at_groups(points, e.from, e.to, &boxes);
             let smooth = route::basis(&points);
             (points, smooth)
         };
         control.push(points);
         let label_position = match (&e.label, r.label) {
             (Some(_), Some(p)) => Some(out(p)),
-            (Some(_), None) if e.from == e.to => {
+            (Some(_), None) if from == to => {
                 // Beyond the loop.
-                let (w, h) = sizes[e.from];
-                let c = centres[e.from];
+                let (w, h) = route_sizes_out[from];
+                let c = centres[from];
                 let (tw, th) = text_box(e.label.as_deref().unwrap_or(""), FONT * EDGE_LABEL_SCALE);
                 Some(if sideways {
                     [c[0], c[1] + h / 2.0 + 30.0 + th / 2.0]
@@ -354,9 +451,13 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             }
             _ => None,
         };
+        let id = |end: End| match end {
+            End::Node(n) => chart.nodes[n].id.clone(),
+            End::Group(g) => chart.subgraphs[g].id.clone(),
+        };
         edges.push(DiagramEdge {
-            from: chart.nodes[e.from].id.clone(),
-            to: chart.nodes[e.to].id.clone(),
+            from: id(e.from),
+            to: id(e.to),
             points: drawn.iter().map(|&p| round(p)).collect(),
             label: e.label.clone(),
             label_position: label_position.map(round),
@@ -383,6 +484,10 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             lo[0] = lo[0].min(c[0] - card.size.0 / 2.0);
             lo[1] = lo[1].min(c[1] - card.size.1 / 2.0);
         }
+    }
+    for b in &boxes {
+        lo[0] = lo[0].min(b[0]);
+        lo[1] = lo[1].min(b[1]);
     }
     if !lo[0].is_finite() {
         lo = [0.0; 2];
@@ -436,6 +541,26 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             }
         })
         .collect();
+    let groups = chart
+        .subgraphs
+        .iter()
+        .zip(&boxes)
+        .map(|(sub, b)| {
+            let [x, y] = shift([(b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0]);
+            DiagramGroup {
+                id: sub.id.clone(),
+                label: (sub.title != sub.id).then(|| sub.title.clone()),
+                x,
+                y,
+                width: round1(b[2] - b[0]),
+                height: round1(b[3] - b[1]),
+                parent: sub.parent.map(|p| chart.subgraphs[p].id.clone()),
+                color: sub.style.fill.clone(),
+                stroke: sub.style.stroke.clone(),
+                text_color: sub.style.color.clone(),
+            }
+        })
+        .collect();
     Built {
         spec: DiagramSpec {
             nodes,
@@ -443,9 +568,45 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             font_size: Some(FONT),
             style: options.style,
             icons: options.icons.clone(),
+            groups,
         },
         control,
     }
+}
+
+/// An edge to or from a group ends at the group's box: the part inside it (laid out to one of
+/// the group's nodes) is cut off where the path first meets the box.
+fn cut_at_groups(
+    mut points: Vec<[f64; 2]>,
+    from: End,
+    to: End,
+    boxes: &[[f64; 4]],
+) -> Vec<[f64; 2]> {
+    if let End::Group(g) = to {
+        points = cut_into(&points, boxes[g]);
+    }
+    if let End::Group(g) = from {
+        points.reverse();
+        points = cut_into(&points, boxes[g]);
+        points.reverse();
+    }
+    points
+}
+
+/// `points` up to where they first enter box `b`.
+fn cut_into(points: &[[f64; 2]], b: [f64; 4]) -> Vec<[f64; 2]> {
+    let inside = |p: [f64; 2]| p[0] > b[0] && p[0] < b[2] && p[1] > b[1] && p[1] < b[3];
+    let outline = [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]];
+    let mut out = vec![points[0]];
+    for w in points.windows(2) {
+        if inside(w[1]) {
+            // From inside the box toward where we came from: where the path leaves the box.
+            out.push(route::clip(&outline, w[1], w[0]));
+            return out;
+        }
+        out.push(w[1]);
+    }
+    out
 }
 
 /// To a tenth of a unit: far below a pixel, and short in JSON.

@@ -60,12 +60,12 @@ test("Mermaid problems are listed with their line and column, and the chart keep
   page,
 }) => {
   await open(page, "mermaid/01-decision");
-  await page.locator("#json").fill("flowchart TD\n  A --> B\n  subgraph one\n  C[[sub]]\n");
+  await page.locator("#json").fill("flowchart TD\n  A --> B\n  click A call()\n  C[[sub]]\n");
   await page.locator("#apply").click();
   const issues = page.locator("#issues li");
   await expect(issues).toHaveCount(2);
   await expect(issues.nth(0)).toContainText("line 3:3");
-  await expect(issues.nth(0)).toContainText("subgraphs are not supported");
+  await expect(issues.nth(0)).toContainText("click handlers");
   await expect(issues.nth(1)).toContainText("line 4:4");
   await expect(issues.nth(1)).toContainText("subroutine");
   // Still the old diagram.
@@ -233,4 +233,24 @@ test("the playground's example icons are drawn on the schematic signs", async ({
   const p = await where(page, "pump");
   await page.mouse.move(p.x, p.y);
   await expect(page.locator("#hover")).toContainText("pump");
+});
+
+test("subgraphs become groups in the spec, and the nodes inside them still report hover", async ({ page }) => {
+  await page.goto("/?backend=webgl2&example=mermaid/33-nested");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#issues li")).toHaveCount(0);
+  const spec = await page.evaluate(() =>
+    (window as any).facetryDiagram.fromMermaid(
+      "flowchart TD\n  x --> team\n  subgraph org [Organisation]\n    subgraph team [Team]\n      a --> b\n    end\n  end",
+    ),
+  );
+  const groups = spec.diagram.groups.map((g: any) => [g.id, g.label, g.parent ?? null]);
+  expect(groups).toEqual([
+    ["team", "Team", "org"],
+    ["org", "Organisation", null],
+  ]);
+  expect(spec.diagram.edges[0].to).toBe("team");
+  const p = await where(page, "api1");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText("api1");
 });

@@ -138,6 +138,46 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
         out.push('}');
     }
     out.push(']');
+    if !spec.groups.is_empty() {
+        out.push_str(",\"groups\":[");
+        for (i, g) in spec.groups.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"id\":");
+            string(&mut out, &g.id);
+            if let Some(label) = &g.label {
+                out.push_str(",\"label\":");
+                string(&mut out, label);
+            }
+            for (key, v) in [
+                ("x", g.x),
+                ("y", g.y),
+                ("width", g.width),
+                ("height", g.height),
+            ] {
+                out.push_str(",\"");
+                out.push_str(key);
+                out.push_str("\":");
+                number(&mut out, v);
+            }
+            for (key, value) in [
+                ("parent", &g.parent),
+                ("color", &g.color),
+                ("stroke", &g.stroke),
+                ("textColor", &g.text_color),
+            ] {
+                if let Some(v) = value {
+                    out.push_str(",\"");
+                    out.push_str(key);
+                    out.push_str("\":");
+                    string(&mut out, v);
+                }
+            }
+            out.push('}');
+        }
+        out.push(']');
+    }
     if !spec.icons.is_empty() {
         out.push_str(",\"icons\":{");
         for (i, (name, icon)) in spec.icons.iter().enumerate() {

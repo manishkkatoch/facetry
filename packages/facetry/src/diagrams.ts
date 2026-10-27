@@ -14,8 +14,10 @@
  * The result is an ordinary `ChartSpec` (`dimension: "3d"` with a `diagram`), so it can be
  * stored, edited or shipped as JSON and drawn later without this module.
  */
-// Types only: nothing from the chart modules is loaded by this entry point.
+// Types only: nothing from the chart modules is loaded by this entry point (`run` imports the
+// chart module when it is called).
 import type { ChartSpec, DiagramStyle } from "../wasm/facetry_wasm.js";
+import type { Chart, ChartOptions } from "./chart.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
 import { iconParts, type IconParts, type IconSource } from "./icons.js";
@@ -57,6 +59,48 @@ export interface DiagramOptions {
    * ```
    */
   icons?: Record<string, IconSource>;
+}
+
+/** Options of {@link diagram.run}. */
+export interface RunOptions extends DiagramOptions {
+  /** Which elements hold Mermaid text: a CSS selector. Default `"pre.mermaid"`, as Mermaid's. */
+  querySelector?: string;
+  /** The elements to draw instead (then `querySelector` is not used). */
+  nodes?: ArrayLike<HTMLElement>;
+  /** The canvas's CSS height (it is as wide as the element). Default `"400px"`. */
+  height?: string;
+  /** Options for every chart, such as the `backend`. */
+  chart?: ChartOptions;
+  /**
+   * Resolve even if a diagram fails (its message is shown in its place either way). Default
+   * `false`: the others are still drawn, then `run` rejects with the first failure.
+   */
+  suppressErrors?: boolean;
+}
+
+/** Marks an element `run` has drawn, so a second `run` leaves it alone (Mermaid's attribute). */
+const PROCESSED = "data-processed";
+
+/** `text` with the indentation its lines share removed (Mermaid text indented in the HTML). */
+function dedent(text: string): string {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const indents = lines.filter((l) => l.trim() !== "").map((l) => /^[ \t]*/.exec(l)![0].length);
+  const cut = indents.length > 0 ? Math.min(...indents) : 0;
+  return lines.map((l) => l.slice(cut)).join("\n");
+}
+
+/** Shows why `element`'s diagram could not be drawn, in its place. */
+function showError(element: HTMLElement, error: FacetryError): void {
+  const box = document.createElement("div");
+  box.className = "facetry-error";
+  box.setAttribute("role", "alert");
+  box.style.cssText = "font: 13px/1.5 system-ui, sans-serif; color: #b42318; white-space: pre-wrap";
+  const lines =
+    error.diagramIssues.length > 0
+      ? error.diagramIssues.map((i) => `line ${i.line}, column ${i.column}: ${i.message}`)
+      : [error.message];
+  box.textContent = ["Diagram error:", ...lines].join("\n");
+  element.replaceChildren(box);
 }
 
 type Glue = typeof import("../wasm/facetry_diagrams.js");
@@ -104,5 +148,48 @@ export const diagram = {
     } catch (e) {
       throw FacetryError.from(e);
     }
+  },
+
+  /**
+   * Draws every diagram on the page, as `mermaid.run()` does: the Mermaid text of each
+   * `<pre class="mermaid">` (or `options.querySelector`, or `options.nodes`) is replaced by a
+   * canvas drawing it, as wide as the element and `options.height` tall. An element can choose
+   * its own style with `data-style` (`"glossy"`, ...) and cards with `data-cards`. Elements
+   * already drawn (`data-processed`) are skipped, so `run` can be called again after adding
+   * more. A diagram that fails shows its message in its place; the others are still drawn, then
+   * `run` rejects with the first failure, a `FacetryError` (with `options.suppressErrors` it
+   * resolves instead). Resolves to the charts drawn, in document order; `destroy` them when the
+   * page no longer shows them.
+   */
+  async run(options: RunOptions = {}): Promise<Chart[]> {
+    const nodes = Array.from(
+      options.nodes ?? document.querySelectorAll<HTMLElement>(options.querySelector ?? "pre.mermaid"),
+    ).filter((n) => !n.hasAttribute(PROCESSED));
+    if (nodes.length === 0) return [];
+    // Loaded only now: the chart module and its wasm are not needed to lay a diagram out.
+    const { Chart } = await import("./chart.js");
+    const charts: Chart[] = [];
+    let first: FacetryError | undefined;
+    for (const element of nodes) {
+      element.setAttribute(PROCESSED, "true");
+      const source = dedent(element.textContent ?? "");
+      const style = (element.dataset.style as DiagramStyle | undefined) ?? options.style;
+      const cards = element.dataset.cards !== undefined ? element.dataset.cards !== "false" : options.cards;
+      try {
+        const spec = await diagram.fromMermaid(source, { ...options, style, cards });
+        const canvas = document.createElement("canvas");
+        canvas.style.cssText = `display: block; width: 100%; height: ${options.height ?? "400px"}`;
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute("aria-label", source.trim());
+        element.replaceChildren(canvas);
+        charts.push(await Chart.create(canvas, spec, options.chart));
+      } catch (e) {
+        const error = FacetryError.from(e);
+        showError(element, error);
+        first ??= error;
+      }
+    }
+    if (first && !options.suppressErrors) throw first;
+    return charts;
   },
 };

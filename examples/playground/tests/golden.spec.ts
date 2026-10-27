@@ -126,11 +126,48 @@ for (const name of ["30-plant", "29-icons"]) {
   });
 }
 
+// Edges that cross: the later arcs over the earlier, a line jump in the flat style and a
+// bridge in the others.
+for (const style of ["flat", "glossy", "schematic"]) {
+  test(`${style} diagram 23-dense, its crossing edges arcing, matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=${style}&example=mermaid/23-dense`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${style}-23-dense.png`);
+  });
+}
+
+// Orbited round to the back: the signs turn with the camera, so their faces still read.
+test("schematic diagram 31-custom-icons seen from behind matches its golden image (webgl2)", async ({ page }) => {
+  await page.goto("/?backend=webgl2&ui=0&style=schematic&example=mermaid/31-custom-icons");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  await page.evaluate(() => (window as any).facetryChart.setCamera({ azimuth: 200 }));
+  await page.mouse.move(790, 495);
+  await expect(page.locator("#chart")).toHaveScreenshot("diagram-schematic-31-custom-icons-behind.png");
+});
+
 // The user's own icons (examples/diagrams/custom-icons/icons/*.svg, from line-icon and filled
 // icon sets): on the schematic signs, and on the isometric cards.
 for (const [name, query] of [
   ["schematic-31-custom-icons", "style=schematic&example=mermaid/31-custom-icons"],
   ["isometric-cards-31-custom-icons", "style=isometric&cards=1&example=mermaid/31-custom-icons"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}
+
+// Subgraphs: nested groups (33-nested, a cloud region holding two tiers), an org chart with a
+// group in a group (36-org), and edges that start and end at whole groups (34-group-edges), as
+// slabs, trays, tinted plates and fenced pads.
+for (const [name, query] of [
+  ["groups-36-org", "example=mermaid/36-org"],
+  ["glossy-groups-33-nested", "style=glossy&example=mermaid/33-nested"],
+  ["isometric-groups-33-nested", "style=isometric&example=mermaid/33-nested"],
+  ["schematic-groups-34-group-edges", "style=schematic&example=mermaid/34-group-edges"],
 ]) {
   test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
     await page.goto(`/?backend=webgl2&ui=0&${query}`);

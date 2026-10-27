@@ -1,0 +1,16 @@
+flowchart LR
+    subgraph ingest [Ingest]
+        s1[Sensors] --> q[Queue]
+        s2[Logs] --> q
+    end
+    subgraph process [Process]
+        parse[Parse] --> enrich[Enrich] --> agg[Aggregate]
+    end
+    subgraph serve [Serve]
+        store[(Store)] --> dash[Dashboard]
+        store --> alerts{Alert?}
+        alerts -->|yes| pager[Pager]
+    end
+    q --> parse
+    agg --> store
+    enrich -.-> store

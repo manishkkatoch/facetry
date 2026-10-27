@@ -1,0 +1,17 @@
+flowchart LR
+    user([User]) --> lb
+    subgraph cloud [Cloud region]
+        lb[Load balancer]
+        subgraph app [App tier]
+            api1[API 1]
+            api2[API 2]
+        end
+        subgraph data [Data tier]
+            primary[(Primary)]
+            replica[(Replica)]
+        end
+        lb --> api1 & api2
+        api1 & api2 --> primary
+        primary -.-> replica
+    end
+    primary --> backup[(Backup)]

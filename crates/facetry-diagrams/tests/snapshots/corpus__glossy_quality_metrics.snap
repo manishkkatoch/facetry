@@ -32,4 +32,9 @@ expression: report
 28-roadmap                 nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 0 | edge length 270 size 1665 x 407
 29-icons                   nodes 8 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 8 | edge length 1063 size 469 x 732
 30-plant                   nodes 11 edges 11 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 16 | edge length 1590 size 1622 x 179
+32-subgraphs               nodes 6 edges 4 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 6 | edge length 477 size 332 x 225 | groups 3 group overlaps 0 edges through groups 0
+33-nested                  nodes 7 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 12 | edge length 1012 size 933 x 303 | groups 3 group overlaps 0 edges through groups 0
+34-group-edges             nodes 6 edges 6 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 10 | edge length 810 size 287 x 669 | groups 2 group overlaps 0 edges through groups 0
+35-pipeline-stages         nodes 10 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 16 | edge length 1447 size 1437 x 221 | groups 3 group overlaps 0 edges through groups 0
+36-org                     nodes 8 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 16 | edge length 2157 size 569 x 724 | groups 3 group overlaps 0 edges through groups 0
 TOTAL crossings 15 edge-node overlaps 0 label overlaps 0

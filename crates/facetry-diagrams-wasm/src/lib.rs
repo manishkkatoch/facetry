@@ -3,7 +3,7 @@
 //! only when a page asks for a diagram, and hands the spec to the core module to draw.
 
 use facetry_core::spec::{CustomIcon, DiagramStyle, FillRule, IconFill};
-use facetry_diagrams::{DiagramIssue, Options, from_mermaid_with};
+use facetry_diagrams::{DiagramIssue, Options, chart_json};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -107,7 +107,7 @@ pub fn layout_mermaid(
         icons.retain(|(n, _)| *n != name);
         icons.push((name, icon));
     }
-    from_mermaid_with(
+    chart_json(
         source,
         &Options {
             style,
@@ -115,7 +115,6 @@ pub fn layout_mermaid(
             icons,
         },
     )
-    .map(|d| d.to_json())
     .map_err(|issues| invalid_diagram(&issues))
 }
 

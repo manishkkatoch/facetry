@@ -342,6 +342,7 @@ mod tests {
                     label: None,
                 })
                 .collect(),
+            ..Graph::default()
         }
     }
 

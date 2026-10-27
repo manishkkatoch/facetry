@@ -340,12 +340,35 @@ pub fn ribbon(r: &RibbonMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
         let k = half / cos;
         offsets.push(([ux * k, uz * k], [ux, 0.0, uz]));
     }
-    let left = |i: usize, y: f32| [pts[i][0] + offsets[i].0[0], y, pts[i][1] + offsets[i].0[1]];
-    let right = |i: usize, y: f32| [pts[i][0] - offsets[i].0[0], y, pts[i][1] - offsets[i].0[1]];
-    let up = [0.0, 1.0, 0.0];
+    let lift = |i: usize| r.lift.get(i).copied().unwrap_or(0.0);
+    let left = |i: usize, y: f32| {
+        [
+            pts[i][0] + offsets[i].0[0],
+            y + lift(i),
+            pts[i][1] + offsets[i].0[1],
+        ]
+    };
+    let right = |i: usize, y: f32| {
+        [
+            pts[i][0] - offsets[i].0[0],
+            y + lift(i),
+            pts[i][1] - offsets[i].0[1],
+        ]
+    };
     let neg = |n: [f32; 3]| [-n[0], -n[1], -n[2]];
+    // The top's normal on segment i: up, tilted back where the segment climbs (an arc).
+    let up = |i: usize| {
+        let ([ax, az], [bx, bz]) = (pts[i], pts[i + 1]);
+        let (dx, dz) = (bx - ax, bz - az);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-12);
+        let slope = (lift(i + 1) - lift(i)) / len;
+        let (nx, ny, nz) = (-slope * dx / len, 1.0, -slope * dz / len);
+        let l = (nx * nx + ny * ny + nz * nz).sqrt();
+        [nx / l, ny / l, nz / l]
+    };
     for i in 0..n - 1 {
         let (j, top, base) = (i + 1, r.top, r.base);
+        let up = up(i);
         out.extend([
             v(left(i, top), up),
             v(right(i, top), up),
@@ -372,6 +395,18 @@ pub fn ribbon(r: &RibbonMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
             v(right(j, base), nj),
             v(right(j, top), nj),
         ]);
+        // Raised off its base, the band shows its underside.
+        if lift(i) > 0.0 || lift(j) > 0.0 {
+            let down = neg(up);
+            out.extend([
+                v(left(i, base), down),
+                v(left(j, base), down),
+                v(right(i, base), down),
+                v(right(i, base), down),
+                v(left(j, base), down),
+                v(right(j, base), down),
+            ]);
+        }
     }
     // End caps, facing back along the path at the start and forward at the end.
     for (i, sign) in [(0usize, -1.0f32), (n - 1, 1.0)] {
@@ -749,6 +784,7 @@ mod tests {
             base: 0.0,
             top: 0.05,
             gloss: 0.5,
+            lift: Vec::new(),
         };
         let mut v = Vec::new();
         super::ribbon(&r, [1.0; 4], &mut v);
@@ -770,6 +806,7 @@ mod tests {
             outline: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
             blur: 0.2,
             color: Color::linear(0.0, 0.0, 0.0, 0.3),
+            lift: 0.0,
         };
         let mut v = Vec::new();
         super::shadow(&s, [0.0, 0.0, 0.0, 0.3], 0.001, &mut v);

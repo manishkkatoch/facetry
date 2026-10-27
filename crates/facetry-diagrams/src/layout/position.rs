@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use super::order::Side;
+
 /// What positioning needs to know about the layered graph.
 #[derive(Debug)]
 pub struct Input<'a> {
@@ -17,6 +19,16 @@ pub struct Input<'a> {
     /// Space between two real nodes, and the share a dummy node (an edge) takes.
     pub node_sep: f64,
     pub edge_sep: f64,
+    /// Group borders (empty without groups): which group and side a node marks.
+    pub border: &'a [Option<(usize, Side)>],
+    /// Each group's room inside its left and right borders.
+    pub room: &'a [[f64; 2]],
+    /// Every node's innermost group (a border's is the group it marks), and each group's
+    /// parent.
+    pub member: &'a [Option<usize>],
+    pub parent: &'a [Option<usize>],
+    /// Room outside a group's border, to whatever is next to it.
+    pub group_sep: f64,
 }
 
 /// The x of every node's centre.
@@ -96,11 +108,7 @@ pub fn assign_x(input: &Input) -> Vec<f64> {
     for layer in input.layers {
         for i in 1..layer.len() {
             let (u, v) = (layer[i - 1], layer[i]);
-            let min = xs[u]
-                + input.width[u] / 2.0
-                + gap(input, u) / 2.0
-                + gap(input, v) / 2.0
-                + input.width[v] / 2.0;
+            let min = xs[u] + separation(input, u, v);
             if xs[v] < min - 1e-9 {
                 xs[v] = min;
             }
@@ -214,10 +222,7 @@ fn horizontal_compaction(
     for layer in layering {
         for w in layer.windows(2) {
             let (u, v) = (w[0], w[1]);
-            let s = input.width[u] / 2.0
-                + gap(input, u) / 2.0
-                + gap(input, v) / 2.0
-                + input.width[v] / 2.0;
+            let s = separation(input, u, v);
             let key = (root[u], root[v]);
             let entry = sep.entry(key).or_insert(0.0);
             *entry = entry.max(s);
@@ -269,6 +274,48 @@ fn horizontal_compaction(
     (0..n).map(|v| xs[root[v]]).collect()
 }
 
+/// How far apart the centres of neighbours `u` and `v` must be in a layer. (Either may be on
+/// the left: the scans that run right to left mirror the layers.)
+fn separation(input: &Input, u: usize, v: usize) -> f64 {
+    let room = |(g, side): (usize, Side)| match side {
+        Side::Left => input.room[g][0],
+        Side::Right => input.room[g][1],
+    };
+    let between = match (border(input, u), border(input, v)) {
+        // A group's border next to something inside it: the group's room on that side.
+        (Some(b), _) if inside(input, v, b.0) => room(b),
+        (_, Some(b)) if inside(input, u, b.0) => room(b),
+        // A border next to something outside its group: room outside, less for an edge.
+        (Some(_), _) | (_, Some(_)) => {
+            if (input.dummy[u] && border(input, u).is_none())
+                || (input.dummy[v] && border(input, v).is_none())
+            {
+                input.edge_sep
+            } else {
+                input.group_sep
+            }
+        }
+        (None, None) => gap(input, u) / 2.0 + gap(input, v) / 2.0,
+    };
+    input.width[u] / 2.0 + between + input.width[v] / 2.0
+}
+
+fn border(input: &Input, v: usize) -> Option<(usize, Side)> {
+    input.border.get(v).copied().flatten()
+}
+
+/// Whether `v` is in group `g` (or in a group within it); a group's own borders are in it.
+fn inside(input: &Input, v: usize, g: usize) -> bool {
+    let mut at = input.member.get(v).copied().flatten();
+    while let Some(h) = at {
+        if h == g {
+            return true;
+        }
+        at = input.parent[h];
+    }
+    false
+}
+
 /// The separation a node asks for on each side: edges pack closer than nodes.
 fn gap(input: &Input, v: usize) -> f64 {
     if input.dummy[v] {
@@ -298,6 +345,11 @@ mod tests {
             dummy: &dummy,
             node_sep: 50.0,
             edge_sep: 20.0,
+            border: &[],
+            room: &[],
+            member: &[],
+            parent: &[],
+            group_sep: 0.0,
         });
         assert!((xs[2] - xs[1] - 90.0).abs() < 1e-9, "{xs:?}");
         assert!((xs[0] - (xs[1] + xs[2]) / 2.0).abs() < 1e-9, "{xs:?}");
@@ -323,6 +375,11 @@ mod tests {
             dummy: &dummy,
             node_sep: 50.0,
             edge_sep: 20.0,
+            border: &[],
+            room: &[],
+            member: &[],
+            parent: &[],
+            group_sep: 0.0,
         });
         for layer in &layers {
             for w in layer.windows(2) {

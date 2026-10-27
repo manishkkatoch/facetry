@@ -285,3 +285,4 @@ snapshot3d!(diagram_glossy_3d, "diagram-glossy");
 // long shadows, printed labels.
 snapshot3d!(diagram_isometric_3d, "diagram-isometric");
 snapshot3d!(diagram_schematic_3d, "diagram-schematic");
+snapshot3d!(diagram_groups_3d, "diagram-groups");

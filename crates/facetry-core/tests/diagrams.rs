@@ -1,6 +1,7 @@
 //! Diagram specs: reading, validation, the scene, and the starting camera.
 #![cfg(not(target_arch = "wasm32"))]
 
+use facetry_core::scene3d::Scene3d;
 use facetry_core::spec::{CameraKind, ChartSpec, EdgeEnd, EdgeStroke, NodeShape};
 use facetry_core::{Issue, Theme, build_diagram_3d, build_scene_3d, parse_spec_json, validate};
 use facetry_font::FontMetrics;
@@ -478,18 +479,33 @@ fn the_schematic_style_draws_equipment_pipes_on_supports_and_upright_signs() {
     assert!(pipe.base > 0.0 && pipe.top <= scene.prisms[0].top);
     assert!(scene.decor.iter().any(|p| p.key == "edge0/head"));
     // Labels are printed upright on signs that face the isometric view, above the equipment.
-    let label = scene.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    let signs = scene.signs_at(45.0);
+    let label = signs.texts.iter().find(|t| t.text == "Alpha").unwrap();
     let r = 0.5f32.sqrt();
     let upright = label.upright.expect("upright");
     assert!((upright[0] - r).abs() < 1e-4 && (upright[1] + r).abs() < 1e-4);
     assert!(label.flat.is_some());
     assert!(label.anchor[1] > top);
-    let board = scene
+    let board = signs
         .decor
         .iter()
         .find(|p| p.key == "a/sign/board")
         .unwrap();
     assert!(board.stand.is_some());
+    // Turned to face the camera wherever it orbits to: from behind, the face points back.
+    let sign = scene.signs.iter().find(|s| s.key == "a/sign").unwrap();
+    let behind = scene.signs_at(225.0);
+    let turned = behind.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    let up = turned.upright.unwrap();
+    assert!((up[0] + r).abs() < 1e-4 && (up[1] - r).abs() < 1e-4);
+    // The anchor, in front of the board, moved to the pivot's other side, at the same height.
+    let (a, b) = (label.anchor, turned.anchor);
+    let (da, db) = (
+        [a[0] - sign.pivot[0], a[2] - sign.pivot[1]],
+        [b[0] - sign.pivot[0], b[2] - sign.pivot[1]],
+    );
+    assert!((da[0] + db[0]).abs() < 1e-4 && (da[1] + db[1]).abs() < 1e-4);
+    assert_eq!(a[1], b[1]);
     assert!(scene.decor.iter().any(|p| p.key == "a/sign/post"));
     // A faint grid lies on the floor.
     assert!(
@@ -520,6 +536,16 @@ fn schematic_pipes_stand_on_supports_and_carry_flow_marks() {
         assert!((p.top - pipe.base).abs() < 1e-6);
     }
     assert!(scene.decor.iter().any(|p| p.key.starts_with("edge0/flow/")));
+}
+
+/// `scene` with its signs (a schematic's) facing the isometric view, among the rest.
+fn with_signs(mut scene: Scene3d) -> Scene3d {
+    let signs = scene.signs_at(45.0);
+    scene.decor.extend(signs.decor);
+    scene.texts.extend(signs.texts);
+    scene.polylines.extend(signs.polylines);
+    scene.fills.extend(signs.fills);
+    scene
 }
 
 /// GOOD with node `a` showing icon `name` and the diagram's own `icons` (a JSON object body).
@@ -566,7 +592,12 @@ fn a_diagram_draws_its_own_icons_and_they_win_over_built_in_ones() {
     // And every style draws them.
     for style in ["glossy", "isometric", "schematic"] {
         let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
-        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let scene = with_signs(build_scene_3d(
+            &spec(&json),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        ));
         assert!(
             scene
                 .polylines
@@ -642,7 +673,12 @@ fn filled_icons_are_printed_as_flat_triangles_with_their_holes() {
     assert_eq!(validate(&s), vec![]);
     for style in ["flat", "glossy", "isometric", "schematic"] {
         let json = json.replace(r#""icons""#, &format!(r#""style": "{style}", "icons""#));
-        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let scene = with_signs(build_scene_3d(
+            &spec(&json),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        ));
         let fill = scene
             .fills
             .iter()
@@ -684,5 +720,180 @@ fn filled_icons_are_printed_as_flat_triangles_with_their_holes() {
                 .iter()
                 .all(|p| (p[1] - fill.triangles[0][1]).abs() < 1e-6)
         );
+    }
+}
+
+/// GOOD with its two nodes in group `team` (titled), which sits in group `org`.
+fn grouped() -> String {
+    broken(
+        r#""diagram": {"#,
+        r#""diagram": { "groups": [
+            { "id": "org", "label": "Organisation", "x": 50, "y": 70, "width": 160, "height": 200 },
+            { "id": "team", "label": "Team", "x": 50, "y": 75, "width": 120, "height": 170, "parent": "org" }
+        ],"#,
+    )
+}
+
+#[test]
+fn groups_validate_and_edges_may_end_at_them() {
+    assert_eq!(issues(&grouped()), vec![]);
+    // An edge to a group by its id.
+    let to_group = grouped().replace(r#""to": "b""#, r#""to": "team""#);
+    assert_eq!(issues(&to_group), vec![]);
+    let bad = |from: &str, to: &str| issues(&grouped().replace(from, to));
+    let got = bad(r#""to": "b""#, r#""to": "nobody""#);
+    assert_eq!(got[0].path, "/diagram/edges/0/to");
+    assert_eq!(got[0].message, "no node or group has the id \"nobody\"");
+    let got = bad(r#""id": "team""#, r#""id": "org""#);
+    assert!(
+        got.iter()
+            .any(|i| i.path == "/diagram/groups/1/id" && i.message.contains("duplicate group id"))
+    );
+    let got = bad(r#""id": "team""#, r#""id": "a""#);
+    assert!(
+        got.iter()
+            .any(|i| i.path == "/diagram/nodes/0/id" && i.message.contains("id of a group too"))
+    );
+    let got = bad(r#""parent": "org""#, r#""parent": "nowhere""#);
+    assert_eq!(got[0].path, "/diagram/groups/1/parent");
+    let got = bad(
+        r#""label": "Organisation","#,
+        r#""label": "Organisation", "parent": "team","#,
+    );
+    assert!(
+        got.iter().any(|i| i.message.contains("nested in itself")),
+        "{got:?}"
+    );
+    let got = bad(r#""width": 120"#, r#""width": 0"#);
+    assert_eq!(got[0].path, "/diagram/groups/1/width");
+    let got = bad(
+        r#""label": "Team","#,
+        r#""label": "Team", "color": "blue","#,
+    );
+    assert_eq!(got[0].path, "/diagram/groups/1/color");
+}
+
+#[test]
+fn every_style_draws_groups_as_bases_with_their_titles() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = grouped().replace(r#""groups""#, &format!(r#""style": "{style}", "groups""#));
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let base = |id: &str| {
+            scene
+                .decor
+                .iter()
+                .find(|p| p.key == format!("{id}/base"))
+                .unwrap_or_else(|| panic!("{style}: no base for {id}"))
+        };
+        // The inner group's base stands on the outer's.
+        assert!(base("team").top > base("org").top, "{style}");
+        assert!(base("org").top > 0.0);
+        for title in ["Organisation", "Team"] {
+            let t = scene.texts.iter().find(|t| t.text == title).expect(title);
+            assert!(t.flat.is_some(), "{style}: {title} is printed");
+        }
+        // Outlined.
+        assert!(
+            scene.polylines.iter().any(|p| p.key == "team/edge"),
+            "{style}"
+        );
+        // The nodes are still the marks.
+        assert_eq!(scene.prisms.len(), 2, "{style}");
+        if style == "schematic" {
+            assert!(scene.decor.iter().any(|p| p.key.starts_with("org/post/")));
+            assert!(scene.ribbons.iter().any(|r| r.key == "org/rail/0"));
+        }
+        if style == "glossy" || style == "isometric" {
+            // Shadows of what stands on a base are lifted onto it.
+            let team_top = base("team").top;
+            assert!(
+                scene
+                    .shadows
+                    .iter()
+                    .any(|s| (s.lift - team_top).abs() < 1e-6),
+                "{style}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_long_group_title_shrinks_to_fit_its_box() {
+    let json = grouped().replace(
+        r#""label": "Team""#,
+        r#""label": "A very long title that will not fit""#,
+    );
+    let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+    let long = scene
+        .texts
+        .iter()
+        .find(|t| t.text.starts_with("A very"))
+        .unwrap();
+    let short = scene
+        .texts
+        .iter()
+        .find(|t| t.text == "Organisation")
+        .unwrap();
+    assert!(long.size_px < short.size_px);
+}
+
+/// Two edges crossing at (150, 100): `a`-`b` across, then `c`-`d` down.
+fn crossing(style: &str) -> String {
+    format!(
+        r#"{{
+  "dimension": "3d",
+  "diagram": {{
+    "style": "{style}",
+    "nodes": [
+      {{ "id": "a", "x": 20, "y": 100, "width": 30, "height": 30 }},
+      {{ "id": "b", "x": 280, "y": 100, "width": 30, "height": 30 }},
+      {{ "id": "c", "x": 150, "y": -30, "width": 30, "height": 30 }},
+      {{ "id": "d", "x": 150, "y": 230, "width": 30, "height": 30 }}
+    ],
+    "edges": [
+      {{ "from": "a", "to": "b", "points": [[35, 100], [265, 100]] }},
+      {{ "from": "c", "to": "d", "points": [[150, -15], [150, 215]] }}
+    ]
+  }}
+}}"#
+    )
+}
+
+#[test]
+fn where_edges_cross_the_later_arcs_over_the_earlier_in_every_style() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = crossing(style);
+        assert_eq!(validate(&spec(&json)), vec![], "{style}");
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        // The highest point of an edge and how high it is at its ends.
+        let (first, second) = if style == "flat" {
+            let run = |key: &str| {
+                let line = scene.polylines.iter().find(|p| p.key == key).unwrap();
+                let ys: Vec<f32> = line.runs[0].iter().map(|p| p[1]).collect();
+                (ys.iter().copied().fold(f32::MIN, f32::max), ys[0])
+            };
+            (run("edge0"), run("edge1"))
+        } else {
+            let band = |key: &str| {
+                let r = scene
+                    .ribbons
+                    .iter()
+                    .find(|r| r.key == format!("{key}/0"))
+                    .unwrap();
+                let top = |i: usize| r.top + r.lift.get(i).copied().unwrap_or(0.0);
+                let max = (0..r.path.len()).map(top).fold(f32::MIN, f32::max);
+                (max, top(0))
+            };
+            (band("edge0"), band("edge1"))
+        };
+        // The first stays level; the second rises over it, clear of its top.
+        assert_eq!(first.0, first.1, "{style}");
+        assert!(second.0 > second.1, "{style}");
+        let r = scene.ribbons.iter().find(|r| r.key == "edge1/0");
+        if let Some(r) = r {
+            let crest = r.lift.iter().copied().fold(f32::MIN, f32::max);
+            let under = scene.ribbons.iter().find(|r| r.key == "edge0/0").unwrap();
+            assert!(r.base + crest > under.top, "{style}");
+        }
     }
 }

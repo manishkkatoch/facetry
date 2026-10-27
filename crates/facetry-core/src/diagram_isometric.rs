@@ -16,6 +16,7 @@ use crate::diagram::{
     dashes, icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
 };
 use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with, rgb};
+use crate::diagram_hops::Hops;
 use crate::icons::{DIGIT_STROKE, DIGIT_WIDTH, digit_strokes};
 use crate::scene::Anchor;
 use crate::scene3d::{PrismMark, RibbonMark, Scene3d, Stand};
@@ -39,6 +40,9 @@ const INSET_MARGIN: f64 = 7.0;
 const ROAD_WIDTH: f64 = 15.0;
 const THICK_ROAD_WIDTH: f64 = 22.0;
 const ROAD_HEIGHT: f64 = 0.8;
+/// Where roads cross, the later bridges the earlier: half the bridge's span and its height.
+const HOP_RADIUS: f64 = 24.0;
+const HOP_HEIGHT: f64 = 9.0;
 const CHEVRON_EVERY: f64 = 36.0;
 const CHEVRON_LENGTH: f64 = 7.0;
 const CHEVRON_WIDTH: f64 = 9.0;
@@ -106,18 +110,23 @@ pub(crate) fn build(
     let plan = Plan::new(diagram);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
+    crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);
     let shadow = Color::linear(0.0, 0.0, 0.0, SHADOW_ALPHA);
     // Roads first: they lie under everything.
+    let hops = crate::diagram_hops::hops(&diagram.edges, HOP_RADIUS, HEAD_SETBACK);
     for (i, edge) in diagram.edges.iter().enumerate() {
-        let known = |id: &str| diagram.nodes.iter().any(|n| n.id == id);
+        let known = |id: &str| {
+            diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
+        };
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
-        push_edge(&mut scene, &plan, i, edge, shadow, measure, theme);
+        push_edge(&mut scene, &plan, i, edge, &hops[i], shadow, measure, theme);
     }
     for (i, node) in diagram.nodes.iter().enumerate() {
         push_node(&mut scene, &plan, i, node, s, shadow, theme.text, measure);
     }
+    crate::diagram_groups::lift_shadows(&mut scene, &plan, diagram);
     scene
 }
 
@@ -443,6 +452,7 @@ fn road(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark
         base: 0.0,
         top: plan.len(ROAD_HEIGHT) as f32,
         gloss: 0.0,
+        lift: Vec::new(),
     }
 }
 
@@ -505,6 +515,7 @@ fn push_edge(
     plan: &Plan,
     index: usize,
     edge: &DiagramEdge,
+    hops: &Hops,
     shadow: Color,
     measure: &dyn TextMeasure,
     theme: &Theme,
@@ -515,16 +526,16 @@ fn push_edge(
         EdgeStroke::Thick => THICK_ROAD_WIDTH,
         _ => ROAD_WIDTH,
     };
-    let path = edge.points.clone();
+    let path = hops.densify(&edge.points);
     let runs = match edge.stroke {
         EdgeStroke::Dotted => dashes(&path, DASH, DASH_GAP),
         _ => vec![path.clone()],
     };
     for (k, run) in runs.iter().enumerate() {
         if run.len() >= 2 {
-            scene
-                .ribbons
-                .push(road(plan, format!("{key}/{k}"), run, width));
+            let mut band = road(plan, format!("{key}/{k}"), run, width);
+            band.lift = hops.lift(plan, run, HOP_HEIGHT);
+            scene.ribbons.push(band);
         }
     }
     // Chevrons along the way, pointing toward the head (both ways on a two-headed edge, none
@@ -540,14 +551,18 @@ fn push_edge(
         for k in 0..count {
             let (at, dir) = along(&path, start + k as f64 * CHEVRON_EVERY);
             let dir = if forward { dir } else { [-dir[0], -dir[1]] };
-            scene.decor.push(chevron(
+            let mut mark = chevron(
                 plan,
                 format!("{key}/chevron/{k}"),
                 at,
                 dir,
                 1.0,
                 chevron_color(),
-            ));
+            );
+            // Riding up a bridge.
+            let up = plan.len(HOP_HEIGHT * hops.rise(at)) as f32;
+            (mark.base, mark.top) = (mark.base + up, mark.top + up);
+            scene.decor.push(mark);
         }
     }
     // Each end's marker, just short of the pedestal that hides the road's end.

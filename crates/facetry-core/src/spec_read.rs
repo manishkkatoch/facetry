@@ -13,10 +13,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramNode, DiagramSpec, DiagramStyle, Dimension, Easing, EdgeEnd, EdgeStroke, Encoding,
-    FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
-    LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig,
-    PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, Dimension, Easing, EdgeEnd, EdgeStroke,
+    Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec,
+    LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient,
+    PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
     TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
@@ -572,6 +572,22 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         font_size [def] = "fontSize" => opt(number),
         style [def] = "style" => read_diagram_style,
         icons [def] = "icons" => read_custom_icons,
+        groups [def] = "groups" => list(read_diagram_group),
+    })
+}
+
+fn read_diagram_group(v: Value) -> Read<DiagramGroup> {
+    object!(v, "DiagramGroup", DiagramGroup {
+        id [req] = "id" => string,
+        label [def] = "label" => opt(string),
+        x [req] = "x" => number,
+        y [req] = "y" => number,
+        width [req] = "width" => number,
+        height [req] = "height" => number,
+        parent [def] = "parent" => opt(string),
+        color [def] = "color" => opt(string),
+        stroke [def] = "stroke" => opt(string),
+        text_color [def] = "textColor" => opt(string),
     })
 }
 

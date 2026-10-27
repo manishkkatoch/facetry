@@ -14,9 +14,12 @@ use crate::diagram::{
     ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length, push_icon_shape,
 };
 use crate::diagram_glossy::{push_shadow_with, rgb};
+use crate::diagram_hops::Hops;
 use crate::diagram_isometric::{along, darken, outline};
 use crate::scene::Anchor;
-use crate::scene3d::{LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Stand, Text3, VAlign};
+use crate::scene3d::{
+    FillMark, LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Sign, Stand, Text3, VAlign,
+};
 use crate::spec::{DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeShape};
 use crate::text::TextMeasure;
 
@@ -30,6 +33,10 @@ const PIPE_TOP: f64 = 0.95;
 const PIPE_WIDTH: f64 = 7.0;
 const CONVEYOR_BASE: f64 = 0.8;
 const CONVEYOR_TOP: f64 = 1.05;
+/// Where pipes cross, the later bridges the earlier: half the bridge's span (layout units) and
+/// its height (font sizes), enough to clear a conveyor.
+const HOP_RADIUS: f64 = 20.0;
+const HOP_HEIGHT: f64 = 0.75;
 const CONVEYOR_WIDTH: f64 = 16.0;
 /// Dotted edges: dash and gap along the pipe.
 const DASH: f64 = 12.0;
@@ -278,17 +285,22 @@ pub(crate) fn build(
     let plan = Plan::new(diagram);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
+    crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);
     push_grid(&mut scene, &plan, s);
+    let hops = crate::diagram_hops::hops(&diagram.edges, HOP_RADIUS, HEAD_SETBACK + FLOW_LENGTH);
     for (i, edge) in diagram.edges.iter().enumerate() {
-        let known = |id: &str| diagram.nodes.iter().any(|n| n.id == id);
+        let known = |id: &str| {
+            diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
+        };
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
-        push_edge(&mut scene, &plan, diagram, i, edge, s, measure);
+        push_edge(&mut scene, &plan, diagram, i, edge, &hops[i], s, measure);
     }
     for (i, node) in diagram.nodes.iter().enumerate() {
         push_node(&mut scene, &plan, i, node, s, measure);
     }
+    crate::diagram_groups::lift_shadows(&mut scene, &plan, diagram);
     scene
 }
 
@@ -483,8 +495,18 @@ fn push_sign(
         vec![[-w, -h], [w, -h], [w, h], [-w, h]]
     };
     let frame = SIGN_FRAME * scale;
+    // Built facing the isometric view; it turns about its centre to face the camera.
+    let mut sign = Sign {
+        key: format!("{key}/sign"),
+        pivot: [cx as f32, cz as f32],
+        facing: ISOMETRIC_AZIMUTH as f32,
+        prisms: Vec::new(),
+        texts: Vec::new(),
+        polylines: Vec::new(),
+        fills: Vec::new(),
+    };
     let mut board = |name: &str, outline, base: f64, top: f64, color| {
-        scene.decor.push(PrismMark {
+        sign.prisms.push(PrismMark {
             key: format!("{key}/sign/{name}"),
             color,
             outline,
@@ -538,6 +560,31 @@ fn push_sign(
         (cz + toward[1] * face) as f32,
     ];
     let left = -(text_w + icon_w) / 2.0;
+    // The board's face, unlit so it stays white whichever way the sign is turned to the light.
+    let paper = {
+        let at = depth / 2.0 + plan.len(0.05);
+        let (hw, hh) = (plan.len(w / 2.0), plan.len(h / 2.0));
+        let corner = |u: f64, v: f64| {
+            [
+                (cx + toward[0] * at + right[0] * u) as f32,
+                (centre_y + v) as f32,
+                (cz + toward[1] * at + right[1] * u) as f32,
+            ]
+        };
+        let [a, b, c, d] = [
+            corner(-hw, -hh),
+            corner(hw, -hh),
+            corner(hw, hh),
+            corner(-hw, hh),
+        ];
+        FillMark {
+            key: format!("{key}/sign/face"),
+            color: rgb(0xffffff),
+            triangles: vec![a, b, c, a, c, d],
+        }
+    };
+    let (lines_from, fills_from) = (scene.polylines.len(), scene.fills.len());
+    scene.fills.push(paper);
     if let Some(name) = icon {
         let icon_size = SIGN_ICON * size;
         let k = icon_size / 24.0;
@@ -566,7 +613,7 @@ fn push_sign(
             continue;
         }
         let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
-        scene.texts.push(Text3 {
+        sign.texts.push(Text3 {
             tick: None,
             key: format!("{key}/sign/{k}"),
             text: (*line).to_owned(),
@@ -583,6 +630,9 @@ fn push_sign(
             upright: Some([right[0] as f32, right[1] as f32]),
         });
     }
+    sign.polylines = scene.polylines.split_off(lines_from);
+    sign.fills = scene.fills.split_off(fills_from);
+    scene.signs.push(sign);
 }
 
 /// Whether `p` (layout units) is on or near a node, where pipes go into equipment.
@@ -593,12 +643,14 @@ fn in_equipment(diagram: &DiagramSpec, p: [f64; 2], margin: f64) -> bool {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_edge(
     scene: &mut Scene3d,
     plan: &Plan,
     diagram: &DiagramSpec,
     index: usize,
     edge: &DiagramEdge,
+    hops: &Hops,
     s: f64,
     measure: &dyn TextMeasure,
 ) {
@@ -616,11 +668,13 @@ fn push_edge(
         (PIPE_BASE, PIPE_TOP, PIPE_WIDTH, pipe_color())
     };
     let (base, top) = (up(plan, base), up(plan, top));
-    let path = edge.points.clone();
+    let path = hops.densify(&edge.points);
     let runs = match edge.stroke {
         EdgeStroke::Dotted => dashes(&path, DASH, DASH_GAP),
         _ => vec![path.clone()],
     };
+    // How far the pipe is raised at `p`, where it bridges another.
+    let hop = |p: [f64; 2]| up(plan, HOP_HEIGHT * hops.rise(p));
     for (k, run) in runs.iter().enumerate() {
         if run.len() >= 2 {
             scene.ribbons.push(RibbonMark {
@@ -631,6 +685,7 @@ fn push_edge(
                 base: base as f32,
                 top: top as f32,
                 gloss: 0.2,
+                lift: hops.lift(plan, run, HOP_HEIGHT * plan.font),
             });
         }
     }
@@ -660,7 +715,7 @@ fn push_edge(
                 .map(|p| plan.floor_point([at[0] + p[0], at[1] + p[1]]))
                 .collect(),
             base: 0.0,
-            top: base as f32,
+            top: (base + hop(at)) as f32,
             smooth: false,
             gloss: 0.0,
             node: 0,
@@ -685,8 +740,8 @@ fn push_edge(
             key: name,
             color,
             outline: outline.iter().map(|&p| plan.floor_point(p)).collect(),
-            base: (top - rise) as f32,
-            top: (top + rise) as f32,
+            base: (top + hop(at) - rise) as f32,
+            top: (top + hop(at) + rise) as f32,
             smooth: false,
             gloss: 0.0,
             node: 0,

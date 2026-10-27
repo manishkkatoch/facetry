@@ -419,6 +419,8 @@ pub struct Chart {
 }
 
 /// The laid-out chart, 2D or 3D.
+// One is kept per chart, so the variants' sizes do not matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 enum SceneKind {
     TwoD(Scene),

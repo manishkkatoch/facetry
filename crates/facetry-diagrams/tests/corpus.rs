@@ -43,6 +43,8 @@ fn every_diagram_lays_out_cleanly() {
         let d = from_mermaid(&source).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         let m = d.metrics;
         assert_eq!(m.node_overlaps, 0, "{name}: {m}");
+        assert_eq!(m.group_overlaps, 0, "{name}: {m}");
+        assert_eq!(m.edges_through_groups, 0, "{name}: {m}");
         // Same input, same output.
         assert_eq!(
             d.to_json(),
@@ -119,6 +121,8 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
         }
         let d = from_mermaid_with(&source, &GLOSSY).unwrap();
         assert_eq!(d.metrics.node_overlaps, 0, "{name}");
+        assert_eq!(d.metrics.group_overlaps, 0, "{name}");
+        assert_eq!(d.metrics.edges_through_groups, 0, "{name}");
         assert_eq!(
             d.to_json(),
             from_mermaid_with(&source, &GLOSSY).unwrap().to_json()
@@ -157,6 +161,8 @@ fn cards_take_room_of_their_own() {
         let m = d.metrics;
         // Cards never overlap a node or another card, and no edge runs over one.
         assert_eq!(m.node_overlaps, 0, "{name}: {m}");
+        assert_eq!(m.group_overlaps, 0, "{name}: {m}");
+        assert_eq!(m.edges_through_groups, 0, "{name}: {m}");
         assert_eq!(m.edge_node_overlaps, 0, "{name}: {m}");
         let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
         assert!(facetry_core::validate(&spec).is_empty(), "{name}");

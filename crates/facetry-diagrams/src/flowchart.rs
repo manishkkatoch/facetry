@@ -14,13 +14,17 @@
 //!   heads, two-headed forms (`<-->`, `o--o`, `x--x`), extra length (`--->`, `-..->`,
 //!   `====>`), and labels (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
 //! * chains `a --> b --> c` and groups `a & b --> c & d`;
+//! * subgraphs: `subgraph id [Title]` (or `subgraph id`, `subgraph "Title"`) ... `end`, nested
+//!   to any depth, with `direction TB|BT|LR|RL` inside them (read, but the diagram is laid out
+//!   in its own direction), and edges to or from a subgraph by its id. A node belongs to the
+//!   innermost subgraph that mentions it (the first to close, as in Mermaid);
 //! * icons: `a@{ icon: "bulb" }` (alone or after a shape: `a([Idea])@{ icon: "fa:lightbulb" }`),
 //!   one of Facetry's built-in icons or of the user's own ([`parse_with_icons`]);
 //! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
 //!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
 //!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes.
 //!
-//! Everything else that is valid Mermaid (subgraphs, `linkStyle`, other style properties,
+//! Everything else that is valid Mermaid (`linkStyle`, other style properties,
 //! click handlers, keys of `@{ }` other than `icon`, front matter and directives, ...) is an
 //! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
@@ -41,6 +45,19 @@ pub enum Direction {
     RightLeft,
 }
 
+impl Direction {
+    /// `TB`, `TD`, `BT`, `LR` or `RL`.
+    fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "TB" | "TD" => Direction::TopBottom,
+            "BT" => Direction::BottomTop,
+            "LR" => Direction::LeftRight,
+            "RL" => Direction::RightLeft,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub id: String,
@@ -51,13 +68,38 @@ pub struct Node {
     pub style: NodeStyle,
     /// A built-in icon, from `@{ icon: "..." }`.
     pub icon: Option<String>,
+    /// The innermost subgraph it belongs to (an index into [`Flowchart::subgraphs`]).
+    pub group: Option<usize>,
+}
+
+/// One end of an edge: a node, or a whole subgraph (`a --> sub`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    /// An index into [`Flowchart::nodes`].
+    Node(usize),
+    /// An index into [`Flowchart::subgraphs`].
+    Group(usize),
+}
+
+/// A `subgraph ... end` block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Subgraph {
+    pub id: String,
+    /// Lines separated by `\n`; the id when no title is given.
+    pub title: String,
+    /// The subgraph it is nested in.
+    pub parent: Option<usize>,
+    /// A `direction` statement inside it. Read but not used: the diagram is laid out in its
+    /// own direction.
+    pub direction: Option<Direction>,
+    /// What `classDef`, `class` and `style` made of it (fill, stroke, title colour).
+    pub style: NodeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
-    /// Indices into [`Flowchart::nodes`].
-    pub from: usize,
-    pub to: usize,
+    pub from: End,
+    pub to: End,
     pub label: Option<String>,
     pub stroke: EdgeStroke,
     pub head: EdgeEnd,
@@ -71,6 +113,46 @@ pub struct Flowchart {
     pub direction: Direction,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    /// In the order they close: a nested subgraph comes before the one around it.
+    pub subgraphs: Vec<Subgraph>,
+}
+
+impl Flowchart {
+    /// Whether subgraph `inner` is `outer` or nested in it, at any depth.
+    pub fn within(&self, inner: usize, outer: usize) -> bool {
+        let mut g = Some(inner);
+        while let Some(i) = g {
+            if i == outer {
+                return true;
+            }
+            g = self.subgraphs[i].parent;
+        }
+        false
+    }
+
+    /// How deep subgraph `g` is nested: 1 for a subgraph at the top level.
+    pub fn depth(&self, g: usize) -> usize {
+        let mut depth = 0;
+        let mut at = Some(g);
+        while let Some(i) = at {
+            depth += 1;
+            at = self.subgraphs[i].parent;
+        }
+        depth
+    }
+}
+
+/// A subgraph being read: where it starts, its index once it closes, and the nodes and
+/// subgraph ids mentioned in it so far.
+#[derive(Debug)]
+struct Open {
+    at: usize,
+    id: String,
+    title: String,
+    direction: Option<Direction>,
+    nodes: Vec<usize>,
+    /// Subgraphs that closed inside it (indices into `subgraphs`).
+    children: Vec<usize>,
 }
 
 /// Styling statements, resolved once the whole text is read (a class may be defined after
@@ -118,15 +200,6 @@ const OTHER_TYPES: &[&str] = &[
 
 /// Statement keywords of flowcharts that are not supported yet, with what to say.
 const UNSUPPORTED_STATEMENTS: &[(&str, &str)] = &[
-    ("subgraph", "subgraphs are not supported yet"),
-    (
-        "end",
-        "`end` closes a subgraph, and subgraphs are not supported yet",
-    ),
-    (
-        "direction",
-        "`direction` (inside subgraphs) is not supported yet",
-    ),
     ("linkStyle", "edge styling (`linkStyle`) is not supported"),
     ("click", "click handlers (`click`) are not supported"),
     ("callback", "click handlers (`callback`) are not supported"),
@@ -157,6 +230,10 @@ struct Parser<'a> {
     issues: Vec<DiagramIssue>,
     chart: Flowchart,
     styling: Styling,
+    /// Subgraphs opened and not yet closed, innermost last.
+    open: Vec<Open>,
+    /// Where each closed subgraph starts, for problems found once the text is read.
+    subgraph_at: Vec<usize>,
 }
 
 /// A failed statement: the issue is already recorded; skip to the next statement.
@@ -185,6 +262,8 @@ pub fn parse_with_icons(source: &str, icons: &[&str]) -> Result<Flowchart, Vec<D
         issues: Vec::new(),
         chart: Flowchart::default(),
         styling: Styling::default(),
+        open: Vec::new(),
+        subgraph_at: Vec::new(),
     };
     p.document();
     if p.issues.is_empty() {
@@ -206,6 +285,8 @@ pub fn kind(source: &str) -> Result<Kind, DiagramIssue> {
         issues: Vec::new(),
         chart: Flowchart::default(),
         styling: Styling::default(),
+        open: Vec::new(),
+        subgraph_at: Vec::new(),
     };
     p.skip_preamble();
     if let Some(issue) = std::mem::take(&mut p.issues).into_iter().next() {
@@ -326,13 +407,10 @@ impl Parser<'_> {
         self.skip_inline_ws();
         let at = self.pos;
         let dir = self.word();
-        self.chart.direction = match dir.as_str() {
-            "" => Direction::TopBottom,
-            "TB" | "TD" => Direction::TopBottom,
-            "BT" => Direction::BottomTop,
-            "LR" => Direction::LeftRight,
-            "RL" => Direction::RightLeft,
-            other => {
+        self.chart.direction = match (dir.as_str(), Direction::from_name(&dir)) {
+            ("", _) => Direction::TopBottom,
+            (_, Some(d)) => d,
+            (other, None) => {
                 let _: Step<()> = self.fail(
                     at,
                     format!("unknown direction `{other}`: expected `TB`, `TD`, `BT`, `LR` or `RL`"),
@@ -342,7 +420,80 @@ impl Parser<'_> {
             }
         };
         self.statements();
+        for open in std::mem::take(&mut self.open).into_iter().rev() {
+            let _: Step<()> = self.fail(
+                open.at,
+                format!("subgraph `{}` is never closed (`end` is missing)", open.id),
+            );
+        }
+        self.resolve_group_ends();
         self.resolve_styles();
+    }
+
+    /// A node named like a subgraph is that subgraph, as an edge's end (`a --> sub`): the
+    /// node goes and its edges end at the subgraph.
+    fn resolve_group_ends(&mut self) {
+        let mut remove = Vec::new();
+        for (g, sub) in self.chart.subgraphs.iter().enumerate() {
+            if let Some(i) = self.chart.nodes.iter().position(|n| n.id == sub.id) {
+                remove.push((i, g));
+            }
+        }
+        for &(i, g) in &remove {
+            let node = &self.chart.nodes[i];
+            if node.shape != NodeShape::Rect || node.label != node.id || node.icon.is_some() {
+                let at = self.subgraph_at[g];
+                let id = self.chart.subgraphs[g].id.clone();
+                let _: Step<()> = self.fail(
+                    at,
+                    format!("`{id}` is both a node (with a shape) and a subgraph"),
+                );
+            }
+        }
+        if remove.is_empty() {
+            return;
+        }
+        let gone = |i: usize| remove.iter().find(|(n, _)| *n == i).map(|&(_, g)| g);
+        let shift = |i: usize| i - remove.iter().filter(|(n, _)| *n < i).count();
+        let map = |end: End| match end {
+            End::Node(i) => match gone(i) {
+                Some(g) => End::Group(g),
+                None => End::Node(shift(i)),
+            },
+            group => group,
+        };
+        for e in &mut self.chart.edges {
+            e.from = map(e.from);
+            e.to = map(e.to);
+        }
+        let mut i = 0;
+        self.chart.nodes.retain(|_| {
+            i += 1;
+            gone(i - 1).is_none()
+        });
+        // An edge between a subgraph and something inside it has no way to run.
+        let chart = &self.chart;
+        let inside = |end: End, g: usize| match end {
+            End::Node(n) => chart.nodes[n].group.is_some_and(|h| chart.within(h, g)),
+            End::Group(h) => chart.within(h, g),
+        };
+        let mut problems = Vec::new();
+        for e in &chart.edges {
+            for (a, b) in [(e.from, e.to), (e.to, e.from)] {
+                if let End::Group(g) = a {
+                    if inside(b, g) {
+                        problems.push(g);
+                    }
+                }
+            }
+        }
+        for g in problems {
+            let (at, id) = (self.subgraph_at[g], self.chart.subgraphs[g].id.clone());
+            let _: Step<()> = self.fail(
+                at,
+                format!("an edge joins subgraph `{id}` to something inside it"),
+            );
+        }
     }
 
     /// Applies `classDef default`, then each node's classes, then its `style` statements.
@@ -359,20 +510,21 @@ impl Parser<'_> {
                 let _: Step<()> = self.fail(*at, format!("no `classDef` named `{name}`"));
                 continue;
             };
-            match self.chart.nodes.iter_mut().find(|n| &n.id == node) {
-                Some(n) => n.style.apply(style),
-                None => {
-                    let _: Step<()> = self.fail(*at, format!("no node `{node}` to style"));
-                }
-            }
+            self.apply_style(node, style, *at);
         }
         for (node, style, at) in &styling.styles {
-            match self.chart.nodes.iter_mut().find(|n| &n.id == node) {
-                Some(n) => n.style.apply(style),
-                None => {
-                    let _: Step<()> = self.fail(*at, format!("no node `{node}` to style"));
-                }
-            }
+            self.apply_style(node, style, *at);
+        }
+    }
+
+    /// Styles node or subgraph `id`.
+    fn apply_style(&mut self, id: &str, style: &NodeStyle, at: usize) {
+        if let Some(n) = self.chart.nodes.iter_mut().find(|n| n.id == id) {
+            n.style.apply(style);
+        } else if let Some(g) = self.chart.subgraphs.iter_mut().find(|g| g.id == id) {
+            g.style.apply(style);
+        } else {
+            let _: Step<()> = self.fail(at, format!("no node or subgraph `{id}` to style"));
         }
     }
 
@@ -508,6 +660,37 @@ impl Parser<'_> {
             self.pos = end;
             return self.styling_statement(&word);
         }
+        let alone = matches!(next, None | Some(' ' | '\t' | '\r' | '\n' | ';'));
+        if alone {
+            match word.as_str() {
+                "subgraph" => {
+                    self.pos = end;
+                    let opened = self.open.len();
+                    let result = self.subgraph_start(start);
+                    if result.is_err() && self.open.len() == opened {
+                        // Already reported: something for its `end` to close.
+                        self.open.push(Open {
+                            at: start,
+                            id: String::new(),
+                            title: String::new(),
+                            direction: None,
+                            nodes: Vec::new(),
+                            children: Vec::new(),
+                        });
+                    }
+                    return result;
+                }
+                "end" => {
+                    self.pos = end;
+                    return self.subgraph_end(start);
+                }
+                "direction" => {
+                    self.pos = end;
+                    return self.direction_statement(start);
+                }
+                _ => {}
+            }
+        }
         if let Some((_, message)) = UNSUPPORTED_STATEMENTS.iter().find(|(k, _)| *k == word) {
             // `end` and `class` are also fine node ids in front of a shape or link... except
             // that Mermaid itself rejects `end`, and `class` followed by a space is a statement.
@@ -527,10 +710,9 @@ impl Parser<'_> {
             let next = self.node_group()?;
             for &a in &group {
                 for &b in &next {
-                    let (from, to) = (a, b);
                     self.chart.edges.push(Edge {
-                        from,
-                        to,
+                        from: End::Node(a),
+                        to: End::Node(b),
                         label: link.label.clone(),
                         stroke: link.stroke,
                         head: link.head,
@@ -606,10 +788,14 @@ impl Parser<'_> {
                     shape: NodeShape::Rect,
                     style: NodeStyle::default(),
                     icon: None,
+                    group: None,
                 });
                 self.chart.nodes.len() - 1
             }
         };
+        if let Some(open) = self.open.last_mut() {
+            open.nodes.push(index);
+        }
         if icon.is_some() {
             self.chart.nodes[index].icon = icon;
         }
@@ -998,6 +1184,147 @@ impl Parser<'_> {
         k > 0 && self.peek_at(k) == Some('-')
     }
 
+    /// `subgraph id`, `subgraph id [Title]` (or `id["Title"]`), `subgraph "Title"`, or
+    /// `subgraph Some title` (the words are both id and title); after the keyword.
+    fn subgraph_start(&mut self, keyword: usize) -> Step<()> {
+        self.skip_inline_ws();
+        let at = self.pos;
+        let (id, title) = if self.peek() == Some('"') {
+            let start = self.pos;
+            self.pos += 1;
+            while self.peek().is_some_and(|c| c != '"' && c != '\n') {
+                self.pos += 1;
+            }
+            if self.peek() != Some('"') {
+                return self.fail(start, "unclosed `\"`");
+            }
+            self.pos += 1;
+            let raw: String = self.text[start..self.pos].iter().collect();
+            let title = self.cleaned(start, &raw)?;
+            (title.replace('\n', " "), title)
+        } else {
+            while self.peek().is_some_and(|c| is_id_char(c) || c == '-') {
+                self.pos += 1;
+            }
+            let id: String = self.text[at..self.pos].iter().collect();
+            if id.is_empty() {
+                return self.fail(at, "expected the subgraph's id or title");
+            }
+            self.skip_inline_ws();
+            if self.peek() == Some('[') {
+                let open = self.pos;
+                self.pos += 1;
+                let start = self.pos;
+                let mut quoted = false;
+                while let Some(c) = self.peek() {
+                    if c == '"' {
+                        quoted = !quoted;
+                    } else if (c == ']' && !quoted) || c == '\n' {
+                        break;
+                    }
+                    self.pos += 1;
+                }
+                if self.peek() != Some(']') {
+                    return self.fail(open, "unclosed `[` in the subgraph's title");
+                }
+                let raw: String = self.text[start..self.pos].iter().collect();
+                self.pos += 1;
+                let title = self.cleaned(start, &raw)?;
+                (id, title)
+            } else if self.at_statement_end() {
+                (id.clone(), id)
+            } else {
+                // Words: the whole line names it.
+                while !self.at_statement_end() {
+                    self.pos += 1;
+                }
+                let raw: String = self.text[at..self.pos].iter().collect();
+                let title = self.cleaned(at, &raw)?;
+                (title.clone(), title)
+            }
+        };
+        self.skip_inline_ws();
+        if !self.at_statement_end() {
+            let at = self.pos;
+            return self.fail(at, "unexpected text after the subgraph's title");
+        }
+        let taken =
+            self.chart.subgraphs.iter().any(|g| g.id == id) || self.open.iter().any(|o| o.id == id);
+        if taken {
+            // Reported, but opened all the same so that its `end` has something to close.
+            let _: Step<()> = self.fail(at, format!("a second subgraph called `{id}`"));
+        }
+        self.open.push(Open {
+            at: keyword,
+            id,
+            title,
+            direction: None,
+            nodes: Vec::new(),
+            children: Vec::new(),
+        });
+        Ok(())
+    }
+
+    /// `end`: closes the innermost open subgraph. Its nodes not already in a subgraph that
+    /// closed earlier join it.
+    fn subgraph_end(&mut self, at: usize) -> Step<()> {
+        if !self.at_statement_end() {
+            let here = self.pos;
+            return self.fail(here, "unexpected text after `end`");
+        }
+        let Some(open) = self.open.pop() else {
+            return self.fail(at, "`end` without a `subgraph` to close");
+        };
+        let g = self.chart.subgraphs.len();
+        for &n in &open.nodes {
+            let node = &mut self.chart.nodes[n];
+            if node.group.is_none() {
+                node.group = Some(g);
+            }
+        }
+        for &child in &open.children {
+            self.chart.subgraphs[child].parent = Some(g);
+        }
+        if let Some(outer) = self.open.last_mut() {
+            outer.children.push(g);
+            // The outer subgraph holds what this one does too, for nodes still unplaced.
+            outer.nodes.extend(open.nodes.iter().copied());
+        }
+        self.chart.subgraphs.push(Subgraph {
+            id: open.id,
+            title: open.title,
+            parent: None,
+            direction: open.direction,
+            style: NodeStyle::default(),
+        });
+        self.subgraph_at.push(open.at);
+        Ok(())
+    }
+
+    /// `direction LR` inside a subgraph.
+    fn direction_statement(&mut self, at: usize) -> Step<()> {
+        self.skip_inline_ws();
+        let name_at = self.pos;
+        let name = self.word();
+        let Some(direction) = Direction::from_name(&name) else {
+            return self.fail(
+                name_at,
+                format!("unknown direction `{name}`: expected `TB`, `TD`, `BT`, `LR` or `RL`"),
+            );
+        };
+        if !self.at_statement_end() {
+            let here = self.pos;
+            return self.fail(here, "unexpected text after the direction");
+        }
+        match self.open.last_mut() {
+            Some(open) => {
+                open.direction = Some(direction);
+                Ok(())
+            }
+            None => self.fail(at, "`direction` belongs inside a subgraph"),
+        }
+    }
+
     fn cleaned(&mut self, at: usize, raw: &str) -> Step<String> {
         let raw = raw.trim();
         let raw = raw
@@ -1101,10 +1428,107 @@ mod tests {
     }
 
     fn edges(f: &Flowchart) -> Vec<(&str, &str)> {
-        f.edges
+        let name = |end: End| match end {
+            End::Node(i) => f.nodes[i].id.as_str(),
+            End::Group(g) => f.subgraphs[g].id.as_str(),
+        };
+        f.edges.iter().map(|e| (name(e.from), name(e.to))).collect()
+    }
+
+    /// Each node's id and the id of the subgraph it is in.
+    fn groups(f: &Flowchart) -> Vec<(&str, Option<&str>)> {
+        f.nodes
             .iter()
-            .map(|e| (f.nodes[e.from].id.as_str(), f.nodes[e.to].id.as_str()))
+            .map(|n| (n.id.as_str(), n.group.map(|g| f.subgraphs[g].id.as_str())))
             .collect()
+    }
+
+    #[test]
+    fn subgraphs_hold_the_nodes_mentioned_in_them_innermost_first() {
+        let f = ok(
+            "flowchart TD\n  A --> B\n  subgraph outer [The outside]\n    B --> C\n    subgraph inner\n      direction LR\n      C --> D\n    end\n    D --> E\n  end\n  subgraph \"Second one\"\n    E --> F\n  end\n  subgraph Some words here\n    G\n  end",
+        );
+        assert_eq!(
+            groups(&f),
+            [
+                ("A", None),
+                ("B", Some("outer")),
+                ("C", Some("inner")),
+                ("D", Some("inner")),
+                ("E", Some("outer")),
+                ("F", Some("Second one")),
+                ("G", Some("Some words here")),
+            ]
+        );
+        let sub = |id: &str| f.subgraphs.iter().find(|g| g.id == id).unwrap();
+        assert_eq!(sub("outer").title, "The outside");
+        assert_eq!(sub("inner").title, "inner");
+        assert_eq!(sub("inner").direction, Some(Direction::LeftRight));
+        assert_eq!(sub("Second one").title, "Second one");
+        // Nesting: inner closes first and sits in outer.
+        let (inner, outer) = (0, 1);
+        assert_eq!(f.subgraphs[inner].id, "inner");
+        assert_eq!(f.subgraphs[inner].parent, Some(outer));
+        assert_eq!(f.subgraphs[outer].parent, None);
+        assert!(f.within(inner, outer) && !f.within(outer, inner));
+        assert_eq!((f.depth(inner), f.depth(outer)), (2, 1));
+    }
+
+    #[test]
+    fn edges_may_end_at_a_subgraph_and_subgraphs_take_styles() {
+        let f = ok(
+            "flowchart LR\n  start --> work\n  subgraph work [Work]\n    a --> b\n  end\n  work --> done\n  style work fill:#eef\n  classDef hot stroke:#f00\n  class work hot",
+        );
+        assert_eq!(ids(&f), ["start", "a", "b", "done"]);
+        assert_eq!(edges(&f), [("start", "work"), ("a", "b"), ("work", "done")]);
+        assert_eq!(f.edges[0].to, End::Group(0));
+        assert_eq!(f.subgraphs[0].style.fill.as_deref(), Some("#eeeeff"));
+        assert_eq!(f.subgraphs[0].style.stroke.as_deref(), Some("#ff0000"));
+    }
+
+    #[test]
+    fn subgraph_mistakes_are_errors_where_they_are() {
+        let one = |src: &str| {
+            let e = err(src);
+            assert_eq!(e.len(), 1, "{src}: {e:?}");
+            (e[0].line, e[0].column, e[0].message.clone())
+        };
+        let (l, c, m) = one("flowchart TD\n  subgraph one\n    A\n");
+        assert_eq!((l, c), (2, 3));
+        assert!(m.contains("never closed"), "{m}");
+        let (l, _, m) = one("flowchart TD\n  A\n  end\n");
+        assert_eq!(l, 3);
+        assert!(m.contains("without a `subgraph`"), "{m}");
+        assert!(
+            one("flowchart TD\n  direction LR")
+                .2
+                .contains("inside a subgraph")
+        );
+        assert!(
+            one("flowchart TD\nsubgraph s\n direction UP\nend")
+                .2
+                .contains("unknown direction")
+        );
+        assert!(
+            one("flowchart TD\nsubgraph s\nend\nsubgraph s\nend")
+                .2
+                .contains("second subgraph")
+        );
+        assert!(
+            one("flowchart TD\nsubgraph s\n a --> s\nend")
+                .2
+                .contains("inside it")
+        );
+        assert!(
+            one("flowchart TD\ns[Box] --> b\nsubgraph s\n c\nend")
+                .2
+                .contains("both a node")
+        );
+        assert!(
+            one("flowchart TD\nsubgraph s [unclosed\nend")
+                .2
+                .contains("unclosed `[`")
+        );
     }
 
     #[test]
@@ -1267,13 +1691,6 @@ mod tests {
 
     #[test]
     fn unsupported_features_are_errors_with_positions() {
-        let e = err("flowchart TD\n  subgraph one\n    A --> B\n  end\n");
-        assert_eq!(e.len(), 2);
-        assert_eq!((e[0].line, e[0].column), (2, 3));
-        assert!(e[0].message.contains("subgraphs are not supported"));
-        assert_eq!(e[0].excerpt, "  subgraph one");
-        assert_eq!((e[1].line, e[1].column), (4, 3));
-
         for (src, needle) in [
             ("graph TD\nA[[sub]]", "subroutine"),
             ("graph TD\nA>flag]", "asymmetric"),
@@ -1293,7 +1710,7 @@ mod tests {
                 "graph TD\nA\nstyle A stroke-dasharray: 5 5",
                 "stroke-dasharray",
             ),
-            ("graph TD\nA\nstyle B fill:#f00", "no node `B`"),
+            ("graph TD\nA\nstyle B fill:#f00", "no node or subgraph `B`"),
             ("graph TD\nA ~~~ B", "invisible"),
             ("graph TD\nclick A call()", "click"),
             ("graph TD\nA[\"`**md**`\"]", "markdown"),
