@@ -189,6 +189,20 @@ pub struct PrismMark {
     /// The diagram node it draws (an index into `diagram.nodes`); what hover and click report.
     #[serde(skip)]
     pub node: usize,
+    /// Stood up: the outline is drawn in a vertical plane instead of on the floor, and
+    /// `base..=top` runs across that plane (see [`Stand`]). Closed at both ends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stand: Option<Stand>,
+}
+
+/// Where a standing prism's outline is drawn: point `[u, w]` of the outline is at
+/// `origin + u * right + w * up` (`right` a horizontal unit `[x, z]`), and the prism's heights
+/// run along the plane's normal toward the viewer that `right` points to the right of, `[x, z]` =
+/// `[-right.z, right.x]`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Stand {
+    pub origin: [f32; 3],
+    pub right: [f32; 2],
 }
 
 fn is_zero(v: &f32) -> bool {

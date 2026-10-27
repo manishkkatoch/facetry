@@ -12,12 +12,13 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram::{
-    CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, ICON_SIZE, Plan, card_layout, dashes,
-    icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
+    CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, ICON_SIZE, ISOMETRIC_AZIMUTH, Plan, card_layout,
+    dashes, icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
 };
 use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with, rgb};
+use crate::icons::{DIGIT_STROKE, DIGIT_WIDTH, digit_strokes};
 use crate::scene::Anchor;
-use crate::scene3d::{PrismMark, RibbonMark, Scene3d};
+use crate::scene3d::{PrismMark, RibbonMark, Scene3d, Stand};
 use crate::spec::{
     DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeCard, NodeShape,
 };
@@ -58,6 +59,12 @@ const CARD_SHADOW_BLUR: f64 = 12.0;
 const CARD_SHADOW_ALPHA: f32 = 0.1;
 /// Gloss of the cap, the inset and the body.
 const CAP_GLOSS: f32 = 0.35;
+/// A node's number standing on its inset: height and depth (front to back) in font sizes, and
+/// the room between digits in the digit box's units. At most this share of the inset across.
+const NUMERAL_HEIGHT: f64 = 3.0;
+const NUMERAL_DEPTH: f64 = 0.4;
+const NUMERAL_SPACING: f64 = 3.0;
+const NUMERAL_ROOM: f64 = 0.75;
 const WHITE_GLOSS: f32 = 0.15;
 
 /// Node colours, used in turn: the warm-to-cool sequence of infographic timelines.
@@ -154,6 +161,7 @@ fn push_node(
             smooth,
             gloss,
             node: index,
+            stand: None,
         };
     let (plate, smooth) = outline(node, PLATE_REACH);
     let (body, _) = outline(node, 0.0);
@@ -220,17 +228,19 @@ fn push_node(
     let label = node.label.as_deref().unwrap_or(&node.id);
     let top = plan.len(STACK_HEIGHT * plan.font);
     if let Some(card) = &node.card {
-        // The pedestal shows the step number big; the card says what the step is.
-        print(
-            scene,
-            plan,
-            &node.id,
-            label,
-            [node.x, node.y],
-            top,
-            CARD_BADGE * plan.font,
-            ink,
-        );
+        // The pedestal shows the step number, standing; the card says what the step is.
+        if !push_numeral(scene, plan, node, label, top, fill) {
+            print(
+                scene,
+                plan,
+                &node.id,
+                label,
+                [node.x, node.y],
+                top,
+                CARD_BADGE * plan.font,
+                ink,
+            );
+        }
         push_card_on_floor(scene, plan, node, card, ink, s, measure);
         return;
     }
@@ -249,6 +259,93 @@ fn push_node(
         );
     }
     print(scene, plan, &node.id, label, label_at, top, plan.font, ink);
+}
+
+/// A node's number (`label`, up to three digits) as solid digits standing on its inset at
+/// height `top`, in `color`, facing the starting camera; false, drawing nothing, for any other
+/// label.
+fn push_numeral(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    node: &DiagramNode,
+    label: &str,
+    top: f64,
+    color: Color,
+) -> bool {
+    if label.is_empty() || label.len() > 3 || !label.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+    let count = label.len() as f64;
+    let span = count * DIGIT_WIDTH + (count - 1.0) * NUMERAL_SPACING;
+    // Layout units per unit of the digit box: as tall as asked, as wide as the inset allows.
+    let room = (node.width.min(node.height) - 2.0 * INSET_MARGIN) * NUMERAL_ROOM;
+    let unit = plan.len((NUMERAL_HEIGHT * plan.font / 24.0).min(room / span));
+    let az = ISOMETRIC_AZIMUTH.to_radians();
+    let right = [az.cos(), -az.sin()];
+    let [cx, _, cz] = plan.world([node.x, node.y], 0.0);
+    let half = span * unit / 2.0;
+    let stand = Stand {
+        origin: [
+            (f64::from(cx) - right[0] * half) as f32,
+            top as f32,
+            (f64::from(cz) - right[1] * half) as f32,
+        ],
+        right: [right[0] as f32, right[1] as f32],
+    };
+    let depth = plan.len(NUMERAL_DEPTH * plan.font) / 2.0;
+    let thick = DIGIT_STROKE * unit / 2.0;
+    let mut solid = |outline: Vec<[f32; 2]>, smooth: bool| {
+        scene.decor.push(PrismMark {
+            key: format!("{}/numeral", node.id),
+            color,
+            outline,
+            base: -depth as f32,
+            top: depth as f32,
+            smooth,
+            gloss: CAP_GLOSS,
+            node: 0,
+            stand: Some(stand),
+        });
+    };
+    for (i, d) in label.chars().enumerate() {
+        let left = i as f64 * (DIGIT_WIDTH + NUMERAL_SPACING);
+        for stroke in digit_strokes(d) {
+            // In the stand's plane: right along the numeral, up from its foot.
+            let points: Vec<[f64; 2]> = stroke
+                .iter()
+                .map(|p| [(left + p[0]) * unit, (24.0 - p[1]) * unit])
+                .collect();
+            // Each segment a bar, each joint and end a round disc.
+            for w in points.windows(2) {
+                let ([ax, ay], [bx, by]) = (w[0], w[1]);
+                let len = (bx - ax).hypot(by - ay);
+                if len < 1e-9 {
+                    continue;
+                }
+                let (nx, ny) = (-(by - ay) / len * thick, (bx - ax) / len * thick);
+                let corner = |x: f64, y: f64| [x as f32, y as f32];
+                solid(
+                    vec![
+                        corner(ax + nx, ay + ny),
+                        corner(bx + nx, by + ny),
+                        corner(bx - nx, by - ny),
+                        corner(ax - nx, ay - ny),
+                    ],
+                    false,
+                );
+            }
+            for &[x, y] in &points {
+                let disc = (0..8)
+                    .map(|k| {
+                        let a = std::f64::consts::TAU * f64::from(k) / 8.0;
+                        [(x + thick * a.cos()) as f32, (y + thick * a.sin()) as f32]
+                    })
+                    .collect();
+                solid(disc, true);
+            }
+        }
+    }
+    true
 }
 
 /// A node's card: a pale card lying on the floor with a soft shadow, the title in the node's
@@ -295,6 +392,7 @@ fn push_card_on_floor(
         smooth: true,
         gloss: 0.1,
         node: 0,
+        stand: None,
     });
     let at = |p: [f64; 2]| [card.x + p[0], card.y + p[1]];
     print_aligned(
@@ -397,6 +495,7 @@ fn chevron(
         smooth: false,
         gloss: 0.0,
         node: 0,
+        stand: None,
     }
 }
 
@@ -492,6 +591,7 @@ fn push_edge(
                     smooth: true,
                     gloss: 0.0,
                     node: 0,
+                    stand: None,
                 });
             }
         }

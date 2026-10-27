@@ -656,6 +656,7 @@ fn push_node(
         smooth,
         gloss: 0.0,
         node: index,
+        stand: None,
     });
     // The rim: the top face's outline, a hair above it so the face does not hide it.
     let rim = parse_color(&node.stroke).unwrap_or(palette.rim);
@@ -1027,6 +1028,7 @@ fn push_end(
                 smooth: false,
                 gloss: 0.0,
                 node: 0,
+                stand: None,
             });
         }
         EdgeEnd::Circle => {
@@ -1044,6 +1046,7 @@ fn push_end(
                 smooth: true,
                 gloss: 0.0,
                 node: 0,
+                stand: None,
             });
         }
         EdgeEnd::Cross => {

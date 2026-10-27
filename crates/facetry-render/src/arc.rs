@@ -8,7 +8,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use facetry_core::scene::ArcMark;
-use facetry_core::scene3d::{PrismMark, RibbonMark, ShadowMark, SliceMark};
+use facetry_core::scene3d::{PrismMark, RibbonMark, ShadowMark, SliceMark, Stand};
 
 /// Widest angular step of a slice's rim.
 const MAX_STEP: f32 = 2.0 * std::f32::consts::PI / 180.0;
@@ -149,20 +149,44 @@ pub fn slice(s: &SliceMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
     }
 }
 
+/// How far short of a standing prism's faces its walls stop, as a share of its depth.
+const STAND_WALL_INSET: f32 = 0.03;
+
 /// Appends the triangles of a prism (a diagram node or arrowhead): the top face, a fan over
 /// the convex outline, and one wall per side. No bottom, as for slices.
 ///
 /// Walls face away from the outline's centre whichever way it winds. A `smooth` prism (a
 /// curve cut into segments) gets per-vertex normals averaged from the two sides that meet
 /// there, so a cylinder shades round instead of faceted.
+///
+/// A standing prism is built the same way in its own frame and then turned into its vertical
+/// plane; it also gets the face at its base, which can be seen.
 pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
     let n = p.outline.len();
     if n < 3 || p.top <= p.base {
         return;
     }
+    // From the prism's own frame (outline on x and z, heights on y) to the world.
+    let place = |q: [f32; 3]| match p.stand {
+        None => q,
+        Some(Stand { origin, right }) => {
+            let ([rx, rz], [x, y, z]) = (right, q);
+            [
+                origin[0] + x * rx - y * rz,
+                origin[1] + z,
+                origin[2] + x * rz + y * rx,
+            ]
+        }
+    };
+    let turn = |q: [f32; 3]| match p.stand {
+        None => q,
+        Some(Stand {
+            right: [rx, rz], ..
+        }) => [q[0] * rx - q[1] * rz, q[2], q[0] * rz + q[1] * rx],
+    };
     let v = |pos: [f32; 3], normal: [f32; 3]| Vertex3 {
-        pos,
-        normal,
+        pos: place(pos),
+        normal: turn(normal),
         color,
         hover: 0.0,
         gloss: p.gloss,
@@ -182,6 +206,11 @@ pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
             (a.min(q[1]), b.max(q[1]))
         });
     let sheen = |i: usize| {
+        // A standing prism is one of many pieces of one face (a numeral's strokes): a gradient
+        // per piece would show their seams, so its face takes the gradient's middle.
+        if p.stand.is_some() {
+            return p.gloss * 0.6;
+        }
         let t = if z1 > z0 {
             (z1 - p.outline[i % n][1]) / (z1 - z0)
         } else {
@@ -195,6 +224,16 @@ pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
     };
     for i in 1..n - 1 {
         out.extend([top(0), top(i), top(i + 1)]);
+    }
+    if p.stand.is_some() {
+        let down = [0.0, -1.0, 0.0];
+        for i in 1..n - 1 {
+            out.extend([
+                v(at(0, p.base), down),
+                v(at(i, p.base), down),
+                v(at(i + 1, p.base), down),
+            ]);
+        }
     }
     let [cx, cz] = p.centre();
     // The outward normal of side i (from point i to point i + 1).
@@ -221,8 +260,15 @@ pub fn prism(p: &PrismMark, color: [f32; 4], out: &mut Vec<Vertex3>) {
         } else {
             (flat, flat)
         };
-        let (b0, b1) = (at(i, p.base), at(i + 1, p.base));
-        let (t0, t1) = (at(i, p.top), at(i + 1, p.top));
+        // The pieces of a standing face overlap, and where one's wall met the face the two
+        // would fight in the depth buffer and draw seams: its walls stop just short of it.
+        let inset = if p.stand.is_some() {
+            (p.top - p.base) * STAND_WALL_INSET
+        } else {
+            0.0
+        };
+        let (b0, b1) = (at(i, p.base + inset), at(i + 1, p.base + inset));
+        let (t0, t1) = (at(i, p.top - inset), at(i + 1, p.top - inset));
         // Walls catch less of the sky than the top.
         let wall = |pos, normal| Vertex3 {
             gloss: p.gloss * 0.25,
@@ -591,6 +637,7 @@ mod tests {
             smooth,
             gloss: 0.0,
             node: 0,
+            stand: None,
         }
     }
 
@@ -635,6 +682,38 @@ mod tests {
             let dot = r[0] * vert.normal[0] + r[1] * vert.normal[2];
             assert!(dot > 0.999, "{vert:?}");
         }
+    }
+
+    #[test]
+    fn a_standing_prism_is_drawn_in_its_vertical_plane_closed_at_both_ends() {
+        // A unit square stood up at (1, 2, 3), its right along +x: so it faces +z, and its
+        // heights 0..0.5 run toward +z.
+        let mut p = prism(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], false);
+        p.stand = Some(Stand {
+            origin: [1.0, 2.0, 3.0],
+            right: [1.0, 0.0],
+        });
+        let mut v = Vec::new();
+        super::prism(&p, [1.0; 4], &mut v);
+        // Front and back of 2 triangles each, plus 4 walls of 2.
+        assert_eq!(v.len(), (2 + 2 + 4 * 2) * 3);
+        for vert in &v {
+            let [x, y, z] = vert.pos;
+            assert!(
+                (1.0..=2.0).contains(&x) && (2.0..=3.0).contains(&y),
+                "{vert:?}"
+            );
+            assert!((3.0..=3.5).contains(&z), "{vert:?}");
+        }
+        let front = v.iter().filter(|v| v.normal == [0.0, 0.0, 1.0]);
+        assert!(front.clone().count() == 6 && front.into_iter().all(|v| v.pos[2] == 3.5));
+        let back = v.iter().filter(|v| v.normal == [0.0, 0.0, -1.0]);
+        assert!(back.clone().count() == 6 && back.into_iter().all(|v| v.pos[2] == 3.0));
+        // The walls face out within the plane: the top one up.
+        assert!(
+            v.iter()
+                .any(|v| v.normal == [0.0, 1.0, 0.0] && v.pos[1] == 3.0)
+        );
     }
 
     #[test]

@@ -390,7 +390,7 @@ fn an_isometric_card_has_its_title_text_and_icon_and_the_node_its_number() {
     assert_eq!(validate(&s), vec![]);
     let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
     let texts: Vec<&str> = scene.texts.iter().map(|t| t.text.as_str()).collect();
-    for want in ["1", "Alpha", "first line", "second line"] {
+    for want in ["Alpha", "first line", "second line"] {
         assert!(texts.contains(&want), "{want} in {texts:?}");
     }
     assert!(scene.decor.iter().any(|p| p.key == "a/card"));
@@ -398,7 +398,36 @@ fn an_isometric_card_has_its_title_text_and_icon_and_the_node_its_number() {
     // The card's text is printed left-aligned, on the card.
     let title = scene.texts.iter().find(|t| t.text == "Alpha").unwrap();
     assert_eq!(title.align, facetry_core::scene::Anchor::Start);
-    // The number is printed bigger than a label.
-    let number = scene.texts.iter().find(|t| t.text == "1").unwrap();
-    assert!(number.size_px > title.size_px);
+    // The number stands on the pedestal as solid digits (not printed), in the cap's colour,
+    // above the pedestal's top and turned to face the isometric view.
+    assert!(!texts.contains(&"1"));
+    let cap = scene.prisms.iter().find(|p| p.key == "a").unwrap();
+    let numeral: Vec<_> = scene
+        .decor
+        .iter()
+        .filter(|p| p.key == "a/numeral")
+        .collect();
+    assert!(numeral.len() > 2);
+    let inset = scene.decor.iter().find(|p| p.key == "a/inset").unwrap();
+    for p in &numeral {
+        let stand = p.stand.expect("standing");
+        assert!((stand.origin[1] - inset.top).abs() < 1e-3);
+        assert!(
+            (stand.right[0] - 0.5f32.sqrt()).abs() < 1e-4
+                && (stand.right[1] + 0.5f32.sqrt()).abs() < 1e-4
+        );
+        assert_eq!(p.color, cap.color);
+        assert!(p.outline.iter().all(|q| q[1] >= -1e-3), "on its foot");
+    }
+}
+
+#[test]
+fn a_label_that_is_not_a_short_number_is_printed_on_the_pedestal() {
+    let json = broken(r#""diagram": {"#, r#""diagram": { "style": "isometric","#).replace(
+        r#""label": "Alpha","#,
+        r#""label": "A1", "card": { "x": 160, "y": 20, "width": 140, "height": 50, "title": "Alpha" },"#,
+    );
+    let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+    assert!(scene.texts.iter().any(|t| t.text == "A1"));
+    assert!(!scene.decor.iter().any(|p| p.key == "a/numeral"));
 }

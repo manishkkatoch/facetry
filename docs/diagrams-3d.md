@@ -213,7 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
-| **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
+| **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered with standing 3D digits, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
@@ -267,18 +267,27 @@ picking), the rest decoration. Edges reuse the glossy routing but are drawn as r
 floor that run under the pedestals: a pedestal hides the end of a road, so direction is shown by
 chevrons painted along the road and a darker one just before the head, rather than by an
 arrowhead at the node. Labels are printed on the inset, so in the 45-degree view they run along
-the drawing's axes like the text of a printed isometric chart. Cards and icons came in S3
-(below); standing 3D numerals are still not done (the number is printed on the inset).
+the drawing's axes like the text of a printed isometric chart. Cards, icons and standing
+numerals came in S3 (below).
 
 **Cards and icons (S3).** Cards are opt-in (`cards: true`) because they change what a node shows:
 the first line of the label becomes the card's title, the rest its text (wrapped to 170 units),
-and the pedestal shows the node's number in large print. The layout treats a node and its card as
+and the pedestal shows the node's number. The layout treats a node and its card as
 one footprint, wide along the rank, so ranks space themselves for the cards and the Sugiyama
 ordering is unchanged; afterwards the node and the card are pulled to opposite ends of the
 footprint, the card's side alternating every rank (the reference's zigzag), and edges are routed
 to the node's own centre and size. The metrics count cards as obstacles: in the corpus no card
 overlaps a node or another card and no edge crosses one. A card is a thin white prism with a soft
 shadow, its title and text printed on it, and the icon at its outer edge.
+
+The number stands on the pedestal as solid digits in the node's colour, facing the isometric
+view (it is a solid, so orbiting shows its sides and back rather than turning it). Prisms could
+only rise from the floor, so a prism can now be *stood*: its outline is drawn in a vertical plane
+and extruded across it, closed at both ends. A digit is a monoline face in the icons' path
+language, and each stroke segment becomes a bar and each joint a disc of that thickness; the
+pieces overlap, so their walls stop just short of the faces (or the depth test would draw their
+seams) and their faces share one sheen. Labels that are not a number of up to three digits are
+printed instead.
 
 Icons are line drawings in a small path language (move, line, close, circles, ellipses, arcs,
 rounded boxes) in a 24-unit box, drawn as polylines on the surface they belong to: above the

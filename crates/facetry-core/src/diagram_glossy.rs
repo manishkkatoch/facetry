@@ -234,6 +234,7 @@ fn push_node(
         smooth,
         gloss: NODE_GLOSS,
         node: index,
+        stand: None,
     });
     // The rim: the node's `stroke` if it has one, else a catch-light, a lighter line where the
     // top face meets the walls, as on a polished slab.
@@ -387,6 +388,7 @@ pub(crate) fn push_card(
             smooth: true,
             gloss: CARD_GLOSS,
             node: 0,
+            stand: None,
         });
         print(scene, plan, key, text, at, card_top, size, ink);
     }
@@ -416,6 +418,7 @@ fn push_end(
         smooth,
         gloss: EDGE_GLOSS,
         node: 0,
+        stand: None,
     };
     match end {
         EdgeEnd::None => {}

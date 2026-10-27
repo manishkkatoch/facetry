@@ -157,11 +157,43 @@ pub fn resolve(name: &str) -> Option<&'static str> {
 /// Degrees between samples of a curve.
 const STEP_DEGREES: f64 = 15.0;
 
+/// The digits of a standing numeral, drawn like the icons as centre lines of strokes
+/// [`DIGIT_STROKE`] thick, in a box [`DIGIT_WIDTH`] wide and 24 high (y down): a rounded monoline
+/// face, `0` to `9`.
+const DIGITS: [&str; 10] = [
+    "E 7 12 5.3 10.3",
+    "M 3.2 5.6 L 7.6 1.7 L 7.6 22.3",
+    "B 7 6.9 5.3 5.2 190 380 L 1.7 22.3 L 12.3 22.3",
+    "B 7 6.5 4.9 4.8 200 450 B 7 16.6 5.3 5.7 270 520",
+    "M 10.2 22.3 L 10.2 1.7 L 1.7 15.8 L 12.3 15.8",
+    "M 12.3 1.7 L 3 1.7 L 2.4 11.6 B 7 15.6 5.3 6.7 228 495",
+    "E 7 15.6 5.3 6.7 B 7 12 5.3 10.3 300 165",
+    "M 1.7 1.7 L 12.3 1.7 L 5 22.3",
+    "E 7 6.4 4.6 4.7 E 7 16.4 5.3 5.9",
+    "E 7 8.4 5.3 6.7 B 7 12 5.3 10.3 120 -15",
+];
+
+/// A digit's width in its 24-high box, and its strokes' thickness.
+pub const DIGIT_WIDTH: f64 = 14.0;
+pub const DIGIT_STROKE: f64 = 3.4;
+
+/// The strokes of digit `d` (`'0'..='9'`; nothing for anything else), in its
+/// [`DIGIT_WIDTH`] by 24 box.
+pub fn digit_strokes(d: char) -> Vec<Vec<[f64; 2]>> {
+    d.to_digit(10)
+        .map_or_else(Vec::new, |k| path_strokes(DIGITS[k as usize]))
+}
+
 /// The strokes of icon `name` (already resolved), in its 24 by 24 box.
 pub fn strokes(name: &str) -> Vec<Vec<[f64; 2]>> {
-    let Some((_, path)) = ICONS.iter().find(|(n, _)| *n == name) else {
-        return Vec::new();
-    };
+    ICONS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map_or_else(Vec::new, |(_, path)| path_strokes(path))
+}
+
+/// The strokes a path in the language above draws.
+fn path_strokes(path: &str) -> Vec<Vec<[f64; 2]>> {
     let tokens: Vec<&str> = path.split_whitespace().collect();
     let mut out: Vec<Vec<[f64; 2]>> = Vec::new();
     let mut i = 0;
@@ -283,6 +315,27 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_digit_draws_inside_its_box_with_its_stroke() {
+        let half = DIGIT_STROKE / 2.0 - 0.05;
+        for d in '0'..='9' {
+            let s = digit_strokes(d);
+            assert!(!s.is_empty(), "{d}");
+            for p in s.iter().flatten() {
+                assert!(
+                    (half..=DIGIT_WIDTH - half).contains(&p[0])
+                        && (half..=24.0 - half).contains(&p[1]),
+                    "{d}: {p:?}"
+                );
+            }
+        }
+        assert!(digit_strokes('x').is_empty());
+        // Each digit has a face of its own.
+        for (i, a) in DIGITS.iter().enumerate() {
+            assert!(DIGITS[i + 1..].iter().all(|b| a != b), "digit {i}");
         }
     }
 

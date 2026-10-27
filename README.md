@@ -564,7 +564,8 @@ glossy style, how its edges are routed):
   node gets a white card lying on the floor beside it, as in an infographic timeline: the first
   line of its label is the card's title, the rest wrapped text under it, and its icon sits at the
   card's outer edge; the pedestal then shows the node's number (1, 2, ... in the order the text
-  declares the nodes). The layout reserves room for each card, which goes to alternate sides
+  declares the nodes) as solid digits standing on it, in the node's colour, turned to face the
+  isometric view. The layout reserves room for each card, which goes to alternate sides
   rank by rank, and no edge runs over a card. `cards` is ignored by the other styles.
 
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
@@ -796,8 +797,8 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 757,497 B (740 KiB) | 338,731 B (331 KiB) | 279,955 B (273 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,366,298 B (2311 KiB) | 981,381 B (958 KiB) | 775,972 B (758 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_wasm` (WebGPU only) | 760,934 B (743 KiB) | 340,446 B (332 KiB) | 280,948 B (274 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,369,673 B (2314 KiB) | 982,823 B (960 KiB) | 777,851 B (760 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
 | `facetry_diagrams` (Mermaid add-on) | 226,149 B (221 KiB) | 97,817 B (96 KiB) | 83,850 B (82 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
@@ -809,7 +810,8 @@ gloss, printed text) and 12,833 to the add-on (styling and square-cornered routi
 replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser. The
 isometric style and panning (S2) added 3,820 B gzip to the WebGPU module. Cards and icons (S3)
 added 7,799 B gzip to the WebGPU module (the 32 icons, card layout and printed card text), 7,731
-to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement).
+to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement);
+the standing numerals then added 1,715 to the WebGPU module and 1,442 to the WebGL2 one.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the
