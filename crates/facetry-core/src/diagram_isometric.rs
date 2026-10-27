@@ -11,10 +11,16 @@
 
 use crate::Color;
 use crate::Theme;
-use crate::diagram::{Plan, dashes, parse_color, path_length, push_rim, shape_outline};
-use crate::diagram_glossy::{lighten, print, push_card, push_shadow_with, rgb};
+use crate::diagram::{
+    CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, ICON_SIZE, Plan, card_layout, dashes,
+    icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
+};
+use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with, rgb};
+use crate::scene::Anchor;
 use crate::scene3d::{PrismMark, RibbonMark, Scene3d};
-use crate::spec::{DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeShape};
+use crate::spec::{
+    DiagramEdge, DiagramNode, DiagramSpec, EdgeEnd, EdgeStroke, NodeCard, NodeShape,
+};
 use crate::text::TextMeasure;
 
 /// The pedestal's layers, heights in font sizes: plate, body, cap and inset.
@@ -45,6 +51,11 @@ const HEAD_SETBACK: f64 = 14.0;
 const SHADOW_OFFSET: [f64; 2] = [10.0, 8.0];
 const SHADOW_BLUR: f64 = 24.0;
 const SHADOW_ALPHA: f32 = 0.16;
+/// Cards on the floor: thickness (font sizes) and their shadow.
+const CARD_HEIGHT: f64 = 0.15;
+const CARD_SHADOW_OFFSET: [f64; 2] = [4.0, 4.0];
+const CARD_SHADOW_BLUR: f64 = 12.0;
+const CARD_SHADOW_ALPHA: f32 = 0.1;
 /// Gloss of the cap, the inset and the body.
 const CAP_GLOSS: f32 = 0.35;
 const WHITE_GLOSS: f32 = 0.15;
@@ -98,7 +109,7 @@ pub(crate) fn build(
         push_edge(&mut scene, &plan, i, edge, shadow, measure, theme);
     }
     for (i, node) in diagram.nodes.iter().enumerate() {
-        push_node(&mut scene, &plan, i, node, s, shadow, theme.text);
+        push_node(&mut scene, &plan, i, node, s, shadow, theme.text, measure);
     }
     scene
 }
@@ -120,6 +131,7 @@ fn outline(node: &DiagramNode, by: f64) -> (Vec<[f64; 2]>, bool) {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_node(
     scene: &mut Scene3d,
     plan: &Plan,
@@ -128,6 +140,7 @@ fn push_node(
     s: f64,
     shadow: Color,
     text: Color,
+    measure: &dyn TextMeasure,
 ) {
     let fill = parse_color(&node.color).unwrap_or_else(|| rgb(PALETTE[index % PALETTE.len()]));
     let floor = |points: &[[f64; 2]]| points.iter().map(|&p| plan.floor_point(p)).collect();
@@ -205,16 +218,122 @@ fn push_node(
         .or_else(|| Some(darken(fill, 0.35)).filter(readable))
         .unwrap_or(text);
     let label = node.label.as_deref().unwrap_or(&node.id);
-    print(
+    let top = plan.len(STACK_HEIGHT * plan.font);
+    if let Some(card) = &node.card {
+        // The pedestal shows the step number big; the card says what the step is.
+        print(
+            scene,
+            plan,
+            &node.id,
+            label,
+            [node.x, node.y],
+            top,
+            CARD_BADGE * plan.font,
+            ink,
+        );
+        push_card_on_floor(scene, plan, node, card, ink, s, measure);
+        return;
+    }
+    let (icon_at, label_at) = icon_and_label(node, plan.font);
+    if let (Some(at), Some(icon)) = (icon_at, node.icon.as_deref()) {
+        push_icon(
+            scene,
+            plan,
+            &node.id,
+            icon,
+            at,
+            ICON_SIZE * plan.font,
+            top,
+            ink,
+            s,
+        );
+    }
+    print(scene, plan, &node.id, label, label_at, top, plan.font, ink);
+}
+
+/// A node's card: a pale card lying on the floor with a soft shadow, the title in the node's
+/// colour, the text in grey, and the icon at the card's outer end.
+fn push_card_on_floor(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    node: &DiagramNode,
+    card: &NodeCard,
+    ink: Color,
+    s: f64,
+    measure: &dyn TextMeasure,
+) {
+    let icon_left = card.x < node.x - 1.0;
+    let layout = card_layout(
+        &card.title,
+        card.text.as_deref(),
+        node.icon.is_some(),
+        icon_left,
+        plan.font,
+        measure,
+    );
+    let (outline, _) = shape_outline(NodeShape::Rounded, card.width, card.height);
+    let outline: Vec<[f64; 2]> = outline
+        .iter()
+        .map(|p| [card.x + p[0], card.y + p[1]])
+        .collect();
+    let shadow = Color::linear(0.0, 0.0, 0.0, CARD_SHADOW_ALPHA);
+    push_shadow_with(
         scene,
         plan,
-        &node.id,
-        label,
-        [node.x, node.y],
-        plan.len(STACK_HEIGHT * plan.font),
-        plan.font,
-        ink,
+        &outline,
+        CARD_SHADOW_OFFSET,
+        CARD_SHADOW_BLUR,
+        shadow,
     );
+    let top = plan.len(CARD_HEIGHT * plan.font);
+    scene.decor.push(PrismMark {
+        key: format!("{}/card", node.id),
+        color: rgb(0xfbfcfd),
+        outline: outline.iter().map(|&p| plan.floor_point(p)).collect(),
+        base: 0.0,
+        top: top as f32,
+        smooth: true,
+        gloss: 0.1,
+        node: 0,
+    });
+    let at = |p: [f64; 2]| [card.x + p[0], card.y + p[1]];
+    print_aligned(
+        scene,
+        plan,
+        &format!("{}/card/title", node.id),
+        &card.title,
+        at(layout.title),
+        top,
+        CARD_TITLE * plan.font,
+        ink,
+        Anchor::Start,
+    );
+    if let (Some(p), Some(text)) = (layout.text, card.text.as_deref()) {
+        print_aligned(
+            scene,
+            plan,
+            &format!("{}/card/text", node.id),
+            text,
+            at(p),
+            top,
+            CARD_TEXT * plan.font,
+            rgb(0x6b7280),
+            Anchor::Start,
+        );
+    }
+    if let (Some(p), Some(icon)) = (layout.icon, node.icon.as_deref()) {
+        push_icon(
+            scene,
+            plan,
+            &format!("{}/card", node.id),
+            icon,
+            at(p),
+            CARD_ICON * plan.font,
+            top,
+            ink,
+            s,
+        );
+    }
 }
 
 fn road(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark {

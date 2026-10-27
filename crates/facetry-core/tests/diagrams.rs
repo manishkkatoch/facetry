@@ -345,3 +345,60 @@ fn isometric_labels_stay_readable_on_the_white_inset() {
         .unwrap();
     assert!(label.color.contrast(white) >= 3.0);
 }
+
+#[test]
+fn icons_are_drawn_above_the_label_in_every_style() {
+    for style in ["flat", "glossy", "isometric"] {
+        let json = broken(
+            r#""diagram": {"#,
+            &format!(r#""diagram": {{ "style": "{style}","#),
+        )
+        .replace(
+            r#""label": "Alpha","#,
+            r#""label": "Alpha", "icon": "fa:lightbulb","#,
+        );
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let icon = scene
+            .polylines
+            .iter()
+            .find(|p| p.key == "a/icon")
+            .unwrap_or_else(|| panic!("{style}: no icon"));
+        assert!(icon.runs.len() >= 2, "{style}");
+        // The icon is above (farther up the page than) the label.
+        let label = scene
+            .texts
+            .iter()
+            .find(|t| t.key.starts_with("a/label"))
+            .unwrap();
+        let icon_z = icon
+            .runs
+            .iter()
+            .flatten()
+            .map(|p| p[2])
+            .fold(f32::INFINITY, f32::min);
+        assert!(icon_z < label.anchor[2], "{style}");
+    }
+}
+
+#[test]
+fn an_isometric_card_has_its_title_text_and_icon_and_the_node_its_number() {
+    let json = broken(r#""diagram": {"#, r#""diagram": { "style": "isometric","#).replace(
+        r#""label": "Alpha","#,
+        r#""label": "1", "icon": "gear", "card": { "x": 160, "y": 20, "width": 140, "height": 50, "title": "Alpha", "text": "first line\nsecond line" },"#,
+    );
+    let s = spec(&json);
+    assert_eq!(validate(&s), vec![]);
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    let texts: Vec<&str> = scene.texts.iter().map(|t| t.text.as_str()).collect();
+    for want in ["1", "Alpha", "first line", "second line"] {
+        assert!(texts.contains(&want), "{want} in {texts:?}");
+    }
+    assert!(scene.decor.iter().any(|p| p.key == "a/card"));
+    assert!(scene.polylines.iter().any(|p| p.key == "a/card/icon"));
+    // The card's text is printed left-aligned, on the card.
+    let title = scene.texts.iter().find(|t| t.text == "Alpha").unwrap();
+    assert_eq!(title.align, facetry_core::scene::Anchor::Start);
+    // The number is printed bigger than a label.
+    let number = scene.texts.iter().find(|t| t.text == "1").unwrap();
+    assert!(number.size_px > title.size_px);
+}

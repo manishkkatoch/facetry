@@ -12,6 +12,11 @@ use facetry_diagrams::{Options, build, flowchart, from_mermaid, from_mermaid_wit
 
 const GLOSSY: Options = Options {
     style: DiagramStyle::Glossy,
+    cards: false,
+};
+const CARDS: Options = Options {
+    style: DiagramStyle::Isometric,
+    cards: true,
 };
 
 fn corpus() -> Vec<(String, String)> {
@@ -83,6 +88,7 @@ fn every_diagram_routes_square_cornered_in_the_glossy_style() {
             &chart,
             &Options {
                 style: DiagramStyle::Isometric,
+                cards: false,
             },
         );
         assert_eq!(iso.control, built.control, "{name}");
@@ -125,5 +131,26 @@ fn glossy_quality_metrics() {
         total[0], total[1], total[2]
     )
     .unwrap();
+    insta::assert_snapshot!(report);
+}
+
+#[test]
+fn cards_take_room_of_their_own() {
+    let mut report = String::new();
+    for (name, source) in corpus() {
+        let d = from_mermaid_with(&source, &CARDS).unwrap();
+        let m = d.metrics;
+        // Cards never overlap a node or another card, and no edge runs over one.
+        assert_eq!(m.node_overlaps, 0, "{name}: {m}");
+        assert_eq!(m.edge_node_overlaps, 0, "{name}: {m}");
+        let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
+        assert!(facetry_core::validate(&spec).is_empty(), "{name}");
+        // Every node has its card and shows its number.
+        for (i, n) in d.spec.nodes.iter().enumerate() {
+            assert!(n.card.is_some(), "{name}");
+            assert_eq!(n.label.as_deref(), Some((i + 1).to_string().as_str()));
+        }
+        writeln!(report, "{name:<26} {m}").unwrap();
+    }
     insta::assert_snapshot!(report);
 }

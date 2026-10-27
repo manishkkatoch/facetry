@@ -133,3 +133,20 @@ test("the isometric style starts in the isometric view, and its pedestals report
   await expect(page.locator("#hover")).toContainText("exec");
   await expect(page.locator("#hover")).toContainText('"shape":"circle"');
 });
+
+test("the Cards box lays a card beside each node and numbers the nodes", async ({ page }) => {
+  await page.goto("/?backend=webgl2&style=isometric&example=mermaid/28-roadmap");
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+  const before = await where(page, "plan");
+  await page.locator("#cards").check();
+  // The node now shows its number, and the layout made room for the cards.
+  await expect
+    .poll(async () => {
+      const after = await page.evaluate(() => (window as any).facetryChart.markPosition("plan"));
+      return Math.hypot(after.x - before.x, after.y - before.y);
+    })
+    .toBeGreaterThan(5);
+  const p = await where(page, "plan");
+  await page.mouse.move(p.x, p.y);
+  await expect(page.locator("#hover")).toContainText('"label":"2"');
+});

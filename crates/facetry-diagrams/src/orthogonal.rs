@@ -64,8 +64,14 @@ struct Oriented {
 }
 
 /// Routes every edge of `laid` (from `edges`, `(from, to)` node indices) between nodes of
-/// `sizes`, top to bottom.
-pub fn route(laid: &Layout, sizes: &[Size], edges: &[(usize, usize)]) -> Vec<Route> {
+/// `sizes` centred at `centres` (the layout's own nodes, or the part of each that edges should
+/// attach to, such as a pedestal beside its card), top to bottom.
+pub fn route(
+    laid: &Layout,
+    centres: &[[f64; 2]],
+    sizes: &[Size],
+    edges: &[(usize, usize)],
+) -> Vec<Route> {
     let n = laid.nodes.len();
     let real_rank = |r: i32| laid.ranks.contains(&r);
     // Each edge's points through the layout, oriented downward, source first.
@@ -107,7 +113,7 @@ pub fn route(laid: &Layout, sizes: &[Size], edges: &[(usize, usize)]) -> Vec<Rou
     let spread = |list: &mut Vec<(f64, usize)>, node: usize| -> Vec<(usize, f64)> {
         list.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         let m = list.len();
-        let cx = laid.nodes[node][0];
+        let cx = centres[node][0];
         let step = if m > 1 {
             PORT_STEP.min(PORT_SPREAD * sizes[node].width / (m - 1) as f64)
         } else {
@@ -226,11 +232,11 @@ pub fn route(laid: &Layout, sizes: &[Size], edges: &[(usize, usize)]) -> Vec<Rou
             src, tgt, reversed, ..
         }) = &oriented[i]
         else {
-            routes.push(self_loop(laid, sizes, from));
+            routes.push(self_loop(centres, sizes, from));
             continue;
         };
         let col = &columns[i];
-        let (cs, ct) = (laid.nodes[*src], laid.nodes[*tgt]);
+        let (cs, ct) = (centres[*src], centres[*tgt]);
         let mut path = vec![[col[0].0, cs[1] + sizes[*src].height / 2.0]];
         let mut my_jogs = jogs.iter().filter(|j| j.edge == i);
         for w in col.windows(2) {
@@ -258,8 +264,8 @@ pub fn route(laid: &Layout, sizes: &[Size], edges: &[(usize, usize)]) -> Vec<Rou
 }
 
 /// A loop out of the node's right side and back.
-fn self_loop(laid: &Layout, sizes: &[Size], from: usize) -> Route {
-    let c = laid.nodes[from];
+fn self_loop(centres: &[[f64; 2]], sizes: &[Size], from: usize) -> Route {
+    let c = centres[from];
     let s = sizes[from];
     let x = c[0] + s.width / 2.0;
     let (y0, y1) = (c[1] - s.height / 4.0, c[1] + s.height / 4.0);
@@ -350,7 +356,7 @@ mod tests {
         let edges = [(0, 1), (0, 2), (0, 3), (1, 4), (2, 4), (3, 4)];
         let g = graph(5, &edges);
         let laid = layout(&g, Spacing::default());
-        let routes = route(&laid, &g.nodes, &edges);
+        let routes = route(&laid, &laid.nodes, &g.nodes, &edges);
         for (r, &(from, to)) in routes.iter().zip(&edges) {
             assert!(is_orthogonal(&r.points), "{r:?}");
             let first = r.points[0];
@@ -371,7 +377,7 @@ mod tests {
         let edges = [(0, 1), (1, 2), (2, 0)];
         let g = graph(3, &edges);
         let laid = layout(&g, Spacing::default());
-        let r = &route(&laid, &g.nodes, &edges)[2];
+        let r = &route(&laid, &laid.nodes, &g.nodes, &edges)[2];
         // Leaves node 2 (the lowest) through its top, arrives at node 0 through its bottom.
         assert!(r.points[0][1] < laid.nodes[2][1]);
         assert!(r.points[r.points.len() - 1][1] > laid.nodes[0][1]);

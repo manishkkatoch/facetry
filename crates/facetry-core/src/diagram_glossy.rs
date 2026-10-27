@@ -10,7 +10,8 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram::{
-    Plan, dashes, ink_on, parse_color, previous_distinct, push_rim, shape_outline, trim_end,
+    ICON_SIZE, Plan, dashes, icon_and_label, ink_on, parse_color, previous_distinct, push_icon,
+    push_rim, shape_outline, trim_end,
 };
 use crate::scene::Anchor;
 use crate::scene3d::{LabelRole, PrismMark, RibbonMark, Scene3d, ShadowMark, Text3, VAlign};
@@ -141,6 +142,22 @@ pub(crate) fn print(
     size: f64,
     color: Color,
 ) {
+    print_aligned(scene, plan, key, text, at, y, size, color, Anchor::Middle);
+}
+
+/// [`print`] with the lines aligned on `at` by their start, middle or end.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn print_aligned(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    key: &str,
+    text: &str,
+    at: [f64; 2],
+    y: f64,
+    size: f64,
+    color: Color,
+    align: Anchor,
+) {
     let lines: Vec<&str> = text.split('\n').collect();
     let step = size * LINE_HEIGHT;
     for (k, line) in lines.iter().enumerate() {
@@ -155,7 +172,7 @@ pub(crate) fn print(
             offset_px: [0.0, dy as f32],
             size_px: size as f32,
             color,
-            align: Anchor::Middle,
+            align,
             valign: VAlign::Middle,
             azimuths: None,
             role: LabelRole::Fixed,
@@ -238,16 +255,21 @@ fn push_node(
         }
     });
     let label = node.label.as_deref().unwrap_or(&node.id);
-    print(
-        scene,
-        plan,
-        &node.id,
-        label,
-        [node.x, node.y],
-        top,
-        plan.font,
-        ink,
-    );
+    let (icon_at, label_at) = icon_and_label(node, plan.font);
+    if let (Some(at), Some(icon)) = (icon_at, node.icon.as_deref()) {
+        push_icon(
+            scene,
+            plan,
+            &node.id,
+            icon,
+            at,
+            ICON_SIZE * plan.font,
+            top,
+            ink,
+            s,
+        );
+    }
+    print(scene, plan, &node.id, label, label_at, top, plan.font, ink);
 }
 
 /// The band of an edge from `from` to `to` along `points`, `width` wide.

@@ -550,6 +550,31 @@ pub struct DiagramNode {
     /// Label colour, `#rrggbb`. Default: dark or white, whichever reads better on the fill.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub text_color: Option<String>,
+    /// A built-in icon (`"bulb"`, `"gear"`, `"database"`, ...; `fa:`-style prefixes and common
+    /// aliases are understood), drawn as a line drawing: on the node's card if it has one, else
+    /// on its top above the label (the layout leaves room for it there).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub icon: Option<String>,
+    /// A card lying on the floor beside the node, with a title, a description and the icon
+    /// (isometric style only).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub card: Option<NodeCard>,
+}
+
+/// A node's card: a rectangle on the floor (layout units, like the node), its title printed in
+/// the node's colour and its text, if any, below it in grey.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+pub struct NodeCard {
+    /// The card's centre and size.
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub title: String,
+    /// Lines separated by `\n`, already wrapped to the card.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text: Option<String>,
 }
 
 /// Widest node rim accepted, CSS px.

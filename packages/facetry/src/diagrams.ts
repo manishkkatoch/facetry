@@ -31,6 +31,13 @@ export interface DiagramOptions {
    * style also decides how edges are routed, so it is chosen here rather than in the spec.
    */
   style?: DiagramStyle;
+  /**
+   * Isometric style only: lay a card on the floor beside each node, alternating sides from
+   * rank to rank. The card shows the node's label (its first line as the title, the rest as
+   * wrapped text) and its icon; the node itself then shows its number. The layout makes room
+   * for the cards. Default `false`.
+   */
+  cards?: boolean;
 }
 
 type Glue = typeof import("../wasm/facetry_diagrams.js");
@@ -59,7 +66,7 @@ export const diagram = {
   async fromMermaid(source: string, options: DiagramOptions = {}): Promise<ChartSpec> {
     const glue = await load();
     try {
-      return JSON.parse(glue.layoutMermaid(source, options.style)) as ChartSpec;
+      return JSON.parse(glue.layoutMermaid(source, options.style, options.cards)) as ChartSpec;
     } catch (e) {
       throw FacetryError.from(e);
     }

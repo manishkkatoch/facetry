@@ -185,6 +185,36 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
                 issues.push(Issue::new(at(field), e.to_string()));
             }
         }
+        if let Some(icon) = &node.icon {
+            if crate::icons::resolve(icon).is_none() {
+                let known: Vec<&str> = crate::icons::names().collect();
+                issues.push(Issue::new(
+                    at("icon"),
+                    format!(
+                        "no built-in icon {icon:?}; the icons are {}",
+                        known.join(", ")
+                    ),
+                ));
+            }
+        }
+        if let Some(card) = &node.card {
+            if diagram.style != DiagramStyle::Isometric {
+                issues.push(Issue::new(
+                    at("card"),
+                    "cards are drawn by the isometric style only",
+                ));
+            }
+            let finite = [card.x, card.y].iter().all(|v| v.is_finite());
+            let positive = [card.width, card.height]
+                .iter()
+                .all(|v| v.is_finite() && *v > 0.0);
+            if !(finite && positive) {
+                issues.push(Issue::new(
+                    pointer(&["diagram", "nodes", &n, "card"]),
+                    "a card needs finite x and y and a width and height greater than 0",
+                ));
+            }
+        }
         if let Some(w) = node.stroke_width {
             if !(w.is_finite() && (0.0..=MAX_NODE_STROKE_WIDTH).contains(&w)) {
                 issues.push(Issue::new(
@@ -631,11 +661,25 @@ fn push_node(
     let rim = parse_color(&node.stroke).unwrap_or(palette.rim);
     let rim_width = node.stroke_width.unwrap_or(RIM_WIDTH);
     push_rim(scene, plan, node, &outline, top, rim, rim_width * s);
-    // The label, one Text3 per line, centred on the top face.
+    // The label, one Text3 per line, centred on the top face (below the icon, if any).
     let label = node.label.as_deref().unwrap_or(&node.id);
     let lines: Vec<&str> = label.split('\n').collect();
     let step = f64::from(label_px) * LINE_HEIGHT;
     let ink = parse_color(&node.text_color).unwrap_or_else(|| ink_on(color, palette.text));
+    let (icon_at, label_at) = icon_and_label(node, plan.font);
+    if let (Some(at), Some(icon)) = (icon_at, node.icon.as_deref()) {
+        push_icon(
+            scene,
+            plan,
+            &node.id,
+            icon,
+            at,
+            ICON_SIZE * plan.font,
+            top,
+            ink,
+            s,
+        );
+    }
     for (k, line) in lines.iter().enumerate() {
         if line.is_empty() {
             continue;
@@ -644,7 +688,7 @@ fn push_node(
         scene.texts.push(Text3 {
             key: format!("{}/label/{k}", node.id),
             text: (*line).to_owned(),
-            anchor: plan.world([node.x, node.y], top),
+            anchor: plan.world(label_at, top),
             offset_px: [0.0, dy as f32],
             size_px: label_px,
             color: ink,
@@ -656,6 +700,145 @@ fn push_node(
             flat: None,
         });
     }
+}
+
+/// A node's icon, when it has no card, is drawn above its label on its top: this big (in font
+/// sizes), this far above the label. The layout makes the node tall enough for both.
+pub const ICON_SIZE: f64 = 1.7;
+pub const ICON_GAP: f64 = 0.35;
+/// Line spacing of labels, in font sizes.
+pub const LABEL_LINE_HEIGHT: f64 = LINE_HEIGHT;
+
+/// The height of a label of these lines at font size `font`.
+pub fn label_height(label: &str, font: f64) -> f64 {
+    (label.split('\n').count() as f64 - 1.0) * LINE_HEIGHT * font + font
+}
+
+/// Where a node's icon (if it has one and no card) and its label go on its top, centres in
+/// layout units: the two stacked, icon above, the pair centred on the node.
+pub(crate) fn icon_and_label(node: &DiagramNode, font: f64) -> (Option<[f64; 2]>, [f64; 2]) {
+    let centre = [node.x, node.y];
+    if node.icon.is_none() || node.card.is_some() {
+        return (None, centre);
+    }
+    let label = node.label.as_deref().unwrap_or(&node.id);
+    let (icon, gap, text) = (ICON_SIZE * font, ICON_GAP * font, label_height(label, font));
+    let block = icon + gap + text;
+    (
+        Some([node.x, node.y - block / 2.0 + icon / 2.0]),
+        [node.x, node.y + block / 2.0 - text / 2.0],
+    )
+}
+
+/// Cards (isometric style): padding inside (layout units); title, text and icon sizes and the
+/// gap between title and text (font sizes); the gap between the text and the icon (layout units).
+pub const CARD_PAD: f64 = 10.0;
+pub const CARD_TITLE: f64 = 1.0;
+pub const CARD_TEXT: f64 = 0.8;
+pub const CARD_TITLE_GAP: f64 = 0.45;
+pub const CARD_ICON: f64 = 2.2;
+pub const CARD_ICON_GAP: f64 = 9.0;
+/// The widest a card's text runs before it wraps (layout units).
+pub const CARD_TEXT_WIDTH: f64 = 170.0;
+/// A pedestal with a card shows its step number, this many font sizes high.
+pub const CARD_BADGE: f64 = 1.6;
+
+/// Where things go on a card, relative to its centre (layout units).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CardLayout {
+    pub size: [f64; 2],
+    /// The icon's centre, if the card has one.
+    pub icon: Option<[f64; 2]>,
+    /// Where the title and the text start (their left end, vertical middle).
+    pub title: [f64; 2],
+    pub text: Option<[f64; 2]>,
+}
+
+/// Lays a card out: its title (one line), its text (lines already wrapped) and, if `icon`, the
+/// icon at its left end (`icon_left`, for a card left of its node) or right end. Both the
+/// layout (to make room) and the renderer use this, so they agree.
+pub fn card_layout(
+    title: &str,
+    text: Option<&str>,
+    icon: bool,
+    icon_left: bool,
+    font: f64,
+    measure: &dyn TextMeasure,
+) -> CardLayout {
+    let width = |t: &str, size: f64| {
+        t.split('\n')
+            .map(|l| f64::from(measure.width(l, size as f32)))
+            .fold(0.0, f64::max)
+    };
+    let title_h = CARD_TITLE * font;
+    let text = text.filter(|t| !t.is_empty());
+    let text_h = text.map_or(0.0, |t| label_height(t, CARD_TEXT * font));
+    let block_h = title_h + text.map_or(0.0, |_| CARD_TITLE_GAP * font + text_h);
+    let text_w =
+        width(title, CARD_TITLE * font).max(text.map_or(0.0, |t| width(t, CARD_TEXT * font)));
+    let icon_w = if icon { CARD_ICON * font } else { 0.0 };
+    let inner_w = text_w + if icon { CARD_ICON_GAP + icon_w } else { 0.0 };
+    let size = [
+        inner_w + 2.0 * CARD_PAD,
+        block_h.max(icon_w) + 2.0 * CARD_PAD,
+    ];
+    let left = -size[0] / 2.0 + CARD_PAD;
+    let (icon_x, text_x) = if icon_left {
+        (
+            left + icon_w / 2.0,
+            left + if icon { icon_w + CARD_ICON_GAP } else { 0.0 },
+        )
+    } else {
+        (left + text_w + CARD_ICON_GAP + icon_w / 2.0, left)
+    };
+    let top = -block_h / 2.0;
+    CardLayout {
+        size,
+        icon: icon.then_some([icon_x, 0.0]),
+        title: [text_x, top + title_h / 2.0],
+        text: text.map(|_| [text_x, top + title_h + CARD_TITLE_GAP * font + text_h / 2.0]),
+    }
+}
+
+/// Width of an icon's strokes, CSS px.
+const ICON_STROKE: f64 = 1.6;
+
+/// Draws built-in icon `name` (unknown names draw nothing; validation reports them) centred at
+/// `at` (layout units), `size` across, lying on the surface at world height `y`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn push_icon(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    key: &str,
+    name: &str,
+    at: [f64; 2],
+    size: f64,
+    y: f64,
+    color: Color,
+    s: f64,
+) {
+    let Some(name) = crate::icons::resolve(name) else {
+        return;
+    };
+    let k = size / 24.0;
+    let lift = y + plan.len(0.3);
+    let runs = crate::icons::strokes(name)
+        .into_iter()
+        .map(|stroke| {
+            stroke
+                .iter()
+                .map(|q| plan.world([at[0] + (q[0] - 12.0) * k, at[1] + (q[1] - 12.0) * k], lift))
+                .collect()
+        })
+        .collect();
+    scene.polylines.push(Polyline3 {
+        key: format!("{key}/icon"),
+        color,
+        width_px: (ICON_STROKE * s) as f32,
+        runs,
+        area: None,
+        layer: 0,
+    });
 }
 
 /// A node's colour from the spec, if it gave a valid one.

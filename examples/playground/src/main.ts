@@ -20,16 +20,22 @@ const examples = new Map<string, Example>([
 ]);
 
 const styleSelect = document.querySelector<HTMLSelectElement>("#style")!;
+const cardsBox = document.querySelector<HTMLInputElement>("#cards")!;
 
 /** A spec as it is, or Mermaid text laid out by the diagrams add-on in the chosen style. */
 const toSpec = (example: Example): Promise<ChartSpec> =>
   typeof example === "string"
-    ? diagram.fromMermaid(example, { style: styleSelect.value as DiagramStyle })
+    ? diagram.fromMermaid(example, {
+        style: styleSelect.value as DiagramStyle,
+        cards: cardsBox.checked,
+      })
     : Promise.resolve(example);
 
 const params = new URLSearchParams(location.search);
 // ?style=glossy or ?style=isometric draws Mermaid diagrams in that style.
 styleSelect.value = ["glossy", "isometric"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
+// ?cards=1 lays a card beside each node (isometric style).
+cardsBox.checked = params.get("cards") === "1";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
 const backend = (params.get("backend") ?? "auto") as NonNullable<ChartOptions["backend"]>;
 // ?example=<name> picks the starting spec; ?ui=0 hides everything but the chart.
@@ -152,10 +158,12 @@ select.addEventListener("change", () => {
   void apply(spec);
 });
 
-// A new style lays the Mermaid text in the editor out again.
-styleSelect.addEventListener("change", () => {
-  if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
-});
+// A new style (or cards on or off) lays the Mermaid text in the editor out again.
+for (const control of [styleSelect, cardsBox]) {
+  control.addEventListener("change", () => {
+    if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
+  });
+}
 
 applyButton.addEventListener("click", () => {
   // JSON is a chart spec; anything else is taken as Mermaid.

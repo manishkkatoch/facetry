@@ -11,9 +11,9 @@ pub struct Metrics {
     pub edges: usize,
     /// Pairs of edges that cross (each crossing point counted once).
     pub crossings: usize,
-    /// Edges passing through a node they do not start or end at.
+    /// Edges passing through a node they do not start or end at, or through a card.
     pub edge_node_overlaps: usize,
-    /// Pairs of nodes whose rectangles overlap (should always be 0).
+    /// Pairs of nodes (or their cards) whose rectangles overlap (should always be 0).
     pub node_overlaps: usize,
     /// Edge labels overlapping a node or another edge label.
     pub label_overlaps: usize,
@@ -94,6 +94,24 @@ pub fn measure(spec: &DiagramSpec, control: &[Vec<[f64; 2]>], font: f64) -> Metr
         })
         .collect();
     let index = |id: &str| spec.nodes.iter().position(|n| n.id == id);
+    // Everything an edge must keep clear of, with the node it belongs to: the nodes, and their
+    // cards (an edge must not cross even its own node's card).
+    let mut obstacles: Vec<(usize, bool, Rect)> = rects
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (i, true, *r))
+        .collect();
+    for (i, n) in spec.nodes.iter().enumerate() {
+        if let Some(c) = &n.card {
+            let r = [
+                c.x - c.width / 2.0,
+                c.y - c.height / 2.0,
+                c.x + c.width / 2.0,
+                c.y + c.height / 2.0,
+            ];
+            obstacles.push((i, false, r));
+        }
+    }
 
     let mut crossings = 0;
     for i in 0..spec.edges.len() {
@@ -117,8 +135,8 @@ pub fn measure(spec: &DiagramSpec, control: &[Vec<[f64; 2]>], font: f64) -> Metr
     let mut edge_node_overlaps = 0;
     for e in &spec.edges {
         let ends = [index(&e.from), index(&e.to)];
-        for (k, r) in rects.iter().enumerate() {
-            if ends.contains(&Some(k)) {
+        for (k, body, r) in &obstacles {
+            if *body && ends.contains(&Some(*k)) {
                 continue;
             }
             let inner = [r[0] + 2.0, r[1] + 2.0, r[2] - 2.0, r[3] - 2.0];
@@ -133,9 +151,10 @@ pub fn measure(spec: &DiagramSpec, control: &[Vec<[f64; 2]>], font: f64) -> Metr
     }
 
     let mut node_overlaps = 0;
-    for i in 0..rects.len() {
-        for j in i + 1..rects.len() {
-            if overlaps(&rects[i], &rects[j]) {
+    for i in 0..obstacles.len() {
+        for j in i + 1..obstacles.len() {
+            let ((a, _, ra), (b, _, rb)) = (&obstacles[i], &obstacles[j]);
+            if a != b && overlaps(ra, rb) {
                 node_overlaps += 1;
             }
         }

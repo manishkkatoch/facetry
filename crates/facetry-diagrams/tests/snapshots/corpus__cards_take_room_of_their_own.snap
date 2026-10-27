@@ -1,0 +1,33 @@
+---
+source: crates/facetry-diagrams/tests/corpus.rs
+expression: report
+---
+01-decision                nodes 4 edges 4 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 12 | edge length 829 size 317 x 453
+02-ci-pipeline             nodes 9 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 24 | edge length 2217 size 1097 x 468
+03-login                   nodes 10 edges 13 | crossings 6 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 44 | edge length 6794 size 546 x 1579
+04-etl                     nodes 10 edges 9 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 18 | edge length 1638 size 1243 x 434
+05-request-lifecycle       nodes 11 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 28 | edge length 2770 size 749 x 1169
+06-git-flow                nodes 7 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 22 | edge length 2387 size 1270 x 202
+07-order-states            nodes 9 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 24 | edge length 2832 size 1155 x 484
+08-incident                nodes 11 edges 12 | crossings 2 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 34 | edge length 3326 size 564 x 1343
+09-shapes                  nodes 11 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 20 | edge length 1527 size 1867 x 142
+10-links                   nodes 10 edges 9 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 20 | edge length 1800 size 700 x 717
+11-microservices           nodes 14 edges 15 | crossings 3 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 34 | edge length 5667 size 1384 x 780
+12-ml-training             nodes 9 edges 12 | crossings 1 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 36 | edge length 4425 size 1479 x 441
+13-build-system            nodes 6 edges 8 | crossings 2 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 18 | edge length 1760 size 379 x 606
+14-support-triage          nodes 10 edges 13 | crossings 2 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 38 | edge length 5687 size 1094 x 995
+15-deploy-rollout          nodes 8 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 24 | edge length 2030 size 1280 x 312
+16-cache-lookup            nodes 7 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 24 | edge length 3032 size 381 x 1190
+17-oauth                   nodes 5 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 28 | edge length 2841 size 689 x 468
+18-data-pipeline-wide      nodes 9 edges 10 | crossings 2 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 20 | edge length 2788 size 768 x 606
+19-cycle                   nodes 4 edges 4 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 10 | edge length 936 size 606 x 196
+20-long-labels             nodes 5 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 14 | edge length 2127 size 517 x 801
+21-self-loop               nodes 3 edges 4 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 12 | edge length 764 size 228 x 453
+22-fan-out                 nodes 10 edges 14 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 28 | edge length 5658 size 1545 x 432
+23-dense                   nodes 8 edges 15 | crossings 11 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 32 | edge length 4036 size 598 x 606
+24-rl                      nodes 6 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 10 | edge length 826 size 836 x 334
+25-disconnected            nodes 6 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 6 | edge length 427 size 437 x 468
+26-styled                  nodes 7 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 18 | edge length 1636 size 496 x 801
+27-timeline                nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 6 | edge length 470 size 607 x 160
+28-roadmap                 nodes 4 edges 3 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 6 | edge length 891 size 986 x 174
+29-icons                   nodes 8 edges 7 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 18 | edge length 1981 size 682 x 801

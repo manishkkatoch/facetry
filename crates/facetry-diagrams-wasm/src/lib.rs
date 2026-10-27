@@ -25,13 +25,18 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-/// Lays out Mermaid `source` in `style` (`"flat"`, `"glossy"` or `"isometric"`; absent: flat) and returns the
+/// Lays out Mermaid `source` in `style` (`"flat"`, `"glossy"` or `"isometric"`; absent: flat),
+/// with a card beside each node if `cards` (isometric only), and returns the
 /// chart spec as JSON text. Throws an `Error` named `FacetryError` with
 /// `code: "invalid-diagram"` and a `diagramIssues` list when the text has problems (or uses
 /// Mermaid features Facetry does not support), and `code: "invalid-options"` for an unknown
 /// style; nothing is laid out then.
 #[wasm_bindgen(js_name = layoutMermaid)]
-pub fn layout_mermaid(source: &str, style: Option<String>) -> Result<String, JsValue> {
+pub fn layout_mermaid(
+    source: &str,
+    style: Option<String>,
+    cards: Option<bool>,
+) -> Result<String, JsValue> {
     let style = match style.as_deref() {
         None | Some("flat") => DiagramStyle::Flat,
         Some("glossy") => DiagramStyle::Glossy,
@@ -45,7 +50,8 @@ pub fn layout_mermaid(source: &str, style: Option<String>) -> Result<String, JsV
             return Err(error.into());
         }
     };
-    from_mermaid_with(source, &Options { style })
+    let cards = cards.unwrap_or(false);
+    from_mermaid_with(source, &Options { style, cards })
         .map(|d| d.to_json())
         .map_err(|issues| invalid_diagram(&issues))
 }

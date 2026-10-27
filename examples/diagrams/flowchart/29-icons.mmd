@@ -1,0 +1,8 @@
+flowchart TD
+    user([Customer])@{ icon: "user" } --> web[Web shop]@{ icon: "cart" }
+    web --> api[Order API]@{ icon: "server" }
+    api --> db[(Orders)]@{ icon: "database" }
+    api --> mail[Confirmation]@{ icon: "mail" }
+    api --> pay{Paid?}@{ icon: "money" }
+    pay -->|yes| ship[Dispatch]@{ icon: "truck" }
+    pay -->|no| alert[Remind]@{ icon: "alert" }

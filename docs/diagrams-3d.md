@@ -213,6 +213,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 
 | | Scope |
 |---|---|
+| **S3** (done) | Floor cards (isometric, opt-in `cards`: title and wrapped text from the label, the node numbered, room reserved in the layout, alternating sides) and 32 built-in line icons from `@{ icon: "..." }`, drawn in every style |
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
@@ -266,9 +267,25 @@ picking), the rest decoration. Edges reuse the glossy routing but are drawn as r
 floor that run under the pedestals: a pedestal hides the end of a road, so direction is shown by
 chevrons painted along the road and a darker one just before the head, rather than by an
 arrowhead at the node. Labels are printed on the inset, so in the 45-degree view they run along
-the drawing's axes like the text of a printed isometric chart. Not yet: the reference's cards
-lying on the floor beside each node (they need room reserved in the layout), icons, and standing
-3D numerals.
+the drawing's axes like the text of a printed isometric chart. Cards and icons came in S3
+(below); standing 3D numerals are still not done (the number is printed on the inset).
+
+**Cards and icons (S3).** Cards are opt-in (`cards: true`) because they change what a node shows:
+the first line of the label becomes the card's title, the rest its text (wrapped to 170 units),
+and the pedestal shows the node's number in large print. The layout treats a node and its card as
+one footprint, wide along the rank, so ranks space themselves for the cards and the Sugiyama
+ordering is unchanged; afterwards the node and the card are pulled to opposite ends of the
+footprint, the card's side alternating every rank (the reference's zigzag), and edges are routed
+to the node's own centre and size. The metrics count cards as obstacles: in the corpus no card
+overlaps a node or another card and no edge crosses one. A card is a thin white prism with a soft
+shadow, its title and text printed on it, and the icon at its outer edge.
+
+Icons are line drawings in a small path language (move, line, close, circles, ellipses, arcs,
+rounded boxes) in a 24-unit box, drawn as polylines on the surface they belong to: above the
+label on a node, on the card with cards. 32 icons cover what infographics and flowcharts mostly
+show (people, data, servers, money, time, alerts, ...); `fa:` prefixes are dropped and a few common
+names alias onto them, and an unknown name is an error rather than a missing picture. This is not
+the architecture icon atlas of D4, which still needs Mermaid's own icon names.
 
 **Moving around (S2).** Diagrams are maps more than objects, so orbit alone is not enough: the
 camera got a pan (the point looked at moves across the floor, clamped to the plot box) and zoom

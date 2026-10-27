@@ -99,3 +99,17 @@ for (const name of ["27-timeline", "01-decision"]) {
     await expect(page.locator("#chart")).toHaveScreenshot(`diagram-isometric-${name}.png`);
   });
 }
+
+// Cards and icons: the roadmap with a card beside each pedestal (title, wrapped text, icon;
+// the pedestals show step numbers), and icons above the labels on the node tops.
+for (const [name, query] of [
+  ["isometric-cards-28-roadmap", "style=isometric&cards=1&example=mermaid/28-roadmap"],
+  ["isometric-29-icons", "style=isometric&example=mermaid/29-icons"],
+]) {
+  test(`diagram ${name} matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&${query}`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${name}.png`);
+  });
+}

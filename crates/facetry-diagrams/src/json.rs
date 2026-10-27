@@ -57,6 +57,37 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
             out.push_str(",\"strokeWidth\":");
             number(&mut out, w);
         }
+        if let Some(icon) = &n.icon {
+            out.push_str(",\"icon\":");
+            string(&mut out, icon);
+        }
+        if let Some(c) = &n.card {
+            out.push_str(",\"card\":{");
+            for (k, (key, v)) in [
+                ("x", c.x),
+                ("y", c.y),
+                ("width", c.width),
+                ("height", c.height),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if k > 0 {
+                    out.push(',');
+                }
+                out.push('"');
+                out.push_str(key);
+                out.push_str("\":");
+                number(&mut out, v);
+            }
+            out.push_str(",\"title\":");
+            string(&mut out, &c.title);
+            if let Some(t) = &c.text {
+                out.push_str(",\"text\":");
+                string(&mut out, t);
+            }
+            out.push('}');
+        }
         out.push('}');
     }
     out.push_str("],\"edges\":[");

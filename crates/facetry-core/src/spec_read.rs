@@ -15,8 +15,8 @@ use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, DiagramEdge, DiagramNode,
     DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, Encoding, InteractionSpec,
     KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient,
-    LegendSpec, Mark, NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding,
-    ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
+    PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -560,6 +560,19 @@ fn read_diagram_node(v: Value) -> Read<DiagramNode> {
         stroke [def] = "stroke" => opt(string),
         stroke_width [def] = "strokeWidth" => opt(number),
         text_color [def] = "textColor" => opt(string),
+        icon [def] = "icon" => opt(string),
+        card [def] = "card" => opt(read_node_card),
+    })
+}
+
+fn read_node_card(v: Value) -> Read<NodeCard> {
+    object!(v, "NodeCard", NodeCard {
+        x [req] = "x" => number,
+        y [req] = "y" => number,
+        width [req] = "width" => number,
+        height [req] = "height" => number,
+        title [req] = "title" => string,
+        text [def] = "text" => opt(string),
     })
 }
 

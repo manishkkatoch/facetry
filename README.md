@@ -493,7 +493,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 93 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 98 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -512,12 +512,19 @@ that can be stored and drawn later without the add-on.
   `classDef default ...`, which applies to every node), `class a,b name`, `a:::name`, and
   `style a fill:#f96`. Properties `fill`, `stroke`, `stroke-width` (px, up to 20) and `color`
   (the label), with `#rgb`/`#rrggbb` colours or common CSS names. Classes apply in the order
-  written, `style` over classes; a class may be defined after the nodes that use it.
+  written, `style` over classes; a class may be defined after the nodes that use it;
+- icons: `a[Checkout]@{ icon: "cart" }` draws a built-in line icon above the label (on the card,
+  with cards). The icons are `alert`, `bars`, `bolt`, `bulb`, `calendar`, `cart`, `chart`,
+  `check`, `clock`, `cloud`, `code`, `database`, `disk`, `file`, `flag`, `gear`, `globe`, `heart`,
+  `home`, `lock`, `mail`, `money`, `phone`, `rocket`, `search`, `server`, `shield`, `star`,
+  `target`, `truck`, `user` and `users`; a prefix such as `fa:` is dropped and a few common
+  names map onto them (`cog`, `envelope`, `lightbulb`, `warning`, `shopping-cart`, ...). An
+  unknown icon, or any `@{ }` key but `icon`, is an error.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (subgraphs, other style properties such as `stroke-dasharray` or `font-size`, `click`,
 `linkStyle`, invisible `~~~` links, the
-`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, the `@{ shape: ... }` syntax,
+`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
 markdown strings, HTML other than `<br>`, front matter and `%%{init}%%` directives): a diagram is
 never drawn with parts silently missing. Sequence and architecture diagrams are planned
 (milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
@@ -553,6 +560,12 @@ glossy style, how its edges are routed):
   chevrons along them pointing the way and a darker one before the head (the pedestal hides the
   road's end); edge labels sit on cards on the roads; long soft shadows fall toward the viewer's
   right. A node's `color` is used for its label only if it reads on the white inset.
+  With `{ style: "isometric", cards: true }` (the playground's **Cards** box, or `?cards=1`) each
+  node gets a white card lying on the floor beside it, as in an infographic timeline: the first
+  line of its label is the card's title, the rest wrapped text under it, and its icon sits at the
+  card's outer edge; the pedestal then shows the node's number (1, 2, ... in the order the text
+  declares the nodes). The layout reserves room for each card, which goes to alternate sides
+  rank by rank, and no edge runs over a card. `cards` is ignored by the other styles.
 
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
@@ -564,20 +577,23 @@ any of this, and orbit, zoom and `setCamera` work as for charts. Hover lightens 
 and `click` report `{ key: <node id>, layer: -1, datum: { id, label, shape } }`.
 
 **Diagram specs by hand.** The `diagram` object can also be written directly (`examples/specs/diagram-basic.json`):
-`nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor? }]`
+`nodes: [{ id, label?, shape?, x, y, width, height, color?, stroke?, strokeWidth?, textColor?, icon?,
+card? }]`
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
-"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"` or `"glossy"`;
-`examples/specs/diagram-glossy.json`). Validation reports problems at their JSON pointer
+"cross", tail? }]`, plus `fontSize` (default 14) and `style` (`"flat"`, `"glossy"` or `"isometric"`;
+`examples/specs/diagram-glossy.json`). `icon` names a built-in icon; `card: { x, y, width, height,
+title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (27 flowcharts in the
-style of real documentation) is laid out in both styles by
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (29 flowcharts in the
+style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
 for each style: edge crossings, edges through nodes, label overlaps, bends, total edge length and
 size. Any change to the layout shows in those snapshots' diffs, diagram by diagram. Today: no node
-or label overlaps and no edge through a node in either style; 9 crossings in the whole corpus with
+or label overlaps and no edge through a node in either style, and with cards no card overlapping
+a node or another card and no edge over a card; 9 crossings in the whole corpus with
 curved edges and 15 with square-cornered ones (right angles cannot always slip past each other the
 way curves do).
 
@@ -730,7 +746,7 @@ a dropdown of the example specs, and a JSON editor: edit the spec and press **Ap
 `combo-bar-line`, `pie`, `donut`, `bar3d-stacked`, `pie3d`, `bar3d-grid`, `line3d`, `combo3d-bar-line`, ...,
 and `mermaid/<name>` for the Mermaid corpus in `examples/diagrams/flowchart`, e.g.
 `mermaid/01-decision`), `?style=glossy` or `?style=isometric` (draw Mermaid in that style; also a **Style**
-dropdown), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
+dropdown), `?cards=1` (isometric cards; also a **Cards** box), `?ui=0` (only the chart). The editor takes Mermaid text as well as JSON
 (anything not starting with `{` is laid out with `facetry/diagrams`; problems are listed with
 their line and column). 3D examples show the
 current camera in the toolbar; hovering a bar shows its datum next to it; **Save PNG** downloads
@@ -747,8 +763,8 @@ console.
   `bar-stacked`, `bar-grouped`, `line-basic`, `line-numeric-x`, `combo-bar-line`, `pie`, `donut`,
   `bar3d-grid`, `bar3d-stacked`, `pie3d`, `bar-stacked-hidden`, `line3d`, `combo3d-bar-line`, and
   the diagrams `diagram-01-decision`, `diagram-02-ci-pipeline`, `diagram-glossy-01-decision`,
-  `diagram-glossy-26-styled`, `diagram-isometric-27-timeline` and `diagram-isometric-01-decision`
-  from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
+  `diagram-glossy-26-styled`, `diagram-isometric-27-timeline`, `diagram-isometric-01-decision`,
+  `diagram-isometric-29-icons` and `diagram-isometric-cards-28-roadmap` from the Mermaid corpus): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -780,9 +796,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 739,664 B (722 KiB) | 330,932 B (323 KiB) | 273,563 B (267 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,349,389 B (2294 KiB) | 973,650 B (951 KiB) | 769,985 B (752 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 211,251 B (206 KiB) | 92,611 B (90 KiB) | 79,293 B (77 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 757,497 B (740 KiB) | 338,731 B (331 KiB) | 279,955 B (273 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,366,298 B (2311 KiB) | 981,381 B (958 KiB) | 775,972 B (758 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 226,149 B (221 KiB) | 97,817 B (96 KiB) | 83,850 B (82 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams (D1) grew the chart modules by what drawing a laid-out diagram takes (the `diagram`
 spec, its validation, the prism geometry and the diagram scene builder): WebGPU 302,667 to
@@ -791,7 +807,9 @@ previous commit with the same toolchain (rustc 1.99). The parser and the layout 
 add-on only. The glossy style (S1) added 7,916 B gzip to the WebGPU module (ribbons, shadows,
 gloss, printed text) and 12,833 to the add-on (styling and square-cornered routing), after
 replacing one `str::parse::<f64>` that alone had linked 14 KB of the standard float parser. The
-isometric style and panning (S2) added 3,820 B gzip to the WebGPU module.
+isometric style and panning (S2) added 3,820 B gzip to the WebGPU module. Cards and icons (S3)
+added 7,799 B gzip to the WebGPU module (the 32 icons, card layout and printed card text), 7,731
+to the WebGL2 one and 5,206 to the add-on (the `@{ icon }` syntax, wrapping, card placement).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

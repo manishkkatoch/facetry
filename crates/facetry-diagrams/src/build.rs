@@ -1,10 +1,12 @@
 //! A parsed flowchart -> a laid-out [`DiagramSpec`]: node sizes from the label metrics,
 //! layered layout in the flowchart's direction, and edges routed between the node outlines.
 
-use facetry_core::diagram::shape_outline;
+use facetry_core::diagram::{
+    CARD_BADGE, CARD_TEXT, CARD_TEXT_WIDTH, ICON_GAP, ICON_SIZE, card_layout, shape_outline,
+};
 use facetry_core::spec::{
     DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode, DiagramSpec, DiagramStyle, EdgeEnd,
-    NodeShape,
+    NodeCard, NodeShape,
 };
 use facetry_font::FontMetrics;
 
@@ -17,7 +19,15 @@ use crate::route;
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Options {
     pub style: DiagramStyle,
+    /// Isometric style only: a card on the floor beside each node, with the node's label (its
+    /// first line as the title, the rest as text) and icon; the node then shows its number.
+    pub cards: bool,
 }
+
+/// Cards: room between a pedestal and its card (past the pedestal's plate), and the smallest
+/// pedestal (which only shows a number).
+const CARD_GAP: f64 = 24.0;
+const MIN_PEDESTAL: f64 = 84.0;
 
 /// Spacing for the glossy and isometric styles: their thick edges need longer runs between
 /// ranks.
@@ -65,7 +75,12 @@ fn text_box(label: &str, size: f64) -> (f64, f64) {
 
 /// The footprint a node needs so its label fits inside its shape.
 pub fn node_size(shape: NodeShape, label: &str) -> (f64, f64) {
-    let (tw, th) = text_box(label, FONT);
+    node_size_at(shape, label, FONT)
+}
+
+/// [`node_size`] for a label printed at `font`.
+fn node_size_at(shape: NodeShape, label: &str, font: f64) -> (f64, f64) {
+    let (tw, th) = text_box(label, font);
     let (w, h) = match shape {
         NodeShape::Rect | NodeShape::Rounded => (tw + 2.0 * PAD_X, th + 2.0 * PAD_Y),
         NodeShape::Stadium => {
@@ -103,14 +118,97 @@ pub fn node_size(shape: NodeShape, label: &str) -> (f64, f64) {
     )
 }
 
+/// Words wrapped into lines no wider than `width` at `size`.
+fn wrap(text: &str, width: f64, size: f64) -> String {
+    let font = FontMetrics::inter();
+    let measure = |s: &str| f64::from(font.text_width(s, size as f32));
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if measure(&format!("{line} {word}")) <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines.join("\n")
+}
+
+/// A node's card before it is placed: title, wrapped text, size (final frame).
+struct CardContent {
+    title: String,
+    text: Option<String>,
+    size: (f64, f64),
+}
+
 /// Lays out `chart`.
 pub fn build(chart: &Flowchart, options: &Options) -> Built {
     // The glossy and isometric styles draw solid edges on the floor, routed at right angles.
     let square_routes = options.style != DiagramStyle::Flat;
+    let with_cards = options.cards && options.style == DiagramStyle::Isometric;
+    // What each node shows on itself: its label, or with cards its number.
+    let shown: Vec<String> = chart
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| {
+            if with_cards {
+                (i + 1).to_string()
+            } else {
+                n.label.clone()
+            }
+        })
+        .collect();
     let sizes: Vec<(f64, f64)> = chart
         .nodes
         .iter()
-        .map(|n| node_size(n.shape, &n.label))
+        .zip(&shown)
+        .map(|(n, label)| {
+            if with_cards {
+                let (w, h) = node_size_at(n.shape, label, FONT * CARD_BADGE);
+                return (w.max(MIN_PEDESTAL), h.max(MIN_PEDESTAL));
+            }
+            let (w, h) = node_size(n.shape, label);
+            if n.icon.is_none() {
+                return (w, h);
+            }
+            // Room for the icon above the label.
+            let extra = (ICON_SIZE + ICON_GAP) * FONT;
+            let w = w.max(ICON_SIZE * FONT + 2.0 * PAD_X);
+            if n.shape == NodeShape::Circle {
+                let d = w.max(h + extra);
+                (d, d)
+            } else {
+                (w, h + extra)
+            }
+        })
+        .collect();
+    let cards: Vec<Option<CardContent>> = chart
+        .nodes
+        .iter()
+        .map(|n| {
+            with_cards.then(|| {
+                let mut lines = n.label.split('\n');
+                let title = lines.next().unwrap_or("").to_owned();
+                let rest: Vec<&str> = lines.collect();
+                let text = (!rest.is_empty())
+                    .then(|| wrap(&rest.join(" "), CARD_TEXT_WIDTH, FONT * CARD_TEXT));
+                let layout = card_layout(
+                    &title,
+                    text.as_deref(),
+                    n.icon.is_some(),
+                    false,
+                    FONT,
+                    FontMetrics::inter(),
+                );
+                CardContent {
+                    title,
+                    text,
+                    size: (layout.size[0], layout.size[1]),
+                }
+            })
+        })
         .collect();
     let sideways = matches!(chart.direction, Direction::LeftRight | Direction::RightLeft);
     // The layout runs top to bottom: rotate sizes going in, points coming out.
@@ -127,8 +225,23 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             }
         }
     };
+    // In the layout's frame a card sits beside its node, along the rank: the two take one
+    // footprint.
+    let footprint = |i: usize| {
+        let node = rotate_size(sizes[i]);
+        match &cards[i] {
+            Some(card) => {
+                let card = rotate_size(card.size);
+                Size {
+                    width: node.width + CARD_GAP + card.width,
+                    height: node.height.max(card.height),
+                }
+            }
+            None => node,
+        }
+    };
     let graph = Graph {
-        nodes: sizes.iter().copied().map(rotate_size).collect(),
+        nodes: (0..chart.nodes.len()).map(footprint).collect(),
         edges: chart
             .edges
             .iter()
@@ -152,15 +265,34 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             Spacing::default()
         },
     );
+    // Where each node and its card are in the layout's frame: cards alternate sides rank by
+    // rank (the zigzag of an infographic timeline).
+    let mut node_at: Vec<[f64; 2]> = laid.nodes.clone();
+    let mut card_at: Vec<Option<[f64; 2]>> = vec![None; chart.nodes.len()];
+    for (i, card) in cards.iter().enumerate() {
+        let Some(card) = card else { continue };
+        let foot = graph.nodes[i];
+        let (node, card) = (rotate_size(sizes[i]), rotate_size(card.size));
+        let side = if (laid.ranks[i] / 2) % 2 == 0 {
+            1.0
+        } else {
+            -1.0
+        };
+        let c = laid.nodes[i];
+        node_at[i] = [c[0] - side * (foot.width - node.width) / 2.0, c[1]];
+        card_at[i] = Some([c[0] + side * (foot.width - card.width) / 2.0, c[1]]);
+    }
+    let node_sizes: Vec<Size> = sizes.iter().copied().map(rotate_size).collect();
     let pairs: Vec<(usize, usize)> = chart.edges.iter().map(|e| (e.from, e.to)).collect();
-    let square = square_routes.then(|| orthogonal::route(&laid, &graph.nodes, &pairs));
+    let square = square_routes.then(|| orthogonal::route(&laid, &node_at, &node_sizes, &pairs));
     let out = |p: [f64; 2]| match chart.direction {
         Direction::TopBottom => p,
         Direction::BottomTop => [p[0], -p[1]],
         Direction::LeftRight => [p[1], p[0]],
         Direction::RightLeft => [-p[1], p[0]],
     };
-    let centres: Vec<[f64; 2]> = laid.nodes.iter().map(|&p| out(p)).collect();
+    let centres: Vec<[f64; 2]> = node_at.iter().map(|&p| out(p)).collect();
+    let card_centres: Vec<Option<[f64; 2]>> = card_at.iter().map(|c| c.map(out)).collect();
     let outlines: Vec<Vec<[f64; 2]>> = chart
         .nodes
         .iter()
@@ -243,6 +375,12 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             lo[1] = lo[1].min(p[1]);
         }
     }
+    for (c, card) in card_centres.iter().zip(&cards) {
+        if let (Some(c), Some(card)) = (c, card) {
+            lo[0] = lo[0].min(c[0] - card.size.0 / 2.0);
+            lo[1] = lo[1].min(c[1] - card.size.1 / 2.0);
+        }
+    }
     if !lo[0].is_finite() {
         lo = [0.0; 2];
     }
@@ -261,11 +399,28 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
         .iter()
         .zip(&sizes)
         .zip(&centres)
-        .map(|((n, &(w, h)), &c)| {
+        .enumerate()
+        .map(|(i, ((n, &(w, h)), &c))| {
             let [x, y] = shift(c);
+            let card = match (&cards[i], card_centres[i]) {
+                (Some(card), Some(at)) => {
+                    let [cx, cy] = shift(at);
+                    Some(NodeCard {
+                        x: cx,
+                        y: cy,
+                        width: round1(card.size.0),
+                        height: round1(card.size.1),
+                        title: card.title.clone(),
+                        text: card.text.clone(),
+                    })
+                }
+                _ => None,
+            };
             DiagramNode {
                 id: n.id.clone(),
-                label: (n.label != n.id).then(|| n.label.clone()),
+                label: (shown[i] != n.id).then(|| shown[i].clone()),
+                icon: n.icon.clone(),
+                card,
                 shape: n.shape,
                 x,
                 y,

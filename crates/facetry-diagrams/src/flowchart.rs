@@ -14,12 +14,14 @@
 //!   heads, two-headed forms (`<-->`, `o--o`, `x--x`), extra length (`--->`, `-..->`,
 //!   `====>`), and labels (`-->|text|`, `-- text -->`, `-. text .->`, `== text ==>`);
 //! * chains `a --> b --> c` and groups `a & b --> c & d`;
+//! * icons: `a@{ icon: "bulb" }` (alone or after a shape: `a([Idea])@{ icon: "fa:lightbulb" }`),
+//!   one of Facetry's built-in icons;
 //! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
 //!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
 //!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes.
 //!
 //! Everything else that is valid Mermaid (subgraphs, `linkStyle`, other style properties,
-//! click handlers, the newer `@{ shape: ... }` syntax, front matter and directives, ...) is an
+//! click handlers, keys of `@{ }` other than `icon`, front matter and directives, ...) is an
 //! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
 
@@ -47,6 +49,8 @@ pub struct Node {
     pub shape: NodeShape,
     /// What `classDef`, `class`, `:::` and `style` made of it.
     pub style: NodeStyle,
+    /// A built-in icon, from `@{ icon: "..." }`.
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -563,6 +567,11 @@ impl Parser<'_> {
             return self.fail(start, "`end` cannot be a node id (Mermaid reserves it)");
         }
         let shape = self.shape()?;
+        let icon = if self.starts_with("@{") {
+            self.metadata()?
+        } else {
+            None
+        };
         let mut classes = Vec::new();
         while self.starts_with(":::") {
             self.pos += 3;
@@ -587,16 +596,99 @@ impl Parser<'_> {
                     id: id.clone(),
                     shape: NodeShape::Rect,
                     style: NodeStyle::default(),
+                    icon: None,
                 });
                 self.chart.nodes.len() - 1
             }
         };
+        if icon.is_some() {
+            self.chart.nodes[index].icon = icon;
+        }
         if let Some((shape, label)) = shape {
             let node = &mut self.chart.nodes[index];
             node.shape = shape;
             node.label = label;
         }
         Ok(index)
+    }
+
+    /// Node metadata, `@{ icon: "bulb" }`: of Mermaid's keys only `icon` is read, naming one of
+    /// the built-in icons (`fa:`-style prefixes are dropped). Returns the icon's name as
+    /// written.
+    fn metadata(&mut self) -> Step<Option<String>> {
+        let open = self.pos;
+        self.pos += 2;
+        let mut icon = None;
+        loop {
+            self.skip_inline_ws();
+            match self.peek() {
+                Some('}') => {
+                    self.pos += 1;
+                    return Ok(icon);
+                }
+                Some(',') => {
+                    self.pos += 1;
+                    continue;
+                }
+                None | Some('\n') => return self.fail(open, "unclosed `@{`: expected `}`"),
+                _ => {}
+            }
+            let key_at = self.pos;
+            while self.peek().is_some_and(is_id_char) {
+                self.pos += 1;
+            }
+            let key: String = self.text[key_at..self.pos].iter().collect();
+            self.skip_inline_ws();
+            if self.peek() != Some(':') {
+                return self.fail(self.pos, "expected `key: value` in `@{ }`");
+            }
+            self.pos += 1;
+            self.skip_inline_ws();
+            let value_at = self.pos;
+            let value: String = if self.peek() == Some('"') {
+                self.pos += 1;
+                let start = self.pos;
+                while self.peek().is_some_and(|c| c != '"' && c != '\n') {
+                    self.pos += 1;
+                }
+                if self.peek() != Some('"') {
+                    return self.fail(value_at, "unclosed `\"`");
+                }
+                let v = self.text[start..self.pos].iter().collect();
+                self.pos += 1;
+                v
+            } else {
+                let start = self.pos;
+                while self
+                    .peek()
+                    .is_some_and(|c| !matches!(c, ',' | '}' | '\n') && !c.is_whitespace())
+                {
+                    self.pos += 1;
+                }
+                self.text[start..self.pos].iter().collect()
+            };
+            match key.as_str() {
+                "icon" => {
+                    if facetry_core::icons::resolve(&value).is_none() {
+                        let names: Vec<&str> = facetry_core::icons::names().collect();
+                        return self.fail(
+                            value_at,
+                            format!(
+                                "no built-in icon `{value}`; the icons are {}",
+                                names.join(", ")
+                            ),
+                        );
+                    }
+                    icon = Some(value);
+                }
+                _ => {
+                    return self.fail(
+                        key_at,
+                        format!("`{key}` is not supported in `@{{ }}` (only `icon`)"),
+                    );
+                }
+            }
+        }
     }
 
     /// A shape and its label right after a node id, if there is one.
@@ -644,7 +736,8 @@ impl Parser<'_> {
             } else if self.starts_with(">") {
                 return self.fail(at, unsupported("asymmetric (`>...]`)"));
             } else if self.starts_with("@{") {
-                return self.fail(at, "the `@{ shape: ... }` syntax is not supported");
+                // Node metadata, read by `node`.
+                return Ok(None);
             } else {
                 return Ok(None);
             };
@@ -1169,7 +1262,15 @@ mod tests {
             ("graph TD\nA[[sub]]", "subroutine"),
             ("graph TD\nA>flag]", "asymmetric"),
             ("graph TD\nA(((x)))", "double circle"),
-            ("graph TD\nA@{ shape: rect }", "@{"),
+            (
+                "graph TD\nA@{ shape: rect }",
+                "`shape` is not supported in `@{ }`",
+            ),
+            (
+                "graph TD\nA@{ icon: \"unicorn\" }",
+                "no built-in icon `unicorn`",
+            ),
+            ("graph TD\nA@{ icon: \"bulb\"", "unclosed `@{`"),
             ("graph TD\nA:::warn --> B", "no `classDef` named `warn`"),
             ("graph TD\nA --> B\nlinkStyle 0 stroke:#f00", "linkStyle"),
             (
@@ -1227,6 +1328,17 @@ mod tests {
         let e = err("graph TD\nA\nclassDef x fill:#f96, font-size:20px");
         assert_eq!((e[0].line, e[0].column), (3, 23));
         assert!(e[0].message.contains("`font-size` is not supported"));
+    }
+
+    #[test]
+    fn icons_from_node_metadata() {
+        let f = ok(
+            "flowchart LR\n  a@{ icon: \"bulb\" } --> b([Ship])@{icon: fa:rocket} --> c\n  c@{ icon: \"gear\", }",
+        );
+        let icons: Vec<Option<&str>> = f.nodes.iter().map(|n| n.icon.as_deref()).collect();
+        assert_eq!(icons, [Some("bulb"), Some("fa:rocket"), Some("gear")]);
+        assert_eq!(f.nodes[1].label, "Ship");
+        assert_eq!(f.nodes[1].shape, NodeShape::Stadium);
     }
 
     #[test]
