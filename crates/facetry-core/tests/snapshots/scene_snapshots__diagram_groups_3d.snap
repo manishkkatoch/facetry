@@ -2352,108 +2352,114 @@ expression: "scene3d_for(\"diagram-groups\")"
       "text": "Start",
       "anchor": [
         0.2704,
-        0.0525,
+        0.0536,
         0.12
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     },
     {
       "key": "compile/label/0",
       "text": "compile",
       "anchor": [
         0.2704,
-        0.0525,
+        0.0536,
         0.6024
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     },
     {
       "key": "test/label/0",
       "text": "test",
       "anchor": [
         0.2704,
-        0.0525,
+        0.0536,
         0.94
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     },
     {
       "key": "package/label/0",
       "text": "package",
       "anchor": [
         0.4205,
-        0.0525,
+        0.0536,
         1.4824
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     },
     {
       "key": "publish/label/0",
       "text": "publish",
       "anchor": [
         0.4205,
-        0.0525,
+        0.0536,
         1.82
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     },
     {
       "key": "done/label/0",
       "text": "Done",
       "anchor": [
         0.904,
-        0.0525,
+        0.0536,
         1.82
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.04,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.0037509378
     }
   ]
 }

@@ -13,11 +13,11 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, Dimension, Easing, EdgeEnd, EdgeStroke,
-    Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec,
-    LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient,
-    PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
-    TransitionConfig, TransitionSpec,
+    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme, Dimension, Easing, EdgeEnd,
+    EdgeStroke, Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow,
+    LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape,
+    Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table,
+    ThetaEncoding, TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -571,6 +571,7 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         edges [def] = "edges" => list(read_diagram_edge),
         font_size [def] = "fontSize" => opt(number),
         style [def] = "style" => read_diagram_style,
+        theme [def] = "theme" => read_diagram_theme,
         icons [def] = "icons" => read_custom_icons,
         groups [def] = "groups" => list(read_diagram_group),
     })
@@ -656,6 +657,18 @@ fn read_diagram_style(v: Value) -> Read<DiagramStyle> {
             ("glossy", DiagramStyle::Glossy),
             ("isometric", DiagramStyle::Isometric),
             ("schematic", DiagramStyle::Schematic),
+        ],
+    )
+}
+
+fn read_diagram_theme(v: Value) -> Read<DiagramTheme> {
+    variant(
+        v,
+        &[
+            ("default", DiagramTheme::Default),
+            ("neutral", DiagramTheme::Neutral),
+            ("dark", DiagramTheme::Dark),
+            ("forest", DiagramTheme::Forest),
         ],
     )
 }

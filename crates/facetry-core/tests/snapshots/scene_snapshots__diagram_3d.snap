@@ -540,6 +540,80 @@ expression: "scene3d_for(\"diagram-basic\")"
       "smooth": false
     }
   ],
+  "fills": [
+    {
+      "key": "edge1/label",
+      "color": "#ffffff",
+      "triangles": [
+        [
+          0.2695,
+          0.0617,
+          0.7288
+        ],
+        [
+          0.3823,
+          0.0617,
+          0.7288
+        ],
+        [
+          0.3823,
+          0.0617,
+          0.7938
+        ],
+        [
+          0.2695,
+          0.0617,
+          0.7288
+        ],
+        [
+          0.3823,
+          0.0617,
+          0.7938
+        ],
+        [
+          0.2695,
+          0.0617,
+          0.7938
+        ]
+      ]
+    },
+    {
+      "key": "edge2/label",
+      "color": "#ffffff",
+      "triangles": [
+        [
+          0.883,
+          0.0617,
+          0.7304
+        ],
+        [
+          0.9705,
+          0.0617,
+          0.7304
+        ],
+        [
+          0.9705,
+          0.0617,
+          0.7954
+        ],
+        [
+          0.883,
+          0.0617,
+          0.7304
+        ],
+        [
+          0.9705,
+          0.0617,
+          0.7954
+        ],
+        [
+          0.883,
+          0.0617,
+          0.7954
+        ]
+      ]
+    }
+  ],
   "lines": [
     {
       "key": "A/rim/0",
@@ -2433,106 +2507,114 @@ expression: "scene3d_for(\"diagram-basic\")"
       "text": "Start",
       "anchor": [
         0.6125,
-        0.0583,
+        0.0596,
         0.1333
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 16.1,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.004166667
     },
     {
       "key": "B/label/0",
       "text": "Is it valid?",
       "anchor": [
         0.6125,
-        0.0583,
+        0.0596,
         0.55
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 16.1,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.004166667
     },
     {
       "key": "C/label/0",
       "text": "Save",
       "anchor": [
         0.2375,
-        0.0583,
+        0.0596,
         1.0083
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 16.1,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.004166667
     },
     {
       "key": "D/label/0",
       "text": "Show error",
       "anchor": [
         1.0292,
-        0.0583,
+        0.0596,
         1.0083
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 16.1,
+      "size_px": 14.0,
       "color": "#1f2328",
       "align": "middle",
       "valign": "middle",
-      "halo": false
+      "halo": false,
+      "flat": 0.004166667
     },
     {
       "key": "edge1/label/0",
       "text": "yes",
       "anchor": [
         0.3259,
-        0.0608,
+        0.0629,
         0.7613
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.49,
+      "size_px": 12.6,
       "color": "#1f2328",
       "align": "middle",
-      "valign": "middle"
+      "valign": "middle",
+      "halo": false,
+      "flat": 0.004166667
     },
     {
       "key": "edge2/label/0",
       "text": "no",
       "anchor": [
         0.9268,
-        0.0608,
+        0.0629,
         0.7629
       ],
       "offset_px": [
         0.0,
         0.0
       ],
-      "size_px": 14.49,
+      "size_px": 12.6,
       "color": "#1f2328",
       "align": "middle",
-      "valign": "middle"
+      "valign": "middle",
+      "halo": false,
+      "flat": 0.004166667
     }
   ]
 }

@@ -6,7 +6,7 @@ use facetry_core::diagram::{
 };
 use facetry_core::spec::{
     CustomIcon, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramGroup, DiagramNode, DiagramSpec,
-    DiagramStyle, EdgeEnd, NodeCard, NodeShape,
+    DiagramStyle, DiagramTheme, EdgeEnd, NodeCard, NodeShape,
 };
 use facetry_font::FontMetrics;
 
@@ -19,6 +19,9 @@ use crate::route;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Options {
     pub style: DiagramStyle,
+    /// The colours, unless the text sets its own theme (a directive or front matter wins, as
+    /// in Mermaid).
+    pub theme: DiagramTheme,
     /// Isometric style only: a card on the floor beside each node, with the node's label (its
     /// first line as the title, the rest as text) and icon; the node then shows its number.
     pub cards: bool,
@@ -567,6 +570,7 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             edges,
             font_size: Some(FONT),
             style: options.style,
+            theme: chart.theme.unwrap_or(options.theme),
             icons: options.icons.clone(),
             groups,
         },

@@ -232,8 +232,15 @@ go through the existing golden-image test.
   *D1:* camera-facing labels anchored at the middle of the top face, sized for the starting
   camera (labels keep their pixel size while zooming, so they fit their nodes at the start);
   edge labels at the label rank the layout reserved, with an outline in the background colour.
-  Labels that follow the zoom are a D2 polish item.
+  *D2:* labels follow the zoom: the flat style prints them on the node tops (edge labels on a
+  patch of the page's colour in the plane of the edges), as the other styles do.
 * **Themes:** presets matching Mermaid's `default`, `neutral`, `dark` and `forest`.
+  *D2:* `diagram.theme` in the spec, set by `fromMermaid`'s `theme` option or by the text's own
+  `%%{init: {"theme": ...}}%%` or front matter (which wins, as in Mermaid). Each style keeps
+  its character in every theme (`diagram_theme.rs` holds one palette per theme with every colour
+  the styles draw with): neutral turns colour into greys, forest into greens and earth tones,
+  and dark puts the light surfaces (blocks, bases, pedestal bodies, roads, equipment, signs) in
+  dark tones on a dark page with light text and lines, keeping the coloured slabs and caps.
 * **Hover and click** report `{ kind: "node" | "edge" | "group" | "message", id }`; hovering a
   dataflow node dims everything outside its upstream and downstream paths.
 * **PNG export:** the existing snapshot API, with a `pixelRatio` option for high-DPI images.
@@ -264,7 +271,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
-| **D2** (in progress) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics), schematic signs that turn to the camera, edges arcing over crossings, `diagram.run()` (every `<pre class="mermaid">` on a page, each block's style by `data-style`, failures shown in place). Next: labels that follow the zoom and themes |
+| **D2** (done) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics), schematic signs that turn to the camera, edges arcing over crossings, `diagram.run()` (every `<pre class="mermaid">` on a page, each block's style by `data-style`, failures shown in place). labels that follow the zoom in the flat style, themes |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
 | **D5** | Animation controller, sequence playback, build-in, flow along edges |

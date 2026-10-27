@@ -16,13 +16,13 @@
  */
 // Types only: nothing from the chart modules is loaded by this entry point (`run` imports the
 // chart module when it is called).
-import type { ChartSpec, DiagramStyle } from "../wasm/facetry_wasm.js";
+import type { ChartSpec, DiagramStyle, DiagramTheme } from "../wasm/facetry_wasm.js";
 import type { Chart, ChartOptions } from "./chart.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
 import { iconParts, type IconParts, type IconSource } from "./icons.js";
 
-export type { DiagramIssue, DiagramStyle, IconSource };
+export type { DiagramIssue, DiagramStyle, DiagramTheme, IconSource };
 export type { FillRule, IconFillPath, IconParts, IconPath } from "./icons.js";
 export { iconFromSvg } from "./icons.js";
 
@@ -38,6 +38,13 @@ export interface DiagramOptions {
    * style also decides how edges are routed, so it is chosen here rather than in the spec.
    */
   style?: DiagramStyle;
+  /**
+   * The colours, after Mermaid's themes: `"default"`, `"neutral"` (greys), `"dark"` (light
+   * lines and text on a dark page) or `"forest"` (greens), each in the chosen style's own
+   * manner. A theme set in the Mermaid text itself (`%%{init: {"theme": "dark"}}%%`, or
+   * `config: theme:` in front matter) wins, as in Mermaid. Default `"default"`.
+   */
+  theme?: DiagramTheme;
   /**
    * Isometric style only: lay a card on the floor beside each node, alternating sides from
    * rank to rank. The card shows the node's label (its first line as the title, the rest as
@@ -137,6 +144,7 @@ export const diagram = {
         source,
         options.style,
         options.cards,
+        options.theme,
         icons.map(([name]) => name),
         icons.map(([, icon]) => icon.stroke ?? ""),
         new Uint32Array(icons.map(([, icon]) => icon.fill.length)),
@@ -154,7 +162,8 @@ export const diagram = {
    * Draws every diagram on the page, as `mermaid.run()` does: the Mermaid text of each
    * `<pre class="mermaid">` (or `options.querySelector`, or `options.nodes`) is replaced by a
    * canvas drawing it, as wide as the element and `options.height` tall. An element can choose
-   * its own style with `data-style` (`"glossy"`, ...) and cards with `data-cards`. Elements
+   * its own style with `data-style` (`"glossy"`, ...), theme with `data-theme` and cards with
+   * `data-cards`. Elements
    * already drawn (`data-processed`) are skipped, so `run` can be called again after adding
    * more. A diagram that fails shows its message in its place; the others are still drawn, then
    * `run` rejects with the first failure, a `FacetryError` (with `options.suppressErrors` it
@@ -174,9 +183,10 @@ export const diagram = {
       element.setAttribute(PROCESSED, "true");
       const source = dedent(element.textContent ?? "");
       const style = (element.dataset.style as DiagramStyle | undefined) ?? options.style;
+      const theme = (element.dataset.theme as DiagramTheme | undefined) ?? options.theme;
       const cards = element.dataset.cards !== undefined ? element.dataset.cards !== "false" : options.cards;
       try {
-        const spec = await diagram.fromMermaid(source, { ...options, style, cards });
+        const spec = await diagram.fromMermaid(source, { ...options, style, theme, cards });
         const canvas = document.createElement("canvas");
         canvas.style.cssText = `display: block; width: 100%; height: ${options.height ?? "400px"}`;
         canvas.setAttribute("role", "img");

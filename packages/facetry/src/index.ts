@@ -26,6 +26,7 @@ export type {
   DiagramNode,
   DiagramSpec,
   DiagramStyle,
+  DiagramTheme,
   Dimension,
   Easing,
   EdgeEnd,

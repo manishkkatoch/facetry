@@ -13,9 +13,10 @@ use crate::Theme;
 use crate::diagram::{
     ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length, push_icon_shape,
 };
-use crate::diagram_glossy::{push_shadow_with, rgb};
+use crate::diagram_glossy::push_shadow_with;
 use crate::diagram_hops::Hops;
 use crate::diagram_isometric::{along, darken, outline};
+use crate::diagram_theme::Look;
 use crate::scene::Anchor;
 use crate::scene3d::{
     FillMark, LabelRole, Polyline3, PrismMark, RibbonMark, Scene3d, Sign, Stand, Text3, VAlign,
@@ -78,46 +79,6 @@ const SHADOW_OFFSET: [f64; 2] = [6.0, 5.0];
 const SHADOW_BLUR: f64 = 12.0;
 const SHADOW_ALPHA: f32 = 0.13;
 
-fn body_color() -> Color {
-    rgb(0xe9edf2)
-}
-
-fn steel_color() -> Color {
-    rgb(0xf5f7fa)
-}
-
-fn dark_color() -> Color {
-    rgb(0x5b6573)
-}
-
-fn outline_color() -> Color {
-    rgb(0x46505d)
-}
-
-fn pipe_color() -> Color {
-    rgb(0xb9c2cd)
-}
-
-fn conveyor_color() -> Color {
-    rgb(0x737d8a)
-}
-
-fn support_color() -> Color {
-    rgb(0x9aa4b1)
-}
-
-fn flow_color() -> Color {
-    rgb(0x2fae5a)
-}
-
-fn grid_color() -> Color {
-    rgb(0xe4e8ed)
-}
-
-fn ink_color() -> Color {
-    rgb(0x1f2733)
-}
-
 /// One solid of a piece of equipment: a convex outline (absolute layout units) from `base` to
 /// `top` (font sizes).
 struct Part {
@@ -140,8 +101,8 @@ fn circle(centre: [f64; 2], diameter: f64) -> Vec<[f64; 2]> {
 
 /// The equipment `node` is drawn as. The first part is its body: the node's mark, with the
 /// node's footprint, at least as tall as a pipe.
-fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
-    let body = fill.unwrap_or_else(body_color);
+fn equipment(node: &DiagramNode, fill: Option<Color>, look: &Look) -> Vec<Part> {
+    let body = fill.unwrap_or(look.equipment);
     let cap = darken(body, 0.08);
     let (footprint, smooth) = outline(node, 0.0);
     let centre = [node.x, node.y];
@@ -171,7 +132,7 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
             vec![
                 part("body", footprint, smooth, 0.0, 2.4, body),
                 part("roof", shrunk(3.0), smooth, 2.4, 2.7, cap),
-                part("unit", box_at(unit, uw, uh), false, 2.7, 3.3, steel_color()),
+                part("unit", box_at(unit, uw, uh), false, 2.7, 3.3, look.steel),
             ]
         }
         NodeShape::Cylinder => {
@@ -185,7 +146,7 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
                 .collect();
             vec![
                 part("body", plinth, false, 0.0, 1.1, body),
-                part("silo", circle(centre, d), true, 1.1, 4.4, steel_color()),
+                part("silo", circle(centre, d), true, 1.1, 4.4, look.steel),
                 part("roof", circle(centre, d * 0.78), true, 4.4, 4.75, cap),
                 part("vent", circle(centre, d * 0.32), true, 4.75, 5.1, cap),
             ]
@@ -194,15 +155,8 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
             // A tank with a band and a dome.
             let d = small;
             vec![
-                part("body", footprint, true, 0.0, 2.1, steel_color()),
-                part(
-                    "band",
-                    circle(centre, d + 3.0),
-                    true,
-                    0.9,
-                    1.15,
-                    dark_color(),
-                ),
+                part("body", footprint, true, 0.0, 2.1, look.steel),
+                part("band", circle(centre, d + 3.0), true, 0.9, 1.15, look.frame),
                 part("dome", circle(centre, d * 0.7), true, 2.1, 2.4, cap),
                 part("hatch", circle(centre, d * 0.3), true, 2.4, 2.65, cap),
             ]
@@ -217,7 +171,7 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
                     true,
                     1.2,
                     2.3,
-                    dark_color(),
+                    look.frame,
                 ),
                 part(
                     "wheel",
@@ -225,7 +179,7 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
                     true,
                     2.3,
                     2.45,
-                    dark_color(),
+                    look.frame,
                 ),
             ]
         }
@@ -241,30 +195,16 @@ fn equipment(node: &DiagramNode, fill: Option<Color>) -> Vec<Part> {
                     true,
                     2.95,
                     4.6,
-                    steel_color(),
+                    look.steel,
                 ),
             ]
         }
         NodeShape::Stadium => {
             // A drum lying on its side, read from above: a long body with two bands.
             vec![
-                part("body", footprint, smooth, 0.0, 1.7, steel_color()),
-                part(
-                    "band",
-                    outline(node, 1.5).0,
-                    smooth,
-                    0.35,
-                    0.5,
-                    dark_color(),
-                ),
-                part(
-                    "band2",
-                    outline(node, 1.5).0,
-                    smooth,
-                    1.2,
-                    1.35,
-                    dark_color(),
-                ),
+                part("body", footprint, smooth, 0.0, 1.7, look.steel),
+                part("band", outline(node, 1.5).0, smooth, 0.35, 0.5, look.frame),
+                part("band2", outline(node, 1.5).0, smooth, 1.2, 1.35, look.frame),
             ]
         }
         _ => vec![
@@ -324,7 +264,7 @@ fn push_grid(scene: &mut Scene3d, plan: &Plan, s: f64) {
         reveal: 1.0,
         keys: Vec::new(),
         key: "grid".into(),
-        color: grid_color(),
+        color: plan.look.grid,
         width_px: s as f32,
         runs,
         area: None,
@@ -345,7 +285,8 @@ fn push_node(
     s: f64,
     measure: &dyn TextMeasure,
 ) {
-    let parts = equipment(node, parse_color(&node.color));
+    let look = &plan.look;
+    let parts = equipment(node, parse_color(&node.color), look);
     let (shadow, _) = outline(node, 2.0);
     push_shadow_with(
         scene,
@@ -355,7 +296,7 @@ fn push_node(
         SHADOW_BLUR,
         Color::linear(0.0, 0.0, 0.0, SHADOW_ALPHA),
     );
-    let edges = parse_color(&node.stroke).unwrap_or_else(outline_color);
+    let edges = parse_color(&node.stroke).unwrap_or(look.outline);
     let edge_width = node.stroke_width.unwrap_or(EDGE_WIDTH) * s;
     let mut top = 0.0f64;
     for (k, part) in parts.iter().enumerate() {
@@ -384,8 +325,8 @@ fn push_node(
     }
     let label = node.label.as_deref().unwrap_or(&node.id);
     let ink = parse_color(&node.text_color)
-        .filter(|c| c.contrast(Color::linear(1.0, 1.0, 1.0, 1.0)) >= 3.0)
-        .unwrap_or_else(ink_color);
+        .filter(|c| c.contrast(look.sign) >= 3.0)
+        .unwrap_or(look.ink);
     push_sign(
         scene,
         plan,
@@ -523,14 +464,14 @@ fn push_sign(
         rect(w + 2.0 * frame, h + 2.0 * frame),
         -depth / 2.0,
         depth * 0.2,
-        dark_color(),
+        plan.look.frame,
     );
     board(
         "board",
         rect(w, h),
         -depth / 2.0,
         depth / 2.0,
-        rgb(0xffffff),
+        plan.look.sign,
     );
     // The post, from the equipment up to the frame's foot.
     let post_top = centre_y - plan.len(h / 2.0 + frame);
@@ -539,7 +480,7 @@ fn push_sign(
         let square = [[-half, -half], [half, -half], [half, half], [-half, half]];
         scene.decor.push(PrismMark {
             key: format!("{key}/sign/post"),
-            color: dark_color(),
+            color: plan.look.frame,
             outline: square
                 .iter()
                 .map(|p| plan.floor_point([at[0] + p[0], at[1] + p[1]]))
@@ -579,7 +520,7 @@ fn push_sign(
         ];
         FillMark {
             key: format!("{key}/sign/face"),
-            color: rgb(0xffffff),
+            color: plan.look.sign,
             triangles: vec![a, b, c, a, c, d],
         }
     };
@@ -603,7 +544,7 @@ fn push_sign(
             &format!("{key}/sign/icon"),
             &plan.icon(name),
             place,
-            flow_color(),
+            plan.look.flow,
             1.6 * s,
         );
     }
@@ -662,10 +603,10 @@ fn push_edge(
             CONVEYOR_BASE,
             CONVEYOR_TOP,
             CONVEYOR_WIDTH,
-            conveyor_color(),
+            plan.look.conveyor,
         )
     } else {
-        (PIPE_BASE, PIPE_TOP, PIPE_WIDTH, pipe_color())
+        (PIPE_BASE, PIPE_TOP, PIPE_WIDTH, plan.look.pipe)
     };
     let (base, top) = (up(plan, base), up(plan, top));
     let path = hops.densify(&edge.points);
@@ -709,7 +650,7 @@ fn push_edge(
         let square = [[-half, -half], [half, -half], [half, half], [-half, half]];
         scene.decor.push(PrismMark {
             key: format!("{key}/support/{k}"),
-            color: support_color(),
+            color: plan.look.support,
             outline: square
                 .iter()
                 .map(|p| plan.floor_point([at[0] + p[0], at[1] + p[1]]))
@@ -757,9 +698,13 @@ fn push_edge(
                 continue;
             }
             let dir = if forward { dir } else { [-dir[0], -dir[1]] };
-            scene
-                .decor
-                .push(mark(format!("{key}/flow/{k}"), at, dir, 1.0, flow_color()));
+            scene.decor.push(mark(
+                format!("{key}/flow/{k}"),
+                at,
+                dir,
+                1.0,
+                plan.look.flow,
+            ));
         }
     }
     // Each end's marker, just before the pipe goes into the equipment.
@@ -782,14 +727,14 @@ fn push_edge(
                 at,
                 dir,
                 1.4,
-                darken(flow_color(), 0.3),
+                darken(plan.look.flow, 0.3),
             )),
             EdgeEnd::Circle | EdgeEnd::Cross => scene.decor.push(PrismMark {
                 key: format!("{key}/{name}"),
                 color: if end == EdgeEnd::Circle {
-                    dark_color()
+                    plan.look.frame
                 } else {
-                    rgb(0xe8553e)
+                    plan.look.stop
                 },
                 outline: circle(at, width + 3.0)
                     .iter()
@@ -818,7 +763,7 @@ fn push_edge(
             top,
             up(plan, TAG_LIFT),
             TAG_SCALE,
-            ink_color(),
+            plan.look.ink,
             s,
             measure,
         );

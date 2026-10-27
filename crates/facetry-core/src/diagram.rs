@@ -19,16 +19,14 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram_hops::Hops;
+use crate::diagram_theme::Look;
 use crate::framing_radius;
 use crate::icons::IconShape;
-use crate::scene::{Anchor, RuleKind};
-use crate::scene3d::{
-    FOV_Y_DEGREES, FRAMING_LIFT, FillMark, LabelRole, Line3, Polyline3, PrismMark, Scene3d, Text3,
-    VAlign,
-};
+use crate::scene::RuleKind;
+use crate::scene3d::{FOV_Y_DEGREES, FRAMING_LIFT, FillMark, Line3, Polyline3, PrismMark, Scene3d};
 use crate::spec::{
     CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
-    DiagramSpec, DiagramStyle, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
+    DiagramSpec, DiagramStyle, DiagramTheme, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
     MAX_NODE_STROKE_WIDTH, NodeShape,
 };
 use crate::text::TextMeasure;
@@ -74,9 +72,9 @@ const ARC_STEPS: usize = 6;
 const LINE_HEIGHT: f64 = 1.25;
 /// Edge labels are this much of the node label size.
 const EDGE_LABEL_SCALE: f64 = 0.9;
-/// Labels never get smaller or larger than this on screen at the starting camera, CSS px.
-const MIN_LABEL_PX: f64 = 7.0;
-const MAX_LABEL_PX: f64 = 32.0;
+/// An edge label's patch: margin round the text, and height over the edges, layout units.
+const LABEL_PAD: f64 = 3.0;
+const LABEL_PATCH_LIFT: f64 = 0.2;
 
 /// The starting camera of a flat diagram, where the spec leaves a field out: orthographic (no
 /// perspective distortion: what documentation wants), square on to the page (turning it
@@ -100,24 +98,25 @@ const PERSPECTIVE_FILL: f64 = 0.9;
 /// the canvas.
 const MAX_ZOOM: f64 = 1.15;
 
-/// The diagram's default colours (light theme).
+/// The flat style's colours.
 #[derive(Debug, Clone, Copy)]
 struct Palette {
     node: Color,
     rim: Color,
     edge: Color,
     text: Color,
+    /// The page: under edge labels.
+    page: Color,
 }
 
 impl Palette {
-    fn new(theme: &Theme) -> Self {
-        let rgb =
-            |hex: u32| Color::from_srgb8((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 0xff);
+    fn new(look: &Look, theme: &Theme) -> Self {
         Self {
-            node: rgb(0xececff),
-            rim: rgb(0x9370db),
-            edge: rgb(0x4a4a5a),
+            node: look.node,
+            rim: look.rim,
+            edge: look.edge,
             text: theme.text,
+            page: theme.background,
         }
     }
 }
@@ -465,6 +464,8 @@ pub(crate) struct Plan {
     node_height: f64,
     /// The diagram's own icons that draw, read once: strokes in the icons' 24 box.
     icons: Vec<(String, IconShape)>,
+    /// The theme's colours.
+    pub(crate) look: Look,
 }
 
 impl Plan {
@@ -518,6 +519,7 @@ impl Plan {
                     Some((name.clone(), crate::icons::custom_shape(icon).ok()?))
                 })
                 .collect(),
+            look: Look::of(diagram.theme),
         }
     }
 
@@ -740,10 +742,12 @@ pub fn build_diagram_3d(
         edges: Vec::new(),
         font_size: None,
         style: DiagramStyle::Flat,
+        theme: DiagramTheme::Default,
         icons: Vec::new(),
         groups: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
+    let theme = &Look::of(diagram.theme).chart_theme(theme);
     match diagram.style {
         DiagramStyle::Flat => {}
         DiagramStyle::Glossy => {
@@ -757,28 +761,14 @@ pub fn build_diagram_3d(
         }
     }
     let plan = Plan::new(diagram);
-    let palette = Palette::new(theme);
+    let palette = Palette::new(&plan.look, theme);
     let mut scene = Scene3d::empty(viewport_px, theme.background, plan.size());
     scene.halo_px = s.round().max(1.0) as f32;
     crate::diagram_groups::push_groups(&mut scene, &plan, diagram, measure, theme.text, s);
 
-    // How many screen pixels a layout unit is at the starting camera, to size the labels.
-    let camera = spec.start_camera(viewport_px, dpr).unwrap_or(CameraSpec {
-        kind: None,
-        azimuth: None,
-        elevation: None,
-        distance: None,
-    });
-    let distance = camera.distance.unwrap_or(1.0).clamp(0.5, 20.0);
-    let half_fov = (FOV_Y_DEGREES / 2.0).to_radians().tan();
-    let px_per_world = f64::from(viewport_px.1.max(1))
-        / (2.0 * distance * f64::from(framing_radius(scene.size)) * half_fov);
-    let px_per_unit = px_per_world * plan.scale;
-    let label_px = (plan.font * px_per_unit).clamp(MIN_LABEL_PX * s, MAX_LABEL_PX * s) as f32;
-
     let top = plan.node_top();
     for (i, node) in diagram.nodes.iter().enumerate() {
-        push_node(&mut scene, &plan, &palette, i, node, top, s, label_px);
+        push_node(&mut scene, &plan, &palette, i, node, top, s);
     }
     let hops = crate::diagram_hops::hops(&diagram.edges, HOP_RADIUS, ARROW_LENGTH);
     for (i, edge) in diagram.edges.iter().enumerate() {
@@ -788,7 +778,7 @@ pub fn build_diagram_3d(
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
-        push_edge(&mut scene, &plan, &palette, i, edge, &hops[i], s, label_px);
+        push_edge(&mut scene, &plan, &palette, i, edge, &hops[i], s, measure);
     }
     scene
 }
@@ -802,7 +792,6 @@ fn push_node(
     node: &DiagramNode,
     top: f64,
     s: f64,
-    label_px: f32,
 ) {
     let (outline, smooth) = shape_outline(node.shape, node.width, node.height);
     let at = |p: &[f64; 2]| [node.x + p[0], node.y + p[1]];
@@ -824,8 +813,6 @@ fn push_node(
     push_rim(scene, plan, node, &outline, top, rim, rim_width * s);
     // The label, one Text3 per line, centred on the top face (below the icon, if any).
     let label = node.label.as_deref().unwrap_or(&node.id);
-    let lines: Vec<&str> = label.split('\n').collect();
-    let step = f64::from(label_px) * LINE_HEIGHT;
     let ink = parse_color(&node.text_color).unwrap_or_else(|| ink_on(color, palette.text));
     let (icon_at, label_at) = icon_and_label(node, plan.font);
     if let (Some(at), Some(icon)) = (icon_at, node.icon.as_deref()) {
@@ -841,28 +828,8 @@ fn push_node(
             s,
         );
     }
-    for (k, line) in lines.iter().enumerate() {
-        if line.is_empty() {
-            continue;
-        }
-        let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
-        scene.texts.push(Text3 {
-            tick: None,
-            key: format!("{}/label/{k}", node.id),
-            text: (*line).to_owned(),
-            anchor: plan.world(label_at, top),
-            offset_px: [0.0, dy as f32],
-            size_px: label_px,
-            color: ink,
-            align: Anchor::Middle,
-            valign: VAlign::Middle,
-            azimuths: None,
-            role: LabelRole::Fixed,
-            halo: false,
-            flat: None,
-            upright: None,
-        });
-    }
+    // Printed on the top face, so it scales with the zoom like the node it names.
+    crate::diagram_glossy::print(scene, plan, &node.id, label, label_at, top, plan.font, ink);
 }
 
 /// A node's icon, when it has no card, is drawn above its label on its top: this big (in font
@@ -1082,7 +1049,7 @@ fn push_edge(
     edge: &DiagramEdge,
     hops: &Hops,
     s: f64,
-    label_px: f32,
+    measure: &dyn TextMeasure,
 ) {
     let key = format!("edge{index}");
     let lift = plan.node_top() + plan.len(EDGE_LIFT);
@@ -1147,28 +1114,30 @@ fn push_edge(
         let at = edge
             .label_position
             .unwrap_or_else(|| midpoint(&edge.points));
-        let size = (f64::from(label_px) * EDGE_LABEL_SCALE) as f32;
+        // Printed in the plane of the edges on a patch of the page's colour that covers the
+        // line under it, as Mermaid sets an edge label on a plain background.
+        let size = plan.font * EDGE_LABEL_SCALE;
         let lines: Vec<&str> = text.split('\n').collect();
-        let step = f64::from(size) * LINE_HEIGHT;
-        for (k, line) in lines.iter().enumerate() {
-            let dy = (k as f64 - (lines.len() as f64 - 1.0) / 2.0) * step;
-            scene.texts.push(Text3 {
-                tick: None,
-                key: format!("{key}/label/{k}"),
-                text: (*line).to_owned(),
-                anchor: plan.world(at, lift),
-                offset_px: [0.0, dy as f32],
-                size_px: size,
-                color: palette.text,
-                align: Anchor::Middle,
-                valign: VAlign::Middle,
-                azimuths: None,
-                role: LabelRole::Fixed,
-                halo: true,
-                flat: None,
-                upright: None,
-            });
-        }
+        let w = lines
+            .iter()
+            .map(|l| f64::from(measure.width(l, size as f32)))
+            .fold(0.0, f64::max);
+        let h = (lines.len() as f64 - 1.0) * size * LINE_HEIGHT + size;
+        let (hw, hh) = (w / 2.0 + LABEL_PAD, h / 2.0 + LABEL_PAD / 2.0);
+        let y = lift + plan.len(LABEL_PATCH_LIFT);
+        let corner = |dx: f64, dy: f64| plan.world([at[0] + dx, at[1] + dy], y);
+        let [a, b, c, d] = [
+            corner(-hw, -hh),
+            corner(hw, -hh),
+            corner(hw, hh),
+            corner(-hw, hh),
+        ];
+        scene.fills.push(FillMark {
+            key: format!("{key}/label"),
+            color: palette.page,
+            triangles: vec![a, b, c, a, c, d],
+        });
+        crate::diagram_glossy::print(scene, plan, &key, text, at, y, size, palette.text);
     }
 }
 

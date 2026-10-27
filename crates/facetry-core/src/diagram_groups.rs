@@ -11,7 +11,7 @@
 
 use crate::Color;
 use crate::diagram::{Plan, parse_color};
-use crate::diagram_glossy::{lighten, print_aligned, rgb};
+use crate::diagram_glossy::{lighten, print_aligned};
 use crate::diagram_isometric::darken;
 use crate::scene::Anchor;
 use crate::scene3d::{Polyline3, PrismMark, RibbonMark, Scene3d};
@@ -37,11 +37,6 @@ const FENCE_HEIGHT: f64 = 1.5;
 const RAILS: [f64; 2] = [0.75, 1.4];
 const RAIL_WIDTH: f64 = 1.2;
 const FENCE_INSET: f64 = 4.0;
-
-/// Tints for groups that do not choose a colour, used in turn (the isometric palette's).
-const TINTS: [u32; 8] = [
-    0xf6b33f, 0xe8553e, 0x3cb371, 0x3d8fe0, 0x9b5cd6, 0x1fb5a8, 0xf0812f, 0x56677d,
-];
 
 /// Group `g`'s box, `[left, top, right, bottom]` (layout units).
 fn rect(g: &DiagramGroup) -> [f64; 4] {
@@ -107,30 +102,47 @@ fn push_group(
     let r = rect(group);
     let y = top(plan, depth);
     let style = diagram.style;
-    let tint = rgb(TINTS[index % TINTS.len()]);
+    let look = &plan.look;
+    let tint = look.caps[index % look.caps.len()];
     let fill = parse_color(&group.color);
+    let step = |c: Color, t: f64| look.deepen(c, (t * depth as f64) as f32);
     let (base, edge, title_ink, gloss, rounded) = match style {
         DiagramStyle::Flat => {
-            let base = fill.unwrap_or_else(|| darken(rgb(0xf3f5f9), 0.035 * depth as f32));
-            (base, rgb(0x9aa6b8), ink, 0.0, false)
+            let base = fill.unwrap_or_else(|| step(look.group[0], 0.035));
+            (base, look.group_edge[0], ink, 0.0, false)
         }
         DiagramStyle::Glossy => {
-            let base = fill.unwrap_or_else(|| darken(rgb(0xeef1f7), 0.04 * depth as f32));
-            (base, lighten(base, 0.6), ink, 0.25, true)
+            let base = fill.unwrap_or_else(|| step(look.group[1], 0.04));
+            let edge = if look.dark {
+                lighten(base, 0.15)
+            } else {
+                lighten(base, 0.6)
+            };
+            (base, edge, ink, 0.25, true)
         }
         DiagramStyle::Isometric => {
             let colour = fill.unwrap_or(tint);
-            (
-                lighten(colour, 0.85),
-                lighten(colour, 0.25),
-                darken(colour, 0.35),
-                0.1,
-                true,
-            )
+            if look.dark {
+                (
+                    darken(colour, 0.84),
+                    darken(colour, 0.4),
+                    lighten(colour, 0.45),
+                    0.1,
+                    true,
+                )
+            } else {
+                (
+                    lighten(colour, 0.85),
+                    lighten(colour, 0.25),
+                    darken(colour, 0.35),
+                    0.1,
+                    true,
+                )
+            }
         }
         DiagramStyle::Schematic => {
-            let base = fill.unwrap_or_else(|| darken(rgb(0xdde1e6), 0.04 * depth as f32));
-            (base, rgb(0x6f7a89), rgb(0x1f2733), 0.0, false)
+            let base = fill.unwrap_or_else(|| step(look.group[2], 0.04));
+            (base, look.group_edge[1], look.ink, 0.0, false)
         }
     };
     let edge = parse_color(&group.stroke).unwrap_or(edge);
@@ -215,7 +227,7 @@ fn push_fence(scene: &mut Scene3d, plan: &Plan, group: &DiagramGroup, r: [f64; 4
         let square = [[-h, -h], [h, -h], [h, h], [-h, h]];
         scene.decor.push(PrismMark {
             key: format!("{}/post/{k}", group.id),
-            color: rgb(0x9aa4b1),
+            color: plan.look.fence[0],
             outline: square
                 .iter()
                 .map(|q| plan.floor_point([at[0] + q[0], at[1] + q[1]]))
@@ -249,7 +261,7 @@ fn push_fence(scene: &mut Scene3d, plan: &Plan, group: &DiagramGroup, r: [f64; 4
         let at = y + plan.len(rail * plan.font);
         scene.ribbons.push(RibbonMark {
             key: format!("{}/rail/{n}", group.id),
-            color: rgb(0xaab3bf),
+            color: plan.look.fence[1],
             path: path.clone(),
             width: plan.len(RAIL_WIDTH) as f32,
             base: (at - plan.len(RAIL_WIDTH / 2.0)) as f32,
