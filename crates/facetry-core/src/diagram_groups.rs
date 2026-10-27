@@ -255,6 +255,7 @@ fn push_fence(scene: &mut Scene3d, plan: &Plan, group: &DiagramGroup, r: [f64; 4
             base: (at - plan.len(RAIL_WIDTH / 2.0)) as f32,
             top: (at + plan.len(RAIL_WIDTH / 2.0)) as f32,
             gloss: 0.0,
+            lift: Vec::new(),
         });
     }
 }

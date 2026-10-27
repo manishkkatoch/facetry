@@ -762,6 +762,12 @@ rounded glossy tray (glossy), a plate tinted from the palette (isometric), or a 
 inside a fence (schematic). Bases step up a little with each level of nesting; soft shadows of
 what stands on a base are lifted onto it.
 
+**Edges that cross** arc over each other: where two edges cross in the plan (away from their
+ends), the later one rises over the earlier in a smooth arc, so in 3D they never run through
+each other. The flat style's lines jump the way a schematic drawing's wires do; the glossy
+bands, isometric roads and schematic pipes become bridges (a pipe's supports grow to meet it,
+and the marks along a road or pipe ride up with it).
+
 **Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (35 flowcharts in the
 style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
@@ -963,7 +969,9 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-isometric-cards-31-custom-icons` with the example icons of your own, and the
   subgraph diagrams `diagram-groups-36-org`, `diagram-glossy-groups-33-nested`,
   `diagram-isometric-groups-33-nested` and `diagram-schematic-groups-34-group-edges`, and
-  `diagram-schematic-31-custom-icons-behind`, orbited round so its signs turn): Playwright screenshots these examples (3D ones at their
+  `diagram-schematic-31-custom-icons-behind`, orbited round so its signs turn, and
+  `diagram-flat-23-dense`, `diagram-glossy-23-dense` and `diagram-schematic-23-dense`, whose
+  crossing edges arc over each other): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -995,9 +1003,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 934,083 B (912 KiB) | 409,971 B (400 KiB) | 335,072 B (327 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,541,082 B (2482 KiB) | 1,051,949 B (1027 KiB) | 829,357 B (810 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 261,162 B (255 KiB) | 112,561 B (110 KiB) | 96,285 B (94 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 939,439 B (917 KiB) | 412,643 B (403 KiB) | 337,650 B (330 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,546,366 B (2487 KiB) | 1,054,179 B (1029 KiB) | 830,764 B (811 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 261,181 B (255 KiB) | 112,574 B (110 KiB) | 96,355 B (94 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1030,6 +1038,9 @@ and drawing in four styles), 5,506 to the WebGL2 one, and 6,854 to the add-on (p
 compound layout and edges to groups). The add-on would have grown 13 KB: a group-aware sort
 of its own instead of the standard one saved 2.7 KB, and leaving the layout quality metrics
 (computed for the tests, never returned to JavaScript) out of the module saved 3.5 KB.
+
+Schematic signs that turn to face the camera added 2,868 B gzip to the WebGPU module and
+2,674 to the WebGL2 one; edges arcing over crossings 2,672 and 2,230, and 13 B to the add-on.
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

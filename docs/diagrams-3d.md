@@ -135,6 +135,20 @@ algorithm is better in places but is EPL-licensed and much larger. In 3D, height
 structure: each subgraph is a platform raised or inset relative to its parent, and where two
 edges cross in the plan, one arcs over the other so they never intersect visually.
 
+### Edges arcing over crossings (D2)
+
+Where two edges cross in the plan, the later one (in source order) arcs over the earlier
+(`diagram_hops.rs`): crossings are found segment by segment on the routed polylines, leaving
+out those within an arc's length (plus what is drawn at the ends: arrowheads, end marks) of the
+arcing edge's own ends. Along the arcing edge the height follows a cosine bump of the distance to
+the crossing, from 0 at the arc's ends to its full height over the crossing, and the path gets
+extra points along the arc so it is smooth. The flat style lifts its lines (a line jump, seen
+from above); ribbons (glossy bands, isometric roads, schematic pipes) take a height per point
+(`RibbonMark.lift`), tilt their top's normal with the slope and close their underside where they
+are raised, so they are bridges. Arc spans and heights are per style: wide enough to clear the
+other edge's width, high enough to clear its top (a schematic pipe clears a conveyor).
+Chevrons, flow marks and supports follow the bridge.
+
 ### Subgraphs (D2)
 
 Done as dagre does clusters, inside the same layered pipeline:
@@ -250,7 +264,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 | **S2** (done) | The isometric style (pedestals of plate, body, coloured cap and inset; roads with chevrons; palette colours; long shadows; the isometric view), and moving around big diagrams: pan (right-drag, Shift+drag, two fingers), zoom toward the pointer and pinch, closer zoom for diagrams |
 | **S1** (done) | The glossy style, chosen by the user ahead of D2 to D5 after comparing with infographic references: `classDef`/`class`/`:::`/`style`, square-cornered routing with ports and tracks, ribbons, solid arrowheads, label cards, gloss, soft shadows, printed (world-space, depth-tested) text, a perspective starting camera. See "Styles" below |
 | **D1** (done) | `facetry-diagrams` crate and wasm build, `facetry/diagrams` export, `invalid-diagram` errors; core `diagram` spec with every node shape as a prism, edges and arrowheads; flowchart parser (subset without subgraphs); Sugiyama without subgraphs; quality metrics and the first corpus (25 flowcharts) |
-| **D2** (in progress) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics). Next: edges arcing over crossings, `diagram.run()`; later, labels that follow the zoom and themes |
+| **D2** (in progress) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics), schematic signs that turn to the camera, edges arcing over crossings. Next: `diagram.run()`; later, labels that follow the zoom and themes |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
 | **D5** | Animation controller, sequence playback, build-in, flow along edges |

@@ -836,3 +836,64 @@ fn a_long_group_title_shrinks_to_fit_its_box() {
         .unwrap();
     assert!(long.size_px < short.size_px);
 }
+
+/// Two edges crossing at (150, 100): `a`-`b` across, then `c`-`d` down.
+fn crossing(style: &str) -> String {
+    format!(
+        r#"{{
+  "dimension": "3d",
+  "diagram": {{
+    "style": "{style}",
+    "nodes": [
+      {{ "id": "a", "x": 20, "y": 100, "width": 30, "height": 30 }},
+      {{ "id": "b", "x": 280, "y": 100, "width": 30, "height": 30 }},
+      {{ "id": "c", "x": 150, "y": -30, "width": 30, "height": 30 }},
+      {{ "id": "d", "x": 150, "y": 230, "width": 30, "height": 30 }}
+    ],
+    "edges": [
+      {{ "from": "a", "to": "b", "points": [[35, 100], [265, 100]] }},
+      {{ "from": "c", "to": "d", "points": [[150, -15], [150, 215]] }}
+    ]
+  }}
+}}"#
+    )
+}
+
+#[test]
+fn where_edges_cross_the_later_arcs_over_the_earlier_in_every_style() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = crossing(style);
+        assert_eq!(validate(&spec(&json)), vec![], "{style}");
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        // The highest point of an edge and how high it is at its ends.
+        let (first, second) = if style == "flat" {
+            let run = |key: &str| {
+                let line = scene.polylines.iter().find(|p| p.key == key).unwrap();
+                let ys: Vec<f32> = line.runs[0].iter().map(|p| p[1]).collect();
+                (ys.iter().copied().fold(f32::MIN, f32::max), ys[0])
+            };
+            (run("edge0"), run("edge1"))
+        } else {
+            let band = |key: &str| {
+                let r = scene
+                    .ribbons
+                    .iter()
+                    .find(|r| r.key == format!("{key}/0"))
+                    .unwrap();
+                let top = |i: usize| r.top + r.lift.get(i).copied().unwrap_or(0.0);
+                let max = (0..r.path.len()).map(top).fold(f32::MIN, f32::max);
+                (max, top(0))
+            };
+            (band("edge0"), band("edge1"))
+        };
+        // The first stays level; the second rises over it, clear of its top.
+        assert_eq!(first.0, first.1, "{style}");
+        assert!(second.0 > second.1, "{style}");
+        let r = scene.ribbons.iter().find(|r| r.key == "edge1/0");
+        if let Some(r) = r {
+            let crest = r.lift.iter().copied().fold(f32::MIN, f32::max);
+            let under = scene.ribbons.iter().find(|r| r.key == "edge0/0").unwrap();
+            assert!(r.base + crest > under.top, "{style}");
+        }
+    }
+}

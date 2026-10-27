@@ -13,6 +13,7 @@ use crate::diagram::{
     ICON_SIZE, Plan, dashes, icon_and_label, ink_on, parse_color, previous_distinct, push_icon,
     push_rim, shape_outline, trim_end,
 };
+use crate::diagram_hops::Hops;
 use crate::scene::Anchor;
 use crate::scene3d::{LabelRole, PrismMark, RibbonMark, Scene3d, ShadowMark, Text3, VAlign};
 use crate::spec::{
@@ -28,6 +29,9 @@ const CARD_GLOSS: f32 = 0.25;
 const EDGE_WIDTH: f64 = 6.0;
 const THICK_EDGE_WIDTH: f64 = 10.0;
 const EDGE_HEIGHT: f64 = 2.4;
+/// Where edges cross, the later arcs over the earlier: half the arc's span and its height.
+const HOP_RADIUS: f64 = 14.0;
+const HOP_HEIGHT: f64 = 8.0;
 const ARROW_LENGTH: f64 = 14.0;
 const ARROW_WIDTH: f64 = 17.0;
 /// Gaps between an edge and the nodes it joins, layout units: before the head (which must
@@ -120,6 +124,7 @@ pub(crate) fn build(
     for (i, node) in diagram.nodes.iter().enumerate() {
         push_node(&mut scene, &plan, i, node, top, s, shadow, theme);
     }
+    let hops = crate::diagram_hops::hops(&diagram.edges, HOP_RADIUS, HEAD_GAP + ARROW_LENGTH);
     for (i, edge) in diagram.edges.iter().enumerate() {
         let known = |id: &str| {
             diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
@@ -127,7 +132,7 @@ pub(crate) fn build(
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
-        push_edge(&mut scene, &plan, i, edge, shadow, measure, theme);
+        push_edge(&mut scene, &plan, i, edge, &hops[i], shadow, measure, theme);
     }
     crate::diagram_groups::lift_shadows(&mut scene, &plan, diagram);
     scene
@@ -290,6 +295,7 @@ fn ribbon(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMa
         base: 0.0,
         top: plan.len(EDGE_HEIGHT) as f32,
         gloss: EDGE_GLOSS,
+        lift: Vec::new(),
     }
 }
 
@@ -299,6 +305,7 @@ fn push_edge(
     plan: &Plan,
     index: usize,
     edge: &DiagramEdge,
+    hops: &Hops,
     shadow: Color,
     measure: &dyn TextMeasure,
     theme: &Theme,
@@ -310,7 +317,7 @@ fn push_edge(
         _ => EDGE_WIDTH,
     };
     // Leave the gaps at both ends; the ends' markers sit at the new ends.
-    let mut path = edge.points.clone();
+    let mut path = hops.densify(&edge.points);
     trim_end(&mut path, HEAD_GAP, true);
     trim_end(&mut path, TAIL_GAP, false);
     let ends = [(head, true), (tail, false)];
@@ -331,9 +338,9 @@ fn push_edge(
     };
     for (k, run) in runs.iter().enumerate() {
         if run.len() >= 2 {
-            scene
-                .ribbons
-                .push(ribbon(plan, format!("{key}/{k}"), run, width));
+            let mut band = ribbon(plan, format!("{key}/{k}"), run, width);
+            band.lift = hops.lift(plan, run, HOP_HEIGHT);
+            scene.ribbons.push(band);
         }
     }
     for (end, at_head) in ends {

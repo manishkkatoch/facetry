@@ -18,6 +18,7 @@
 
 use crate::Color;
 use crate::Theme;
+use crate::diagram_hops::Hops;
 use crate::framing_radius;
 use crate::icons::IconShape;
 use crate::scene::{Anchor, RuleKind};
@@ -47,6 +48,10 @@ const ISOMETRIC_NODE_HEIGHT: f64 = crate::diagram_isometric::STACK_HEIGHT;
 /// Edges run this far above the node tops (layout units), so they never flicker against a
 /// top face they cross the rim of.
 const EDGE_LIFT: f64 = 0.6;
+/// Where edges cross, the later arcs over the earlier: half the arc's span and its height,
+/// layout units.
+const HOP_RADIUS: f64 = 10.0;
+const HOP_HEIGHT: f64 = 8.0;
 /// Arrowheads: length and width, layout units, and thickness.
 const ARROW_LENGTH: f64 = 12.0;
 const ARROW_WIDTH: f64 = 10.0;
@@ -775,6 +780,7 @@ pub fn build_diagram_3d(
     for (i, node) in diagram.nodes.iter().enumerate() {
         push_node(&mut scene, &plan, &palette, i, node, top, s, label_px);
     }
+    let hops = crate::diagram_hops::hops(&diagram.edges, HOP_RADIUS, ARROW_LENGTH);
     for (i, edge) in diagram.edges.iter().enumerate() {
         let known = |id: &str| {
             diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
@@ -782,7 +788,7 @@ pub fn build_diagram_3d(
         if edge.points.len() < 2 || !known(&edge.from) || !known(&edge.to) {
             continue;
         }
-        push_edge(&mut scene, &plan, &palette, i, edge, s, label_px);
+        push_edge(&mut scene, &plan, &palette, i, edge, &hops[i], s, label_px);
     }
     scene
 }
@@ -1074,6 +1080,7 @@ fn push_edge(
     palette: &Palette,
     index: usize,
     edge: &DiagramEdge,
+    hops: &Hops,
     s: f64,
     label_px: f32,
 ) {
@@ -1082,7 +1089,7 @@ fn push_edge(
     let (tail, head) = edge.ends();
     // Pull the line back from the ends that carry an arrowhead, so its square end does not
     // poke out of the arrow's tip.
-    let mut points = edge.points.clone();
+    let mut points = hops.densify(&edge.points);
     for (end, at_head) in [(head, true), (tail, false)] {
         if end == EdgeEnd::Arrow {
             trim_end(&mut points, ARROW_LENGTH * 0.8, at_head);
@@ -1093,7 +1100,11 @@ fn push_edge(
         _ => vec![points.clone()],
     }
     .into_iter()
-    .map(|run| run.iter().map(|&p| plan.world(p, lift)).collect())
+    .map(|run| {
+        run.iter()
+            .map(|&p| plan.world(p, lift + plan.len(HOP_HEIGHT * hops.rise(p))))
+            .collect()
+    })
     .collect();
     let width = match edge.stroke {
         EdgeStroke::Thick => THICK_WIDTH,

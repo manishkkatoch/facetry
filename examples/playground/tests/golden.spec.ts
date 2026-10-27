@@ -126,6 +126,17 @@ for (const name of ["30-plant", "29-icons"]) {
   });
 }
 
+// Edges that cross: the later arcs over the earlier, a line jump in the flat style and a
+// bridge in the others.
+for (const style of ["flat", "glossy", "schematic"]) {
+  test(`${style} diagram 23-dense, its crossing edges arcing, matches its golden image (webgl2)`, async ({ page }) => {
+    await page.goto(`/?backend=webgl2&ui=0&style=${style}&example=mermaid/23-dense`);
+    await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
+    await page.mouse.move(790, 495);
+    await expect(page.locator("#chart")).toHaveScreenshot(`diagram-${style}-23-dense.png`);
+  });
+}
+
 // Orbited round to the back: the signs turn with the camera, so their faces still read.
 test("schematic diagram 31-custom-icons seen from behind matches its golden image (webgl2)", async ({ page }) => {
   await page.goto("/?backend=webgl2&ui=0&style=schematic&example=mermaid/31-custom-icons");

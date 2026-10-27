@@ -305,6 +305,15 @@ pub struct RibbonMark {
     pub top: f32,
     #[serde(skip_serializing_if = "is_zero")]
     pub gloss: f32,
+    /// How far each point of `path` is raised (world units; empty: none), where the edge
+    /// arcs over another it crosses. Raised, the band is closed underneath too.
+    #[serde(skip_serializing_if = "Vec::is_empty", serialize_with = "lifts")]
+    pub lift: Vec<f32>,
+}
+
+fn lifts<S: Serializer>(v: &[f32], s: S) -> Result<S::Ok, S::Error> {
+    let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
+    v.iter().map(|&x| r(x)).collect::<Vec<f64>>().serialize(s)
 }
 
 /// A soft shadow on the floor: the convex `outline` (`[x, z]` world units) filled with

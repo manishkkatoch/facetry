@@ -11,6 +11,7 @@ mod color;
 pub mod diagram;
 mod diagram_glossy;
 mod diagram_groups;
+mod diagram_hops;
 mod diagram_isometric;
 mod diagram_schematic;
 pub mod fill;
