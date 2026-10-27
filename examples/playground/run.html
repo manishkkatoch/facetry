@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Facetry diagrams in a page</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root { color-scheme: light; font: 15px/1.5 system-ui, sans-serif; }
+      body { margin: 0 auto; padding: 16px; max-width: 760px; background: #fff; color: #1d2433; }
+      pre { margin: 12px 0 24px; padding: 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Diagrams in a page</h1>
+    <p>
+      Each <code>&lt;pre class="mermaid"&gt;</code> below is drawn by <code>diagram.run()</code>, as
+      <code>mermaid.run()</code> would; <code>data-style</code> picks a block's style.
+    </p>
+    <pre class="mermaid" id="flat">
+      flowchart LR
+        a[Write] --> b{Valid?}
+        b -->|yes| c[Ship]
+        b -->|no| a
+    </pre>
+    <pre class="mermaid" id="schematic" data-style="schematic">
+      flowchart LR
+        well[(Well)] --> pump[Pump station] --> tank[(Clean water)]
+    </pre>
+    <p>A block with a mistake shows its message in its place:</p>
+    <pre class="mermaid" id="broken">
+      flowchart LR
+        a --> 
+    </pre>
+    <pre id="plain">Not a diagram: no class, left alone.</pre>
+    <script type="module" src="/src/run.ts"></script>
+  </body>
+</html>

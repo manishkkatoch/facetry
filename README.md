@@ -610,6 +610,32 @@ code), fetched the first time `fromMermaid` runs, so pages that only draw charts
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
 
+**Diagrams in a page.** `diagram.run()` draws every `<pre class="mermaid">` on the page, as
+`mermaid.run()` does, so pages written for Mermaid work unchanged:
+
+```html
+<pre class="mermaid" data-style="glossy">
+  flowchart LR
+    a[Write] --> b{Valid?} -->|yes| c[Ship]
+</pre>
+<script type="module">
+  import { diagram } from "facetry/diagrams";
+  const charts = await diagram.run({ height: "360px" });
+</script>
+```
+
+Each block's text (its shared indentation removed) is replaced by a canvas as wide as the block
+and `height` tall (default `400px`), with the text as its `aria-label`. `data-style` and
+`data-cards` choose a block's own style and cards; the other options are `fromMermaid`'s
+(`style`, `cards`, `icons`, for every block), `querySelector` (default `"pre.mermaid"`) or
+`nodes`, and `chart` (`Chart.create`'s options, such as `backend`). Drawn blocks get
+`data-processed`, so `run` can be called again after adding more. A block that fails shows its
+message in its place (a `role="alert"` box listing every issue with its line and column); the
+others are still drawn, and `run` then rejects with the first failure, or resolves anyway with
+`suppressErrors: true`. It resolves to the charts it drew, in document order. The chart module
+is loaded by `run` itself, so `facetry/diagrams` alone is enough. In the playground,
+`run.html` is such a page.
+
 **Supported Mermaid (`flowchart`, also written `graph`):**
 
 - directions `TB`/`TD`, `BT`, `LR`, `RL`; statements on lines or separated by `;`; `%%` comments;
