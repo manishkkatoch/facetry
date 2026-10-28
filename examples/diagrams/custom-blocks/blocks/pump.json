@@ -1,0 +1,8 @@
+{
+  "parts": [
+    { "name": "skid", "shape": "rect", "from": 0, "to": 0.5, "color": "frame" },
+    { "name": "casing", "shape": "circle", "at": [-0.15, 0], "size": [0.55, 0.75], "from": 0.5, "to": 2.0, "color": "steel" },
+    { "name": "motor", "shape": "rounded", "at": [0.27, 0], "size": [0.36, 0.5], "from": 0.5, "to": 1.7, "color": "body" },
+    { "name": "outlet", "shape": "circle", "at": [-0.15, 0], "size": [0.18, 0.25], "from": 2.0, "to": 2.7, "color": "accent" }
+  ]
+}

@@ -606,7 +606,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 116 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 118 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -664,7 +664,12 @@ is loaded by `run` itself, so `facetry/diagrams` alone is enough. In the playgro
   `home`, `lock`, `mail`, `money`, `phone`, `rocket`, `search`, `server`, `shield`, `star`,
   `target`, `truck`, `user` and `users`; a prefix such as `fa:` is dropped and a few common
   names map onto them (`cog`, `envelope`, `lightbulb`, `warning`, `shopping-cart`, ...). An
-  unknown icon, or any `@{ }` key but `icon`, is an error.
+  unknown icon, or any `@{ }` key but `icon`, `shape` and `label`, is an error.
+- Mermaid 11's `@{ shape: ..., label: "..." }`: the shapes by Mermaid's names (`rect`/`proc`,
+  `rounded`/`event`, `stadium`/`pill`, `cyl`/`database`, `circle`, `diam`/`decision`,
+  `hex`/`prepare`, `lean-r`, `lean-l`, `trap-b`, `trap-t` and their other names; Mermaid's other
+  shapes, such as `doc` or `bolt`, are errors that say so), or a block of your own by its name
+  (see "Blocks" below);
 
 **Your own icons.** Pass them by name as `icons`, and `@{ icon: "<name>" }` can use them (one
 named like a built-in icon replaces it):
@@ -705,6 +710,17 @@ the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-i
   `e1@{ animate: true }` or `e1@{ animation: fast }` (or `slow`); `animate: false` keeps an
   edge still. See "Flow" below.
 
+Everything else is an `invalid-diagram` error naming the feature and its line and column
+(other style properties such as `stroke-dasharray` or `font-size`, `click`,
+`linkStyle`, invisible `~~~` links, the
+`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
+`shape` and `label`,
+markdown strings, HTML other than `<br>`, anything in a directive or front matter but the
+theme): a diagram is
+never drawn with parts silently missing. Sequence and architecture diagrams are planned
+(milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
+covers printable ASCII; other characters draw as `?`.
+
 **Icon packs.** Register icon sets once for the page, as Mermaid's `registerIconPacks` does,
 and name their icons `pack:icon` in any diagram, in every style (on node tops in the flat and
 glossy styles, on the pedestal's inset or the floor card in the isometric style, on the sign in
@@ -731,15 +747,51 @@ with `invalid-options`, naming the icon or the pack. Icons are drawn in the styl
 multicolour sets (brand logos) come out in one colour. `diagram.iconPacks()` lists the
 registered packs; registering a name again replaces its pack.
 
-Everything else is an `invalid-diagram` error naming the feature and its line and column
-(other style properties such as `stroke-dasharray` or `font-size`, `click`,
-`linkStyle`, invisible `~~~` links, the
-`[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
-markdown strings, HTML other than `<br>`, anything in a directive or front matter but the
-theme): a diagram is
-never drawn with parts silently missing. Sequence and architecture diagrams are planned
-(milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
-covers printable ASCII; other characters draw as `?`.
+**Blocks.** The schematic style draws each node as equipment chosen by its shape, the isometric
+style as a pedestal. Blocks of your own take their place: models made of parts, each a footprint
+(a node shape, or a polygon of your own) raised between two heights, fitted to the node's box so
+a block suits whatever size the layout gives it. Name them in the Mermaid text with
+`@{ shape: "<name>" }`, and give them with the call or register them for the page:
+
+```ts
+diagram.registerBlocks({
+  pump: {
+    parts: [
+      { name: "skid", from: 0, to: 0.5, color: "frame" },
+      { name: "casing", shape: "circle", at: [-0.15, 0], size: [0.55, 0.75], from: 0.5, to: 2, color: "steel" },
+      { name: "motor", shape: "rounded", at: [0.27, 0], size: [0.36, 0.5], from: 0.5, to: 1.7 },
+      { name: "outlet", shape: "circle", at: [-0.15, 0], size: [0.18, 0.25], from: 2, to: 2.7, color: "accent" },
+    ],
+  },
+});
+const spec = await diagram.fromMermaid("flowchart LR\n  p[Feed pump]@{ shape: pump } --> t[(Tank)]", {
+  style: "schematic", // or "isometric"
+  // blocks: { pump: { parts: [...] } },  // per call, winning over registered ones
+});
+```
+
+A part is `{ name?, shape? (default "rect"), outline?, at?, size?, from, to, color? }`:
+
+- `at` and `size` are shares of the node's box: `at` the part's centre from the box's centre
+  (default `[0, 0]`), `size` its width and depth (default `[1, 1]`, the whole box);
+- `outline` replaces `shape` with a convex polygon, `[x, y]` points as shares of the box from
+  its centre (`[-0.5, -0.5]` is the top-left corner);
+- `from` and `to` are heights in font sizes (a schematic building is about 3 tall, a pedestal 1);
+- `color` is `#rrggbb` or a colour of the style and theme: `"body"` (the default; the node's own
+  `color` replaces it in the schematic style), `"steel"`, `"frame"` or `"accent"` (the node's
+  palette colour in the isometric style, which its `color` replaces; the flow green in the
+  schematic one).
+
+The first part is the node's body: hover and click find it, and parts are keyed
+`<node>/<name>` (`part<k>` without a name). In the schematic style every part gets the
+equipment's drawn edges and the label's sign stands on the tallest part; in the isometric style a
+block's label (and icon) stands on such a sign too, since a block has no flat top to print on, or
+goes on its card with `cards`. The flat and glossy styles draw the node's shape. In the spec a
+node names its block (`"block": "pump"`) and `diagram.blocks` holds the blocks the diagram uses
+(only those: `fromMermaid` adds them); a block has 1 to 32 parts, heights from 0 to 20, and
+mistakes are reported at their path (`/diagram/blocks/pump/parts/1/to`). See
+`mermaid/38-custom-blocks` in the playground, whose blocks are
+`examples/diagrams/custom-blocks/blocks/*.json`.
 
 **Layout** is layered, like Mermaid's (dagre): cycles are broken depth-first in the order the
 text declares them, ranks are assigned by network simplex (shortest edges), every edge gets a rank
@@ -843,7 +895,8 @@ round nodes, `parent` naming the group around it; an edge's `from` or `to` may n
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
 "cross", tail?, animation?: "fast" | "slow" }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
-`examples/specs/diagram-glossy.json`). `icon` names one of the diagram's `icons` or a built-in
+`examples/specs/diagram-glossy.json`). A node's `block` names one of the diagram's `blocks`
+(see "Blocks"). `icon` names one of the diagram's `icons` or a built-in
 icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
 (`/diagram/edges/2/to`), as for charts; a diagram spec has no `data`, `axes`, `layers` or `legend`.
@@ -1070,7 +1123,8 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-flat-neutral-34-group-edges` and `diagram-isometric-forest-34-group-edges` in the
   themes, and `diagram-glossy-flow-01-decision` and `diagram-schematic-flow-01-decision`, their
   edges flowing, a quarter second in, and `diagram-glossy-build-34-group-edges`, 0.9 s into its
-  build-in): Playwright screenshots these examples (3D ones at their
+  build-in, and `diagram-schematic-38-custom-blocks` and `diagram-isometric-38-custom-blocks`
+  with blocks of their own): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -1102,9 +1156,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 968,408 B (946 KiB) | 424,240 B (414 KiB) | 345,633 B (338 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,575,295 B (2515 KiB) | 1,066,791 B (1042 KiB) | 840,131 B (820 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 267,623 B (261 KiB) | 115,793 B (113 KiB) | 98,642 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 984,731 B (962 KiB) | 429,885 B (420 KiB) | 351,635 B (343 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,591,484 B (2531 KiB) | 1,072,214 B (1047 KiB) | 844,341 B (825 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 270,796 B (264 KiB) | 117,752 B (115 KiB) | 99,892 B (98 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1145,7 +1199,10 @@ Printed flat-style labels and the four themes then added 2,855 B gzip to the Web
 directives and front matter). Flow along edges added 3,768 B gzip to the WebGPU module, 5,119 to
 the WebGL2 one (the marks, their pipeline and the clock) and 1,659 to the add-on (edge ids and
 their `@{ }`). The build-in then added 4,974 B gzip to the WebGPU module and 4,599 to the WebGL2
-one (the schedule and the scene at a time; lists rather than hash maps saved 1.8 KB).
+one (the schedule and the scene at a time; lists rather than hash maps saved 1.8 KB). Blocks of
+the user's own added 5,645 B gzip to the WebGPU module and 5,423 to the WebGL2 one (reading and
+checking them, fitting their parts, the isometric style's signs) and 1,959 to the add-on
+(Mermaid's `@{ shape }` and `label`, with every name of Mermaid's shapes).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

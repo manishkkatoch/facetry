@@ -66,6 +66,10 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
             out.push_str(",\"strokeWidth\":");
             number(&mut out, w);
         }
+        if let Some(block) = &n.block {
+            out.push_str(",\"block\":");
+            string(&mut out, block);
+        }
         if let Some(icon) = &n.icon {
             out.push_str(",\"icon\":");
             string(&mut out, icon);

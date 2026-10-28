@@ -14,6 +14,7 @@ const GLOSSY: Options = Options {
     style: DiagramStyle::Glossy,
     theme: DiagramTheme::Default,
     flow: None,
+    blocks: Vec::new(),
     cards: false,
     icons: Vec::new(),
 };
@@ -21,6 +22,7 @@ const CARDS: Options = Options {
     style: DiagramStyle::Isometric,
     theme: DiagramTheme::Default,
     flow: None,
+    blocks: Vec::new(),
     cards: true,
     icons: Vec::new(),
 };

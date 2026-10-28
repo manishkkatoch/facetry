@@ -70,6 +70,8 @@ pub struct Node {
     pub style: NodeStyle,
     /// A built-in icon, from `@{ icon: "..." }`.
     pub icon: Option<String>,
+    /// One of the user's blocks, from `@{ shape: "..." }` naming one.
+    pub block: Option<String>,
     /// The innermost subgraph it belongs to (an index into [`Flowchart::subgraphs`]).
     pub group: Option<usize>,
 }
@@ -236,6 +238,8 @@ struct Parser<'a> {
     lines: &'a Lines,
     /// Names of the user's own icons, which `@{ icon }` may use besides the built-in ones.
     icons: &'a [&'a str],
+    /// Names of the user's blocks, which `@{ shape }` may use besides Mermaid's shapes.
+    blocks: &'a [&'a str],
     pos: usize,
     issues: Vec<DiagramIssue>,
     chart: Flowchart,
@@ -262,12 +266,23 @@ pub fn parse(source: &str) -> Result<Flowchart, Vec<DiagramIssue>> {
 
 /// [`parse`], where `@{ icon }` may also name one of `icons` (the user's own icons).
 pub fn parse_with_icons(source: &str, icons: &[&str]) -> Result<Flowchart, Vec<DiagramIssue>> {
+    parse_with(source, icons, &[])
+}
+
+/// [`parse`], where `@{ icon }` may also name one of `icons` (the user's own icons) and
+/// `@{ shape }` one of `blocks` (the user's own blocks).
+pub fn parse_with(
+    source: &str,
+    icons: &[&str],
+    blocks: &[&str],
+) -> Result<Flowchart, Vec<DiagramIssue>> {
     let text: Vec<char> = source.chars().collect();
     let lines = Lines::new(&text);
     let mut p = Parser {
         text: &text,
         lines: &lines,
         icons,
+        blocks,
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
@@ -291,6 +306,7 @@ pub fn kind(source: &str) -> Result<Kind, DiagramIssue> {
         text: &text,
         lines: &lines,
         icons: &[],
+        blocks: &[],
         pos: 0,
         issues: Vec::new(),
         chart: Flowchart::default(),
@@ -1099,10 +1115,10 @@ impl Parser<'_> {
             return self.fail(start, "`end` cannot be a node id (Mermaid reserves it)");
         }
         let shape = self.shape()?;
-        let icon = if self.starts_with("@{") {
+        let meta = if self.starts_with("@{") {
             self.metadata()?
         } else {
-            None
+            Meta::default()
         };
         let mut classes = Vec::new();
         while self.starts_with(":::") {
@@ -1129,6 +1145,7 @@ impl Parser<'_> {
                     shape: NodeShape::Rect,
                     style: NodeStyle::default(),
                     icon: None,
+                    block: None,
                     group: None,
                 });
                 self.chart.nodes.len() - 1
@@ -1137,22 +1154,34 @@ impl Parser<'_> {
         if let Some(open) = self.open.last_mut() {
             open.nodes.push(index);
         }
-        if icon.is_some() {
-            self.chart.nodes[index].icon = icon;
+        if meta.icon.is_some() {
+            self.chart.nodes[index].icon = meta.icon;
         }
         if let Some((shape, label)) = shape {
             let node = &mut self.chart.nodes[index];
             node.shape = shape;
             node.label = label;
         }
+        let node = &mut self.chart.nodes[index];
+        if let Some(shape) = meta.shape {
+            node.shape = shape;
+            node.block = None;
+        }
+        if meta.block.is_some() {
+            node.block = meta.block;
+        }
+        if let Some(label) = meta.label {
+            node.label = label;
+        }
         Ok(index)
     }
 
-    /// Node metadata, `@{ icon: "bulb" }`: of Mermaid's keys only `icon` is read, naming one of
-    /// the built-in icons (`fa:`-style prefixes are dropped). Returns the icon's name as
-    /// written.
-    fn metadata(&mut self) -> Step<Option<String>> {
-        let mut icon = None;
+    /// Node metadata, `@{ icon: "bulb", shape: cyl, label: "Orders" }`: of Mermaid's keys
+    /// `icon` (one of the built-in icons or of the user's, `fa:`-style prefixes dropped for the
+    /// built-in ones), `shape` (one of Mermaid's shape names, or a block of the user's) and
+    /// `label` are read.
+    fn metadata(&mut self) -> Step<Meta> {
+        let mut meta = Meta::default();
         for (key, key_at, value, value_at) in self.metadata_pairs()? {
             match key.as_str() {
                 "icon" => {
@@ -1173,7 +1202,31 @@ impl Parser<'_> {
                             ),
                         );
                     }
-                    icon = Some(value);
+                    meta.icon = Some(value);
+                }
+                "shape" => {
+                    if self.blocks.contains(&value.as_str()) {
+                        meta.block = Some(value);
+                        meta.shape = None;
+                        continue;
+                    }
+                    match mermaid_shape(&value) {
+                        Ok(shape) => {
+                            meta.shape = Some(shape);
+                            meta.block = None;
+                        }
+                        Err(why) => {
+                            let blocks = if self.blocks.is_empty() {
+                                String::new()
+                            } else {
+                                format!("; the blocks given are {}", self.blocks.join(", "))
+                            };
+                            return self.fail(value_at, format!("{why}{blocks}"));
+                        }
+                    }
+                }
+                "label" => {
+                    meta.label = Some(self.cleaned(value_at, &value)?);
                 }
                 "animate" | "animation" => {
                     return self.fail(
@@ -1186,12 +1239,14 @@ impl Parser<'_> {
                 _ => {
                     return self.fail(
                         key_at,
-                        format!("`{key}` is not supported in `@{{ }}` (only `icon`)"),
+                        format!(
+                            "`{key}` is not supported in `@{{ }}` (only `icon`, `shape` and `label`)"
+                        ),
                     );
                 }
             }
         }
-        Ok(icon)
+        Ok(meta)
     }
 
     /// A shape and its label right after a node id, if there is one.
@@ -1662,6 +1717,106 @@ impl Link {
 
 /// Trims a label, turns `<br>` into a line break and decodes Mermaid's entities. Other HTML
 /// is an error.
+/// What a node's `@{ }` sets.
+#[derive(Default)]
+struct Meta {
+    icon: Option<String>,
+    shape: Option<NodeShape>,
+    block: Option<String>,
+    label: Option<String>,
+}
+
+/// Mermaid 11's shapes this subset draws, by every name Mermaid gives them.
+const MERMAID_SHAPES: [(&str, NodeShape); 33] = [
+    ("rect", NodeShape::Rect),
+    ("proc", NodeShape::Rect),
+    ("process", NodeShape::Rect),
+    ("rectangle", NodeShape::Rect),
+    ("rounded", NodeShape::Rounded),
+    ("event", NodeShape::Rounded),
+    ("stadium", NodeShape::Stadium),
+    ("pill", NodeShape::Stadium),
+    ("terminal", NodeShape::Stadium),
+    ("cyl", NodeShape::Cylinder),
+    ("cylinder", NodeShape::Cylinder),
+    ("database", NodeShape::Cylinder),
+    ("db", NodeShape::Cylinder),
+    ("circle", NodeShape::Circle),
+    ("circ", NodeShape::Circle),
+    ("diam", NodeShape::Diamond),
+    ("diamond", NodeShape::Diamond),
+    ("decision", NodeShape::Diamond),
+    ("question", NodeShape::Diamond),
+    ("hex", NodeShape::Hexagon),
+    ("hexagon", NodeShape::Hexagon),
+    ("prepare", NodeShape::Hexagon),
+    ("lean-r", NodeShape::Parallelogram),
+    ("lean-right", NodeShape::Parallelogram),
+    ("in-out", NodeShape::Parallelogram),
+    ("lean-l", NodeShape::ParallelogramAlt),
+    ("lean-left", NodeShape::ParallelogramAlt),
+    ("out-in", NodeShape::ParallelogramAlt),
+    ("trap-b", NodeShape::Trapezoid),
+    ("trapezoid-bottom", NodeShape::Trapezoid),
+    ("priority", NodeShape::Trapezoid),
+    ("trap-t", NodeShape::TrapezoidAlt),
+    ("trapezoid-top", NodeShape::TrapezoidAlt),
+];
+
+/// Mermaid 11's other shape names: valid Mermaid, not drawn by this subset.
+const OTHER_MERMAID_SHAPES: [&str; 33] = [
+    "fr-rect",
+    "subproc",
+    "subprocess",
+    "subroutine",
+    "framed-rectangle",
+    "odd",
+    "asymmetric",
+    "dbl-circ",
+    "double-circle",
+    "text",
+    "notch-rect",
+    "card",
+    "lin-rect",
+    "lined-process",
+    "sm-circ",
+    "small-circle",
+    "fr-circ",
+    "framed-circle",
+    "fork",
+    "join",
+    "hourglass",
+    "bolt",
+    "doc",
+    "document",
+    "delay",
+    "h-cyl",
+    "lin-cyl",
+    "curv-trap",
+    "div-rect",
+    "tri",
+    "triangle",
+    "flag",
+    "docs",
+];
+
+/// The shape Mermaid's shape name `name` stands for, or why there is none.
+fn mermaid_shape(name: &str) -> Result<NodeShape, String> {
+    if let Some((_, shape)) = MERMAID_SHAPES.iter().find(|(n, _)| *n == name) {
+        return Ok(*shape);
+    }
+    if name == "manual" || name == "inv-trapezoid" {
+        return Ok(NodeShape::TrapezoidAlt);
+    }
+    if OTHER_MERMAID_SHAPES.contains(&name) {
+        return Err(format!("the Mermaid shape `{name}` is not supported"));
+    }
+    Err(format!(
+        "no shape `{name}`: the shapes are Mermaid's rect, rounded, stadium, cyl, circle, diam, \
+         hex, lean-r, lean-l, trap-b and trap-t (and their other names)"
+    ))
+}
+
 fn clean_label(raw: &str) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = raw.trim();
@@ -1997,9 +2152,14 @@ mod tests {
             ("graph TD\nA>flag]", "asymmetric"),
             ("graph TD\nA(((x)))", "double circle"),
             (
-                "graph TD\nA@{ shape: rect }",
-                "`shape` is not supported in `@{ }`",
+                "graph TD\nA@{ curve: basis }",
+                "`curve` is not supported in `@{ }` (only `icon`, `shape` and `label`)",
             ),
+            (
+                "graph TD\nA@{ shape: docs }",
+                "the Mermaid shape `docs` is not supported",
+            ),
+            ("graph TD\nA@{ shape: pump }", "no shape `pump`"),
             (
                 "graph TD\nA@{ icon: \"unicorn\" }",
                 "no built-in icon `unicorn`",
@@ -2034,6 +2194,47 @@ mod tests {
             let e = err(src);
             assert!(e.iter().any(|i| i.message.contains(needle)), "{src}: {e:?}");
         }
+    }
+
+    #[test]
+    fn mermaid_shape_names_blocks_and_labels_in_metadata() {
+        let f = ok(
+            "flowchart LR\n  a@{ shape: cyl, label: \"Orders\" } --> b@{ shape: diam }\n  c[Text]@{ shape: lean-l }",
+        );
+        let got: Vec<_> = f
+            .nodes
+            .iter()
+            .map(|n| (n.id.as_str(), n.shape, n.label.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("a", NodeShape::Cylinder, "Orders"),
+                ("b", NodeShape::Diamond, "b"),
+                ("c", NodeShape::ParallelogramAlt, "Text"),
+            ]
+        );
+        // A block of the user's, by its name; a Mermaid name given later puts the shape back.
+        let f = parse_with(
+            "flowchart LR\n  p[Feed pump]@{ shape: pump } --> q@{ shape: pump }\n  q@{ shape: rect }",
+            &[],
+            &["pump"],
+        )
+        .unwrap();
+        assert_eq!(f.nodes[0].block.as_deref(), Some("pump"));
+        assert_eq!(f.nodes[0].label, "Feed pump");
+        assert_eq!(f.nodes[1].block, None);
+        // An unknown one names the blocks there are.
+        let e = parse_with(
+            "flowchart LR\n  p@{ shape: pumpp }",
+            &[],
+            &["pump", "mixer"],
+        )
+        .unwrap_err();
+        assert!(
+            e[0].message.ends_with("the blocks given are pump, mixer"),
+            "{e:?}"
+        );
     }
 
     #[test]

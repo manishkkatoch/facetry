@@ -1,0 +1,5 @@
+flowchart LR
+    feed[(Feed tank)] --> pump[Feed pump]@{ shape: pump }
+    pump ==> mixer[Mixer]@{ shape: mixer }
+    mixer --> hx[Heat exchanger]@{ shape: exchanger }
+    hx --> out[(Product)]

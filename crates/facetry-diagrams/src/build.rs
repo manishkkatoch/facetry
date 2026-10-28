@@ -24,6 +24,9 @@ pub struct Options {
     pub theme: DiagramTheme,
     /// Every edge moves at this pace, unless the text animates (or stills) it itself.
     pub flow: Option<EdgeAnimation>,
+    /// Names of the user's blocks, for `@{ shape: "<name>" }`; nodes name them in the spec,
+    /// and the caller adds the blocks the spec's nodes use.
+    pub blocks: Vec<String>,
     /// Isometric style only: a card on the floor beside each node, with the node's label (its
     /// first line as the title, the rest as text) and icon; the node then shows its number.
     pub cards: bool,
@@ -534,6 +537,7 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
                 id: n.id.clone(),
                 label: (shown[i] != n.id).then(|| shown[i].clone()),
                 icon: n.icon.clone(),
+                block: n.block.clone(),
                 card,
                 shape: n.shape,
                 x,
@@ -582,6 +586,8 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
                 .cloned()
                 .collect(),
             groups,
+            // Blocks are named here; the caller brings their parts (they draw in the core).
+            blocks: Vec::new(),
         },
         control,
     }

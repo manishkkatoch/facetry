@@ -27,7 +27,7 @@ use crate::scene3d::{
     FOV_Y_DEGREES, FRAMING_LIFT, FillMark, FlowMark, Line3, Polyline3, PrismMark, Scene3d,
 };
 use crate::spec::{
-    CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
+    Block, CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
     DiagramSpec, DiagramStyle, DiagramTheme, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
     MAX_NODE_STROKE_WIDTH, NodeShape,
 };
@@ -128,6 +128,144 @@ impl Palette {
 
 // --- validation -------------------------------------------------------------------------------
 
+/// One part of a block fitted to a node: its footprint (layout units, absolute), whether it is
+/// curved, its heights (font sizes), its name and the colour it asks for.
+pub(crate) struct Piece {
+    pub name: String,
+    pub outline: Vec<[f64; 2]>,
+    pub smooth: bool,
+    pub from: f64,
+    pub to: f64,
+    pub color: Option<String>,
+}
+
+/// `block`'s parts fitted to `node`'s box.
+pub(crate) fn block_pieces(block: &Block, node: &DiagramNode) -> Vec<Piece> {
+    let (w, h) = (node.width, node.height);
+    block
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(k, part)| {
+            let [ax, ay] = part.at.unwrap_or([0.0, 0.0]);
+            let centre = [node.x + ax * w, node.y + ay * h];
+            let (outline, smooth) = match &part.outline {
+                Some(points) => (
+                    points
+                        .iter()
+                        .map(|p| [node.x + p[0] * w, node.y + p[1] * h])
+                        .collect(),
+                    false,
+                ),
+                None => {
+                    let [sw, sh] = part.size.unwrap_or([1.0, 1.0]);
+                    let (points, smooth) = shape_outline(part.shape, sw * w, sh * h);
+                    (
+                        points
+                            .iter()
+                            .map(|p| [centre[0] + p[0], centre[1] + p[1]])
+                            .collect(),
+                        smooth,
+                    )
+                }
+            };
+            Piece {
+                name: part.name.clone().unwrap_or_else(|| format!("part{k}")),
+                outline,
+                smooth,
+                from: part.from,
+                to: part.to,
+                color: part.color.clone(),
+            }
+        })
+        .collect()
+}
+
+/// Most parts a block may have.
+pub const MAX_BLOCK_PARTS: usize = 32;
+/// Highest a block part may reach, in font sizes.
+pub const MAX_BLOCK_HEIGHT: f64 = 20.0;
+/// The colours a block part may name instead of `#rrggbb`.
+pub const BLOCK_COLORS: [&str; 4] = ["body", "steel", "frame", "accent"];
+
+fn validate_blocks(diagram: &DiagramSpec, issues: &mut Vec<Issue>) {
+    for (name, block) in &diagram.blocks {
+        let name = name.as_str();
+        if name.is_empty() || name.contains(['"', '\n', ':']) {
+            issues.push(Issue::new(
+                pointer(&["diagram", "blocks", name]),
+                "a block's name must not be empty or hold a quote, a colon or a line break",
+            ));
+        }
+        if block.parts.is_empty() || block.parts.len() > MAX_BLOCK_PARTS {
+            issues.push(Issue::new(
+                pointer(&["diagram", "blocks", name, "parts"]),
+                format!("a block has 1 to {MAX_BLOCK_PARTS} parts"),
+            ));
+        }
+        for (k, part) in block.parts.iter().enumerate() {
+            let k = k.to_string();
+            let at = |field: &str| pointer(&["diagram", "blocks", name, "parts", &k, field]);
+            let height = |v: f64| v.is_finite() && (0.0..=MAX_BLOCK_HEIGHT).contains(&v);
+            if !height(part.from) {
+                issues.push(Issue::new(
+                    at("from"),
+                    format!("`from` is a height from 0 to {MAX_BLOCK_HEIGHT} font sizes"),
+                ));
+            }
+            if !height(part.to) || part.to <= part.from {
+                issues.push(Issue::new(
+                    at("to"),
+                    format!("`to` is a height above `from`, up to {MAX_BLOCK_HEIGHT} font sizes"),
+                ));
+            }
+            if let Some([x, y]) = part.at {
+                if !(x.is_finite() && y.is_finite() && x.abs() <= 1.0 && y.abs() <= 1.0) {
+                    issues.push(Issue::new(
+                        at("at"),
+                        "`at` is two shares of the box, from -1 to 1",
+                    ));
+                }
+            }
+            if let Some([w, h]) = part.size {
+                if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 && w <= 2.0 && h <= 2.0) {
+                    issues.push(Issue::new(
+                        at("size"),
+                        "`size` is two shares of the box, greater than 0 and at most 2",
+                    ));
+                }
+            }
+            if let Some(outline) = &part.outline {
+                let fine = outline.len() >= 3
+                    && outline.len() <= 64
+                    && outline.iter().all(|p| {
+                        p[0].is_finite()
+                            && p[1].is_finite()
+                            && p[0].abs() <= 1.0
+                            && p[1].abs() <= 1.0
+                    });
+                if !fine {
+                    issues.push(Issue::new(
+                        at("outline"),
+                        "`outline` is 3 to 64 points, each two shares of the box from -1 to 1",
+                    ));
+                }
+            }
+            if let Some(color) = &part.color {
+                if !BLOCK_COLORS.contains(&color.as_str()) && Color::from_hex(color).is_err() {
+                    issues.push(Issue::new(
+                        at("color"),
+                        format!(
+                            "{color:?} is neither #rrggbb nor one of {}",
+                            BLOCK_COLORS.join(", ")
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
 /// Everything wrong with `spec.diagram` (and with what a diagram spec must not have).
 pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
     let Some(diagram) = &spec.diagram else {
@@ -174,9 +312,26 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
             issues.push(Issue::new(pointer(&parts), why));
         }
     }
+    validate_blocks(diagram, issues);
     for (i, node) in diagram.nodes.iter().enumerate() {
         let n = i.to_string();
         let at = |field: &str| pointer(&["diagram", "nodes", &n, field]);
+        if let Some(block) = &node.block {
+            if !diagram.blocks.iter().any(|(name, _)| name == block) {
+                let known: Vec<&str> = diagram.blocks.iter().map(|(n, _)| n.as_str()).collect();
+                issues.push(Issue::new(
+                    at("block"),
+                    if known.is_empty() {
+                        format!("no block {block:?}: the diagram has no `blocks`")
+                    } else {
+                        format!(
+                            "no block {block:?}; the diagram's blocks are {}",
+                            known.join(", ")
+                        )
+                    },
+                ));
+            }
+        }
         if node.id.is_empty() {
             issues.push(Issue::new(at("id"), "a node id must not be empty"));
         } else if diagram.nodes[..i].iter().any(|m| m.id == node.id) {
@@ -471,6 +626,8 @@ pub(crate) struct Plan {
     icons: Vec<(String, IconShape)>,
     /// The theme's colours.
     pub(crate) look: Look,
+    /// The diagram's own blocks.
+    blocks: Vec<(String, Block)>,
 }
 
 impl Plan {
@@ -525,7 +682,16 @@ impl Plan {
                 })
                 .collect(),
             look: Look::of(diagram.theme),
+            blocks: diagram.blocks.clone(),
         }
+    }
+
+    /// The diagram's block `name`, if it has one.
+    pub(crate) fn block(&self, name: &str) -> Option<&Block> {
+        self.blocks
+            .iter()
+            .find(|(n, b)| n == name && !b.parts.is_empty())
+            .map(|(_, b)| b)
     }
 
     /// Icon `name`, in the icons' 24 by 24 box: the diagram's own icon of that name, or else
@@ -765,6 +931,7 @@ fn styled_scene(
         style: DiagramStyle::Flat,
         theme: DiagramTheme::Default,
         icons: Vec::new(),
+        blocks: Vec::new(),
         groups: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);

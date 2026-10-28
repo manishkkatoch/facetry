@@ -52,6 +52,7 @@ pub fn layout_mermaid(
     icon_fills: Option<Vec<String>>,
     icon_fill_rules: Option<Vec<u8>>,
     icon_boxes: Option<Vec<f64>>,
+    block_names: Option<Vec<String>>,
 ) -> Result<String, JsValue> {
     let style = match style.as_deref() {
         None | Some("flat") => DiagramStyle::Flat,
@@ -138,6 +139,7 @@ pub fn layout_mermaid(
             style,
             theme,
             flow,
+            blocks: block_names.unwrap_or_default(),
             cards,
             icons,
         },

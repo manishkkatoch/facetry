@@ -77,6 +77,7 @@ fn lay_out(source: &str, options: &Options) -> Result<build::Built, Vec<DiagramI
         }
     }
     let names: Vec<&str> = options.icons.iter().map(|(n, _)| n.as_str()).collect();
-    let chart = flowchart::parse_with_icons(source, &names)?;
+    let blocks: Vec<&str> = options.blocks.iter().map(String::as_str).collect();
+    let chart = flowchart::parse_with(source, &names, &blocks)?;
     Ok(build::build(&chart, options))
 }

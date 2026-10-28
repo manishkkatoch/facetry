@@ -1,5 +1,5 @@
 import { Chart, FacetryError, type ChartOptions, type ChartSpec, type UpdateOptions } from "facetry";
-import { diagram, type DiagramStyle, type DiagramTheme } from "facetry/diagrams";
+import { diagram, type Block, type DiagramStyle, type DiagramTheme } from "facetry/diagrams";
 
 // The same files the Rust snapshot tests and the golden-image test use.
 const modules = import.meta.glob<ChartSpec>("../../specs/*.json", { eager: true, import: "default" });
@@ -15,6 +15,13 @@ const icons = Object.fromEntries(
   Object.entries(
     import.meta.glob<string>("../../diagrams/*/icons/*.svg", { eager: true, query: "?raw", import: "default" }),
   ).map(([path, svg]) => [path.replace(/^.*\/(.+)\.svg$/, "$1"), svg]),
+);
+// Blocks of the user's own (examples/diagrams/*/blocks/<name>.json), passed likewise as
+// `blocks`, so `@{ shape: "<name>" }` can use them (in the schematic and isometric styles).
+const blocks = Object.fromEntries(
+  Object.entries(import.meta.glob<Block>("../../diagrams/*/blocks/*.json", { eager: true, import: "default" })).map(
+    ([path, block]) => [path.replace(/^.*\/(.+)\.json$/, "$1"), block],
+  ),
 );
 type Example = ChartSpec | string;
 const examples = new Map<string, Example>([
@@ -40,6 +47,7 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
         theme: themeSelect.value as DiagramTheme,
         flow: flowBox.checked,
         icons,
+        blocks,
       })
     : Promise.resolve(example);
 

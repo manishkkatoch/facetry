@@ -16,13 +16,14 @@
  */
 // Types only: nothing from the chart modules is loaded by this entry point (`run` imports the
 // chart module when it is called).
-import type { ChartSpec, DiagramStyle, DiagramTheme } from "../wasm/facetry_wasm.js";
+import type { Block, ChartSpec, DiagramStyle, DiagramTheme } from "../wasm/facetry_wasm.js";
 import type { Chart, ChartOptions } from "./chart.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
 import { iconParts, type IconParts, type IconSource } from "./icons.js";
 import { iconPackNames, packIcons, registerIconPacks, type IconPack } from "./iconPacks.js";
 
+export type { Block, BlockPart } from "../wasm/facetry_wasm.js";
 export type { DiagramIssue, DiagramStyle, DiagramTheme, IconSource };
 export type { FillRule, IconFillPath, IconParts, IconPath } from "./icons.js";
 export { iconFromSvg } from "./icons.js";
@@ -55,6 +56,15 @@ export interface DiagramOptions {
    * way, and one it sets `animate: false` stays still. See `Chart.flow` to stop and start them.
    */
   flow?: boolean | "fast" | "slow";
+  /**
+   * Blocks of your own, by name, for `@{ shape: "<name>" }` in the Mermaid text: models the
+   * schematic and isometric styles draw in place of their equipment and pedestals (the other
+   * styles draw the node as a rectangle). Each is a list of parts, footprints raised between
+   * two heights and fitted to the node's box; see the README. They win over blocks of the same
+   * name from {@link diagram.registerBlocks}. Only the blocks the diagram uses go into the spec,
+   * where `Chart.create` checks them.
+   */
+  blocks?: Record<string, Block>;
   /**
    * Isometric style only: lay a card on the floor beside each node, alternating sides from
    * rank to rank. The card shows the node's label (its first line as the title, the rest as
@@ -122,6 +132,9 @@ function showError(element: HTMLElement, error: FacetryError): void {
 
 type Glue = typeof import("../wasm/facetry_diagrams.js");
 
+/** Blocks registered for the page (see `diagram.registerBlocks`). */
+const registeredBlocks = new Map<string, Block>();
+
 let loading: Promise<Glue> | undefined;
 
 /** Fetches and instantiates the diagrams module once per page. */
@@ -160,6 +173,37 @@ export const diagram = {
   },
 
   /**
+   * Registers blocks for every diagram on the page: `@{ shape: "<name>" }` then draws block
+   * `<name>` in the schematic and isometric styles. A name already registered is replaced;
+   * names must be letters, digits, `-` or `_`. Blocks given to a call in `blocks` win.
+   *
+   * ```ts
+   * diagram.registerBlocks({
+   *   pump: { parts: [
+   *     { name: "base", from: 0, to: 0.6, color: "frame" },
+   *     { name: "casing", shape: "circle", size: [0.7, 0.7], from: 0.6, to: 2.2, color: "steel" },
+   *   ] },
+   * });
+   * ```
+   */
+  registerBlocks(blocks: Record<string, Block>): void {
+    for (const [name, block] of Object.entries(blocks)) {
+      if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+        throw new FacetryError(
+          "invalid-options",
+          `block name ${JSON.stringify(name)} must be letters, digits, \`-\` or \`_\``,
+        );
+      }
+      registeredBlocks.set(name, block);
+    }
+  },
+
+  /** The names of the registered blocks. */
+  blockNames(): string[] {
+    return [...registeredBlocks.keys()];
+  },
+
+  /**
    * Parses Mermaid text and lays it out in `options.style`. Supported: `flowchart` (also
    * written `graph`), with `classDef`, `class`, `:::` and `style` for colours; see
    * the README for the exact subset. Rejects with a `FacetryError` whose `code` is
@@ -177,6 +221,7 @@ export const diagram = {
     const icons = Object.entries({ ...fromPacks, ...given }).map(
       ([name, source]): [string, IconParts] => [name, iconParts(name, source)],
     );
+    const blocks = { ...Object.fromEntries(registeredBlocks), ...(options.blocks ?? {}) };
     const glue = await load();
     try {
       const json = glue.layoutMermaid(
@@ -191,8 +236,15 @@ export const diagram = {
         icons.flatMap(([, icon]) => icon.fill.map((f) => f.d)),
         new Uint8Array(icons.flatMap(([, icon]) => icon.fill.map((f) => (f.fillRule === "evenodd" ? 1 : 0)))),
         new Float64Array(icons.flatMap(([, icon]) => icon.viewBox ?? [NaN, NaN, NaN, NaN])),
+        Object.keys(blocks),
       );
-      return JSON.parse(json) as ChartSpec;
+      const spec = JSON.parse(json) as ChartSpec;
+      // The blocks the nodes name travel with the diagram (the module only knew their names).
+      const used = new Set(spec.diagram?.nodes.flatMap((n) => (n.block ? [n.block] : [])));
+      if (spec.diagram && used.size > 0) {
+        spec.diagram.blocks = Object.fromEntries([...used].map((name) => [name, blocks[name]!]));
+      }
+      return spec;
     } catch (e) {
       throw FacetryError.from(e);
     }
