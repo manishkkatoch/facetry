@@ -732,9 +732,25 @@ impl ChartSpec {
 
 // --- the scene --------------------------------------------------------------------------------
 
-/// Builds the scene of `spec.diagram` (an empty scene if there is none). Like the chart
-/// builders it is pure and lenient: an edge whose nodes are missing is skipped.
+/// Builds the scene of `spec.diagram` (an empty scene if there is none), with its build-in
+/// schedule (see [`Scene3d::built_at`]). Like the chart builders it is pure and lenient: an
+/// edge whose nodes are missing is skipped.
 pub fn build_diagram_3d(
+    spec: &ChartSpec,
+    viewport_px: (u32, u32),
+    dpr: f32,
+    measure: &dyn TextMeasure,
+    theme: &Theme,
+) -> Scene3d {
+    let mut scene = styled_scene(spec, viewport_px, dpr, measure, theme);
+    if let Some(diagram) = &spec.diagram {
+        scene.build = crate::diagram_build::schedule(diagram);
+    }
+    scene
+}
+
+/// The scene of `spec.diagram` in its style.
+fn styled_scene(
     spec: &ChartSpec,
     viewport_px: (u32, u32),
     dpr: f32,

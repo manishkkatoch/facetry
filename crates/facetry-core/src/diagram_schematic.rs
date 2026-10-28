@@ -292,6 +292,7 @@ fn push_node(
     push_shadow_with(
         scene,
         plan,
+        &node.id,
         &shadow,
         SHADOW_OFFSET,
         SHADOW_BLUR,

@@ -9,6 +9,7 @@ mod build_arc;
 mod build_arc3d;
 mod color;
 pub mod diagram;
+mod diagram_build;
 mod diagram_glossy;
 mod diagram_groups;
 mod diagram_hops;

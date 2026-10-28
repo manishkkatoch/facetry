@@ -135,6 +135,21 @@ algorithm is better in places but is EPL-licensed and much larger. In 3D, height
 structure: each subgraph is a platform raised or inset relative to its parent, and where two
 edges cross in the plan, one arcs over the other so they never intersect visually.
 
+### Build-in (D5)
+
+`build_diagram_3d` adds a schedule to a diagram's scene (`Scene3d.build`, one `BuildStep` per
+node, edge and group: an owner key, a start, a duration, and whether it rises or draws out).
+Ranks come from a breadth-first search along the edges from the nodes nothing leads to (then
+from any node a cycle left unreached); an edge to a group counts from the group's nodes. A node
+of rank `r` starts at `r * (rise / 2 + draw * 0.8)`, its edges halfway up its rise, and a group a
+little before its first node; a schedule longer than 3.2 s is scaled down. `Scene3d::built_at(ms)`
+is the picture at a time: every mark belongs to the owner its key starts with, solids, rims,
+printed text, icons, shadows and signs of a rising owner scale up from the floor (text and
+shadows fading in), an edge's bands and lines are cut to the drawn share of its whole length,
+its head, label and signs grow over the last 30 % of its drawing, and its moving marks appear
+once it is drawn. The chart plays it as a transition of its own kind (`animateIn` from an empty
+canvas onto a diagram), uploading the scene at each frame's time; picking uses the whole scene.
+
 ### Flow along edges (D5)
 
 An animated edge (`animation: "fast" | "slow"` in the spec) gets a `FlowMark` in the scene: its
@@ -293,7 +308,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 | **D2** (done) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics), schematic signs that turn to the camera, edges arcing over crossings, `diagram.run()` (every `<pre class="mermaid">` on a page, each block's style by `data-style`, failures shown in place). labels that follow the zoom in the flat style, themes |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
-| **D5** (started) | Done: flow along edges (`animation` per edge, Mermaid's edge ids with `animate`/`animation`, `flow` for every edge; marks per style moving along the paths, placed by the renderer each frame; reduced motion and off-screen canvases hold them). Next: animation controller, sequence playback, build-in |
+| **D5** (started) | Done: build-in (`animateIn`: groups, then nodes rising rank by rank, edges drawing out), flow along edges (`animation` per edge, Mermaid's edge ids with `animate`/`animation`, `flow` for every edge; marks per style moving along the paths, placed by the renderer each frame; reduced motion and off-screen canvases hold them). Next: animation controller, sequence playback |
 
 Each milestone reports the size of both core modules and of the add-on, as `docs/wasm-size.md`
 does for charts.

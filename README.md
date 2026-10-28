@@ -429,7 +429,8 @@ const chart = await Chart.create(canvas, spec, { animateIn: true });       // an
 - **Interruption.** An update (or legend click) that arrives mid-transition starts from the
   picture as it is *at that moment*: what is on screen becomes the new "from", nothing jumps. A
   bar that was shrinking away and is in the new data again simply grows back from where it is.
-- **Initial render** does not animate unless you ask (`animateIn`: everything enters).
+- **Initial render** does not animate unless you ask (`animateIn`: everything enters; a
+  diagram builds itself in, see "Build-in" below).
 - **Reduced motion.** If `matchMedia("(prefers-reduced-motion: reduce)")` matches, every
   transition and camera tween is a jump, and if the viewer turns the setting on while one is
   running it ends at once.
@@ -765,6 +766,15 @@ glossy style, how its edges are routed):
   colour is used if it reads on the white sign. Signs of nodes that stand close together can
   cover each other in the starting view (orbiting separates them).
 
+**Build-in.** `Chart.create(canvas, spec, { animateIn: true })` on a diagram (or `diagram.run({
+chart: { animateIn: true } })`) has it build itself in, in the order things flow: group bases
+come up first, then the nodes rise rank by rank from the ones nothing leads to (breadth first
+along the edges), each edge drawing itself out from its tail toward the node it leads to, its
+head, label and moving marks appearing as it arrives, and the next node rising as the edge
+reaches it. Each node takes 420 ms and each edge 380 ms; a deep diagram is sped up to finish
+within 3.2 s. A spec with `transition: false`, or a viewer who asks for reduced motion, gets the
+whole diagram at once. The playground shows it with `?animateIn=1`.
+
 **Flow.** Animated edges show which way things move: marks travel along them from tail to
 head (both ways on a two-headed edge), in every style in its own manner: beads on the flat
 style's lines, light pulses gliding on glossy arrows, the chevrons of isometric roads and the
@@ -1033,7 +1043,8 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   crossing edges arc over each other, and `diagram-{flat,glossy,isometric,schematic}-dark-34-group-edges`,
   `diagram-flat-neutral-34-group-edges` and `diagram-isometric-forest-34-group-edges` in the
   themes, and `diagram-glossy-flow-01-decision` and `diagram-schematic-flow-01-decision`, their
-  edges flowing, a quarter second in): Playwright screenshots these examples (3D ones at their
+  edges flowing, a quarter second in, and `diagram-glossy-build-34-group-edges`, 0.9 s into its
+  build-in): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -1065,9 +1076,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 956,614 B (934 KiB) | 419,266 B (409 KiB) | 342,267 B (334 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,563,445 B (2503 KiB) | 1,062,192 B (1037 KiB) | 836,790 B (817 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 267,259 B (261 KiB) | 115,651 B (113 KiB) | 98,612 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 968,408 B (946 KiB) | 424,240 B (414 KiB) | 345,633 B (338 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,575,295 B (2515 KiB) | 1,066,791 B (1042 KiB) | 840,131 B (820 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 267,227 B (261 KiB) | 115,656 B (113 KiB) | 98,611 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1107,7 +1118,8 @@ Printed flat-style labels and the four themes then added 2,855 B gzip to the Web
 2,894 to the WebGL2 one (a palette per theme), and 1,418 to the add-on (reading the theme from
 directives and front matter). Flow along edges added 3,768 B gzip to the WebGPU module, 5,119 to
 the WebGL2 one (the marks, their pipeline and the clock) and 1,659 to the add-on (edge ids and
-their `@{ }`).
+their `@{ }`). The build-in then added 4,974 B gzip to the WebGPU module and 4,599 to the WebGL2
+one (the schedule and the scene at a time; lists rather than hash maps saved 1.8 KB).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

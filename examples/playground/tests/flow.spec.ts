@@ -37,10 +37,18 @@ test.describe("with motion", () => {
     expect(await page.evaluate(() => (window as any).facetryChart.flow)).toBe(true);
     // Switched off: the frames stop, and the marks stay where they were.
     await page.evaluate(() => ((window as any).facetryChart.flow = false));
-    await page.waitForTimeout(200);
+    // A frame already asked for may still come (late, under load): wait for the count to hold.
+    await expect
+      .poll(
+        async () => {
+          const before = await renderCount(page);
+          await page.waitForTimeout(400);
+          return (await renderCount(page)) - before;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(0);
     const held = await renderCount(page);
-    await page.waitForTimeout(500);
-    expect(await renderCount(page)).toBe(held);
     // And on again.
     await page.evaluate(() => ((window as any).facetryChart.flow = true));
     await expect.poll(() => renderCount(page), { timeout: 10_000 }).toBeGreaterThan(held + 3);
