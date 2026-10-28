@@ -38,4 +38,5 @@ expression: report
 35-pipeline-stages         nodes 10 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 7 | edge length 933 size 1157 x 219 | groups 3 group overlaps 0 edges through groups 0
 36-org                     nodes 8 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 7 | edge length 1376 size 549 x 564 | groups 3 group overlaps 0 edges through groups 0
 37-flow                    nodes 6 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 2 | edge length 286 size 660 x 124
-TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 206
+39-link-styles             nodes 6 edges 6 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 2 | edge length 500 size 842 x 130
+TOTAL crossings 9 edge-node overlaps 0 label overlaps 0 bends 208

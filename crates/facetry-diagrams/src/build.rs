@@ -473,6 +473,9 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             head: (e.head != EdgeEnd::Arrow).then_some(e.head),
             tail: (e.tail != EdgeEnd::None).then_some(e.tail),
             animation: e.animation.unwrap_or(options.flow),
+            color: e.style.stroke.clone(),
+            width: e.style.stroke_width,
+            label_color: e.style.color.clone(),
         });
     }
 
@@ -578,6 +581,8 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             font_size: Some(FONT),
             style: options.style,
             theme: chart.theme.unwrap_or(options.theme),
+            // The text's colours; the caller lays its own palette under them.
+            palette: chart.palette.clone(),
             // Only the icons the nodes use: a whole icon set may have been given.
             icons: options
                 .icons

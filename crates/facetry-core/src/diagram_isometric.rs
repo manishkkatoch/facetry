@@ -581,7 +581,11 @@ fn push_edge(
     let width = match edge.stroke {
         EdgeStroke::Thick => THICK_ROAD_WIDTH,
         _ => ROAD_WIDTH,
-    };
+    } * edge.width_scale();
+    // An edge's own colour (`linkStyle`) paints its chevrons and end marks, and tints its road.
+    let own = parse_color(&edge.color);
+    let marks = own.unwrap_or(plan.look.chevron);
+    let surface = own.map_or(plan.look.road, |c| plan.look.tint(c));
     let path = hops.densify(&edge.points);
     let runs = match edge.stroke {
         EdgeStroke::Dotted => dashes(&path, DASH, DASH_GAP),
@@ -590,6 +594,7 @@ fn push_edge(
     for (k, run) in runs.iter().enumerate() {
         if run.len() >= 2 {
             let mut band = road(plan, format!("{key}/{k}"), run, width);
+            band.color = surface;
             band.lift = hops.lift(plan, run, HOP_HEIGHT);
             scene.ribbons.push(band);
         }
@@ -615,7 +620,7 @@ fn push_edge(
             base: 0.0,
             top: plan.len(CHEVRON_HEIGHT),
             smooth: false,
-            color: plan.look.chevron,
+            color: marks,
             gloss: 0.0,
             every: CHEVRON_EVERY,
         },
@@ -628,14 +633,7 @@ fn push_edge(
         for k in 0..count {
             let (at, dir) = along(&path, start + k as f64 * CHEVRON_EVERY);
             let dir = if forward { dir } else { [-dir[0], -dir[1]] };
-            let mut mark = chevron(
-                plan,
-                format!("{key}/chevron/{k}"),
-                at,
-                dir,
-                1.0,
-                plan.look.chevron,
-            );
+            let mut mark = chevron(plan, format!("{key}/chevron/{k}"), at, dir, 1.0, marks);
             // Riding up a bridge.
             let up = plan.len(HOP_HEIGHT * hops.rise(at)) as f32;
             (mark.base, mark.top) = (mark.base + up, mark.top + up);
@@ -654,7 +652,7 @@ fn push_edge(
         }
         let (at, dir) = along(&path, distance);
         let dir = if at_head { dir } else { [-dir[0], -dir[1]] };
-        let dark = darken(plan.look.chevron, 0.35);
+        let dark = darken(marks, 0.35);
         let name = if at_head { "head" } else { "tail" };
         match end {
             EdgeEnd::None => {}
@@ -701,7 +699,7 @@ fn push_edge(
             plan.len(ROAD_HEIGHT),
             shadow,
             measure,
-            theme.text,
+            parse_color(&edge.label_color).unwrap_or(theme.text),
         );
     }
 }

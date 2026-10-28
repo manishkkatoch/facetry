@@ -1193,3 +1193,118 @@ fn block_mistakes_are_reported_where_they_are() {
     let got = issues(&json.replace(r#""from": 0, "to": 0.5"#, r#""from": 0, "to": 50"#));
     assert_eq!(got[0].path, "/diagram/blocks/pump/parts/0/to");
 }
+
+#[test]
+fn an_edge_s_own_colour_and_width_draw_in_every_style() {
+    let json = |style: &str, extra: &str| {
+        broken(
+            r#""label": "go" }"#,
+            &format!(r##""label": "go"{extra} }}"##),
+        )
+        .replace(
+            r#""diagram": {"#,
+            &format!(r#""diagram": {{ "style": "{style}","#),
+        )
+    };
+    let red = facetry_core::Color::from_hex("#e5484d").unwrap();
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let plain = build_scene_3d(
+            &spec(&json(style, "")),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        );
+        let s = spec(&json(
+            style,
+            r##", "color": "#e5484d", "width": 3, "labelColor": "#123456""##,
+        ));
+        assert_eq!(validate(&s), vec![], "{style}");
+        let styled = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+        if style == "flat" {
+            let line = |s: &Scene3d| {
+                s.polylines
+                    .iter()
+                    .find(|p| p.key == "edge0")
+                    .unwrap()
+                    .clone()
+            };
+            assert_eq!(line(&styled).color, red);
+            assert_eq!(line(&styled).width_px, 2.0 * line(&plain).width_px);
+        } else {
+            let band = |s: &Scene3d| {
+                s.ribbons
+                    .iter()
+                    .find(|r| r.key == "edge0/0")
+                    .unwrap()
+                    .clone()
+            };
+            assert!(
+                (band(&styled).width - 2.0 * band(&plain).width).abs() < 1e-5,
+                "{style}"
+            );
+            assert_ne!(band(&styled).color, band(&plain).color, "{style}");
+        }
+        // The head is the edge's colour too (or a shade of it); the schematic style's heads
+        // are flow marks, green whatever the pipe.
+        if style == "schematic" {
+            continue;
+        }
+        let head = styled
+            .decor
+            .iter()
+            .find(|p| p.key == "edge0/head")
+            .expect(style);
+        assert_ne!(
+            head.color,
+            plain
+                .decor
+                .iter()
+                .find(|p| p.key == "edge0/head")
+                .unwrap()
+                .color,
+            "{style}"
+        );
+    }
+    let got = issues(&json("flat", r#", "width": 0"#));
+    assert_eq!(got[0].path, "/diagram/edges/0/width");
+    let got = issues(&json("flat", r#", "color": "red""#));
+    assert_eq!(got[0].path, "/diagram/edges/0/color");
+}
+
+#[test]
+fn a_palette_recolours_its_roles_over_the_theme_in_every_style() {
+    let json = |style: &str, palette: &str| {
+        GOOD.replace(
+            r#""diagram": {"#,
+            &format!(r#""diagram": {{ "style": "{style}", "palette": {{ {palette} }},"#),
+        )
+    };
+    let page = facetry_core::Color::from_hex("#102030").unwrap();
+    let red = facetry_core::Color::from_hex("#e5484d").unwrap();
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let plain = build_scene_3d(
+            &spec(&json(style, "")),
+            (800, 500),
+            1.0,
+            FontMetrics::inter(),
+        );
+        let s = spec(&json(
+            style,
+            r##""page": "#102030", "edge": "#e5484d", "node": "#ffeeaa", "accents": ["#3e8ef7"]"##,
+        ));
+        assert_eq!(validate(&s), vec![], "{style}");
+        let styled = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+        assert_eq!(styled.background, page, "{style}");
+        if style == "flat" {
+            let line = styled.polylines.iter().find(|p| p.key == "edge0").unwrap();
+            assert_eq!(line.color, red);
+        } else {
+            let band = |s: &Scene3d| s.ribbons.iter().find(|r| r.key == "edge0/0").unwrap().color;
+            assert_ne!(band(&styled), band(&plain), "{style}");
+        }
+    }
+    let got = issues(&json("flat", r#""edge": "red""#));
+    assert_eq!(got[0].path, "/diagram/palette/edge");
+    let got = issues(&json("flat", r##""accents": ["#ffffff", "nope"]"##));
+    assert_eq!(got[0].path, "/diagram/palette/accents/1");
+}

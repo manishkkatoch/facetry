@@ -633,6 +633,9 @@ fn push_edge(
     } else {
         (PIPE_BASE, PIPE_TOP, PIPE_WIDTH, plan.look.pipe)
     };
+    // An edge's own colour and width (`linkStyle`) paint and size its pipe or conveyor.
+    let color = parse_color(&edge.color).unwrap_or(color);
+    let width = width * edge.width_scale();
     let (base, top) = (up(plan, base), up(plan, top));
     let path = hops.densify(&edge.points);
     let runs = match edge.stroke {
@@ -809,7 +812,9 @@ fn push_edge(
             top,
             up(plan, TAG_LIFT),
             TAG_SCALE,
-            plan.look.ink,
+            parse_color(&edge.label_color)
+                .filter(|c| c.contrast(plan.look.sign) >= 3.0)
+                .unwrap_or(plan.look.ink),
             s,
             measure,
         );
