@@ -21,10 +21,12 @@ import type { Chart, ChartOptions } from "./chart.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
 import { iconParts, type IconParts, type IconSource } from "./icons.js";
+import { iconPackNames, packIcons, registerIconPacks, type IconPack } from "./iconPacks.js";
 
 export type { DiagramIssue, DiagramStyle, DiagramTheme, IconSource };
 export type { FillRule, IconFillPath, IconParts, IconPath } from "./icons.js";
 export { iconFromSvg } from "./icons.js";
+export type { IconifyIcon, IconifyJSON, IconPack, IconPackIcons } from "./iconPacks.js";
 
 export interface DiagramOptions {
   /**
@@ -134,16 +136,45 @@ function load(): Promise<Glue> {
 
 export const diagram = {
   /**
+   * Registers icon sets for every diagram on the page, as Mermaid's `registerIconPacks` does:
+   * `@{ icon: "<pack>:<icon>" }` then draws icon `<icon>` of pack `<pack>`, in any style. A pack
+   * holds an Iconify JSON set (an `@iconify-json/*` package's `icons.json`, aliases followed)
+   * or icons by name as `DiagramOptions.icons` takes them; or has a `loader` that fetches them
+   * the first time a diagram names one of its icons. A pack of a name already registered
+   * replaces it. `options.icons` given to a call win over pack icons of the same name.
+   *
+   * ```ts
+   * diagram.registerIconPacks([
+   *   { name: "lucide", icons: lucideJson },
+   *   { name: "logos", loader: () => fetch(url).then((r) => r.json()) },
+   * ]);
+   * ```
+   */
+  registerIconPacks(packs: IconPack[]): void {
+    registerIconPacks(packs);
+  },
+
+  /** The names of the registered icon packs. */
+  iconPacks(): string[] {
+    return iconPackNames();
+  },
+
+  /**
    * Parses Mermaid text and lays it out in `options.style`. Supported: `flowchart` (also
    * written `graph`), with `classDef`, `class`, `:::` and `style` for colours; see
    * the README for the exact subset. Rejects with a `FacetryError` whose `code` is
    * `"invalid-diagram"` and whose `diagramIssues` lists every problem (line, column, the
    * source line and a message), including Mermaid features that are not supported: a diagram
    * is never drawn with parts missing. A broken icon in `options.icons` rejects with code
-   * `"invalid-options"`, naming the icon and what is wrong with it.
+   * `"invalid-options"`, naming the icon and what is wrong with it; so does an icon missing from
+   * the registered pack its name points into, or a pack that fails to load. Only the icons the
+   * diagram uses go into the spec.
    */
   async fromMermaid(source: string, options: DiagramOptions = {}): Promise<ChartSpec> {
-    const icons = Object.entries(options.icons ?? {}).map(
+    // Icons of registered packs the text names (`pack:icon`); `options.icons` win over them.
+    const given = options.icons ?? {};
+    const fromPacks = await packIcons(source, given);
+    const icons = Object.entries({ ...fromPacks, ...given }).map(
       ([name, source]): [string, IconParts] => [name, iconParts(name, source)],
     );
     const glue = await load();

@@ -215,13 +215,23 @@ fn the_users_icons_travel_in_the_spec_and_draw() {
         icons,
         ..Options::default()
     };
-    let d = from_mermaid_with("flowchart LR\n  a[A]@{ icon: pump } --> b", &options).unwrap();
+    let d = from_mermaid_with(
+        "flowchart LR\n  a[A]@{ icon: pump } --> b@{ icon: \"a b/c\" }",
+        &options,
+    )
+    .unwrap();
     let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
     assert!(facetry_core::validate(&spec).is_empty());
     let diagram = spec.diagram.unwrap();
     // Unchanged, the viewBox exactly (not rounded like layout numbers), awkward names too.
     assert_eq!(diagram.icons, options.icons);
     assert_eq!(diagram.nodes[0].icon.as_deref(), Some("pump"));
+    // Only the icons the diagram uses travel: a whole icon set given leaves the rest out.
+    let d = from_mermaid_with("flowchart LR\n  a[A]@{ icon: pump } --> b", &options).unwrap();
+    let names: Vec<String> = d.spec.icons.iter().map(|(n, _)| n.clone()).collect();
+    assert_eq!(names, ["pump"]);
+    let d = from_mermaid_with("flowchart LR\n  a --> b", &options).unwrap();
+    assert!(d.spec.icons.is_empty());
 }
 
 #[test]

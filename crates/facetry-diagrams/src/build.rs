@@ -28,7 +28,7 @@ pub struct Options {
     /// first line as the title, the rest as text) and icon; the node then shows its number.
     pub cards: bool,
     /// Icons of the user's own, by name, for `@{ icon: "name" }` besides the built-in ones;
-    /// they go into the spec with the diagram.
+    /// those the diagram uses go into the spec with it.
     pub icons: Vec<(String, CustomIcon)>,
 }
 
@@ -574,7 +574,13 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             font_size: Some(FONT),
             style: options.style,
             theme: chart.theme.unwrap_or(options.theme),
-            icons: options.icons.clone(),
+            // Only the icons the nodes use: a whole icon set may have been given.
+            icons: options
+                .icons
+                .iter()
+                .filter(|(name, _)| chart.nodes.iter().any(|n| n.icon.as_ref() == Some(name)))
+                .cloned()
+                .collect(),
             groups,
         },
         control,

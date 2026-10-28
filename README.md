@@ -691,8 +691,8 @@ left out, and `transform`, `<use>`, `<text>` and `<image>` are refused (flatten 
 e.g. with SVGO). Path data takes every SVG command, curves and arcs included. Both kinds of
 icon set look as designed: line icons (Lucide, Tabler, Feather, ...) as lines, filled ones
 filled, holes and both fill rules included; lines and fills are in the style's ink, as the
-built-in icons are, whatever colours the SVG names. The icons travel inside the returned spec
-(`diagram.icons`: `{ stroke?, fill?: [{ d, fillRule? }], viewBox? }`, each filled shape kept
+built-in icons are, whatever colours the SVG names. The icons the diagram uses travel inside
+the returned spec, and only those, so passing a whole icon set costs nothing (`diagram.icons`: `{ stroke?, fill?: [{ d, fillRule? }], viewBox? }`, each filled shape kept
 apart as SVG fills each element on its own), so it still draws on its own; `iconFromSvg(markup)`
 from `facetry/diagrams` does the conversion for a spec written by hand. A broken icon rejects
 with `code: "invalid-options"`, naming the icon and where its path goes wrong; an icon over
@@ -704,6 +704,32 @@ the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-i
 - animated edges, as in Mermaid 11: an edge id in front of the link (`a e1@--> b`), then
   `e1@{ animate: true }` or `e1@{ animation: fast }` (or `slow`); `animate: false` keeps an
   edge still. See "Flow" below.
+
+**Icon packs.** Register icon sets once for the page, as Mermaid's `registerIconPacks` does,
+and name their icons `pack:icon` in any diagram, in every style (on node tops in the flat and
+glossy styles, on the pedestal's inset or the floor card in the isometric style, on the sign in
+the schematic one):
+
+```ts
+import lucide from "@iconify-json/lucide/icons.json";
+
+diagram.registerIconPacks([
+  { name: "lucide", icons: lucide },                    // an Iconify JSON set, aliases followed
+  { name: "logos", loader: () => fetch("https://unpkg.com/@iconify-json/logos/icons.json").then((r) => r.json()) },
+  { name: "plant", icons: { pump: "<svg ...>...</svg>", valve: "M4 6 L20 18 M4 18 L20 6" } }, // like `icons`
+]);
+await diagram.fromMermaid('flowchart LR\n  a[API]@{ icon: "lucide:server" } --> b[(DB)]@{ icon: "logos:postgresql" }');
+```
+
+A pack holds an Iconify JSON set (what `@iconify-json/*` packages ship as `icons.json`; each
+icon's `body` is read with `iconFromSvg` in its box) or icons by name as `icons` takes them, or has
+a `loader` that runs the first time a diagram names one of its icons (once; a failed load is tried
+again next time). Icons given to a call in `icons` win over pack icons of the same name; a name
+whose prefix is no registered pack is looked up among the built-in icons as before. An icon
+missing from its pack, a rotated or flipped Iconify icon, and a pack that fails to load reject
+with `invalid-options`, naming the icon or the pack. Icons are drawn in the style's ink, so
+multicolour sets (brand logos) come out in one colour. `diagram.iconPacks()` lists the
+registered packs; registering a name again replaces its pack.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (other style properties such as `stroke-dasharray` or `font-size`, `click`,
@@ -1078,7 +1104,7 @@ The package ships two chart wasm modules built from the same source, plus the di
 |---|---:|---:|---:|---|
 | `facetry_wasm` (WebGPU only) | 968,408 B (946 KiB) | 424,240 B (414 KiB) | 345,633 B (338 KiB) | always, where WebGPU works |
 | `facetry_wasm_gl` (WebGL2 only) | 2,575,295 B (2515 KiB) | 1,066,791 B (1042 KiB) | 840,131 B (820 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 267,227 B (261 KiB) | 115,656 B (113 KiB) | 98,611 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_diagrams` (Mermaid add-on) | 267,623 B (261 KiB) | 115,793 B (113 KiB) | 98,642 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
