@@ -46,6 +46,14 @@ export interface DiagramOptions {
    */
   theme?: DiagramTheme;
   /**
+   * Animate every edge: marks move along it the way it runs (beads on the flat style's lines,
+   * light pulses on glossy arrows, chevrons driving along isometric roads, flow marks along
+   * schematic pipes). `true` or `"fast"`, or `"slow"`; default `false`. Edges the Mermaid text
+   * animates itself (`a e1@--> b` and `e1@{ animate: true }` or `animation: slow`) move either
+   * way, and one it sets `animate: false` stays still. See `Chart.flow` to stop and start them.
+   */
+  flow?: boolean | "fast" | "slow";
+  /**
    * Isometric style only: lay a card on the floor beside each node, alternating sides from
    * rank to rank. The card shows the node's label (its first line as the title, the rest as
    * wrapped text) and its icon; the node itself then shows its number. The layout makes room
@@ -145,6 +153,7 @@ export const diagram = {
         options.style,
         options.cards,
         options.theme,
+        options.flow === true ? "fast" : options.flow === false ? undefined : options.flow,
         icons.map(([name]) => name),
         icons.map(([, icon]) => icon.stroke ?? ""),
         new Uint32Array(icons.map(([, icon]) => icon.fill.length)),
@@ -162,8 +171,8 @@ export const diagram = {
    * Draws every diagram on the page, as `mermaid.run()` does: the Mermaid text of each
    * `<pre class="mermaid">` (or `options.querySelector`, or `options.nodes`) is replaced by a
    * canvas drawing it, as wide as the element and `options.height` tall. An element can choose
-   * its own style with `data-style` (`"glossy"`, ...), theme with `data-theme` and cards with
-   * `data-cards`. Elements
+   * its own style with `data-style` (`"glossy"`, ...), theme with `data-theme`, cards with
+   * `data-cards` and moving edges with `data-flow` (`"slow"`, `"fast"`, or present for fast). Elements
    * already drawn (`data-processed`) are skipped, so `run` can be called again after adding
    * more. A diagram that fails shows its message in its place; the others are still drawn, then
    * `run` rejects with the first failure, a `FacetryError` (with `options.suppressErrors` it
@@ -184,9 +193,16 @@ export const diagram = {
       const source = dedent(element.textContent ?? "");
       const style = (element.dataset.style as DiagramStyle | undefined) ?? options.style;
       const theme = (element.dataset.theme as DiagramTheme | undefined) ?? options.theme;
+      const flowAttr = element.dataset.flow;
+      const flow =
+        flowAttr === undefined
+          ? options.flow
+          : flowAttr === "slow" || flowAttr === "fast"
+            ? flowAttr
+            : flowAttr !== "false";
       const cards = element.dataset.cards !== undefined ? element.dataset.cards !== "false" : options.cards;
       try {
-        const spec = await diagram.fromMermaid(source, { ...options, style, theme, cards });
+        const spec = await diagram.fromMermaid(source, { ...options, style, theme, cards, flow });
         const canvas = document.createElement("canvas");
         canvas.style.cssText = `display: block; width: 100%; height: ${options.height ?? "400px"}`;
         canvas.setAttribute("role", "img");

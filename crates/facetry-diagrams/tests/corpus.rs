@@ -13,12 +13,14 @@ use facetry_diagrams::{Options, build, flowchart, from_mermaid, from_mermaid_wit
 const GLOSSY: Options = Options {
     style: DiagramStyle::Glossy,
     theme: DiagramTheme::Default,
+    flow: None,
     cards: false,
     icons: Vec::new(),
 };
 const CARDS: Options = Options {
     style: DiagramStyle::Isometric,
     theme: DiagramTheme::Default,
+    flow: None,
     cards: true,
     icons: Vec::new(),
 };
@@ -245,4 +247,29 @@ fn a_theme_travels_in_the_spec_and_the_text_s_own_wins() {
     }
     let own = "%%{init: {'theme': 'forest'}}%%\nflowchart LR\n  a --> b";
     assert_eq!(theme(own, DiagramTheme::Dark), DiagramTheme::Forest);
+}
+
+#[test]
+fn flow_animates_every_edge_unless_the_text_says_otherwise() {
+    use facetry_core::spec::EdgeAnimation;
+    let animations = |source: &str, flow: Option<EdgeAnimation>| {
+        let options = Options {
+            flow,
+            ..Options::default()
+        };
+        let d = from_mermaid_with(source, &options).unwrap();
+        let spec = facetry_core::parse_spec_json(&d.to_json()).unwrap();
+        assert!(facetry_core::validate(&spec).is_empty());
+        let edges = spec.diagram.unwrap().edges;
+        edges.iter().map(|e| e.animation).collect::<Vec<_>>()
+    };
+    let source = "flowchart LR\n  a e1@--> b e2@--> c --> d\n  e1@{ animation: slow }\n  e2@{ animate: false }";
+    assert_eq!(
+        animations(source, None),
+        [Some(EdgeAnimation::Slow), None, None]
+    );
+    assert_eq!(
+        animations(source, Some(EdgeAnimation::Fast)),
+        [Some(EdgeAnimation::Slow), None, Some(EdgeAnimation::Fast)]
+    );
 }

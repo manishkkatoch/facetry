@@ -6,7 +6,7 @@ use facetry_core::diagram::{
 };
 use facetry_core::spec::{
     CustomIcon, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramGroup, DiagramNode, DiagramSpec,
-    DiagramStyle, DiagramTheme, EdgeEnd, NodeCard, NodeShape,
+    DiagramStyle, DiagramTheme, EdgeAnimation, EdgeEnd, NodeCard, NodeShape,
 };
 use facetry_font::FontMetrics;
 
@@ -22,6 +22,8 @@ pub struct Options {
     /// The colours, unless the text sets its own theme (a directive or front matter wins, as
     /// in Mermaid).
     pub theme: DiagramTheme,
+    /// Every edge moves at this pace, unless the text animates (or stills) it itself.
+    pub flow: Option<EdgeAnimation>,
     /// Isometric style only: a card on the floor beside each node, with the node's label (its
     /// first line as the title, the rest as text) and icon; the node then shows its number.
     pub cards: bool,
@@ -467,6 +469,7 @@ pub fn build(chart: &Flowchart, options: &Options) -> Built {
             stroke: e.stroke,
             head: (e.head != EdgeEnd::Arrow).then_some(e.head),
             tail: (e.tail != EdgeEnd::None).then_some(e.tail),
+            animation: e.animation.unwrap_or(options.flow),
         });
     }
 

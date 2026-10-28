@@ -118,6 +118,8 @@ struct Solid {
     signs: SlicePipeline,
     sign_lines: LinePipeline,
     sign_points: PointPipeline,
+    /// The marks moving along animated diagram edges (see `place_flows`).
+    flows: SlicePipeline,
 }
 
 /// A 2D value label that shows while its bar is hovered, colour already encoded.
@@ -216,6 +218,11 @@ pub struct Renderer {
     signs: Option<Scene3d>,
     printed: Vec<Glyph3Instance>,
     signs_at: Option<f32>,
+    /// 3D: the scene's flows (in a scene of their own), the flow clock (seconds), and the time
+    /// they were last placed for (`None`: not yet).
+    flows: Option<Scene3d>,
+    flow_time: f32,
+    flows_at: Option<f32>,
     /// `false` while the surface has zero area (hidden canvas); we cannot configure
     /// or draw to a 0x0 surface, so we wait for the next non-zero `resize`.
     drawable: bool,
@@ -347,6 +354,9 @@ impl Renderer {
             signs: None,
             printed: Vec::new(),
             signs_at: None,
+            flows: None,
+            flow_time: 0.0,
+            flows_at: None,
             box_size: None,
             camera: Camera::default(),
             label_plan: None,
@@ -713,6 +723,7 @@ impl Renderer {
                 signs: SlicePipeline::new(device, format, samples, &globals),
                 sign_lines: LinePipeline::new(device, format, samples, &globals),
                 sign_points: PointPipeline::new(device, format, samples, &globals),
+                flows: SlicePipeline::new(device, format, samples, &globals),
                 globals,
                 label_states,
             }
@@ -871,6 +882,17 @@ impl Renderer {
         }
         self.printed = printed;
         self.signs_at = None;
+        // The flows are placed for the clock when a frame is drawn.
+        self.flows = (!scene.flows.is_empty()).then(|| {
+            let mut flows = scene.clone_shell();
+            flows.flows = scene.flows.clone();
+            flows
+        });
+        if self.flows.is_none() {
+            let empty = scene.clone_shell();
+            solid.flows.set(&self.device, &self.queue, &empty, encode);
+        }
+        self.flows_at = None;
         // The legend: drawn after the 3D pass with the 2D rectangle and text pipelines (whose
         // buffers a 3D chart does not otherwise use).
         let mut legend_glyphs: Vec<GlyphInstance> = Vec::new();
@@ -1092,6 +1114,35 @@ impl Renderer {
         }
     }
 
+    /// Sets the clock of the marks moving along animated diagram edges, in seconds: the next
+    /// frame draws them where they are then. Cheap until a frame is drawn.
+    pub fn set_flow_time(&mut self, seconds: f32) {
+        self.flow_time = seconds;
+    }
+
+    /// Whether the scene has marks that move along its edges (so frames keep coming).
+    pub fn has_flows(&self) -> bool {
+        self.flows.is_some()
+    }
+
+    /// Places the moving marks for the flow clock, re-tessellating them only when it moved.
+    fn place_flows(&mut self) {
+        let (Some(flows), Some(solid)) = (&self.flows, &mut self.solid) else {
+            return;
+        };
+        if self.flows_at == Some(self.flow_time) {
+            return;
+        }
+        self.flows_at = Some(self.flow_time);
+        let format = self.config.format;
+        let marks = flows.flows_at(self.flow_time);
+        solid
+            .flows
+            .set(&self.device, &self.queue, &marks, move |c| {
+                encode_color(format, c)
+            });
+    }
+
     /// Turns the signs to face the camera, re-tessellating them (and re-laying out the printed
     /// text) only when its azimuth changed since they were last turned.
     fn turn_signs(&mut self) {
@@ -1131,6 +1182,7 @@ impl Renderer {
     /// was last computed for).
     fn write_frame_uniforms(&mut self, target: (u32, u32)) {
         self.turn_signs();
+        self.place_flows();
         let font = FontMetrics::inter();
         if let (Some(size), Some(solid)) = (self.box_size, &self.solid) {
             self.queue.write_buffer(
@@ -1231,6 +1283,7 @@ impl Renderer {
                 solid.boxes.draw(&mut pass);
                 solid.slices.draw(&mut pass);
                 solid.signs.draw(&mut pass);
+                solid.flows.draw(&mut pass);
                 solid.lines.draw(&mut pass, &self.quad);
                 // Line layers: the curtains first (translucent, under everything of the
                 // line), then the segments, then the round joins and the markers on top.

@@ -872,6 +872,29 @@ pub struct DiagramEdge {
     /// The end at `from`. Default: `"none"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub tail: Option<EdgeEnd>,
+    /// Marks moving along the edge the way it runs (Mermaid's `animate`/`animation`), at this
+    /// pace. Default: none, a still edge.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub animation: Option<EdgeAnimation>,
+}
+
+/// How fast marks move along an animated edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "lowercase"))]
+pub enum EdgeAnimation {
+    Fast,
+    Slow,
+}
+
+impl EdgeAnimation {
+    /// Layout units per second.
+    pub fn speed(self) -> f64 {
+        match self {
+            EdgeAnimation::Fast => 70.0,
+            EdgeAnimation::Slow => 28.0,
+        }
+    }
 }
 
 impl DiagramEdge {

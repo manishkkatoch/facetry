@@ -29,6 +29,7 @@ const examples = new Map<string, Example>([
 const styleSelect = document.querySelector<HTMLSelectElement>("#style")!;
 const cardsBox = document.querySelector<HTMLInputElement>("#cards")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme")!;
+const flowBox = document.querySelector<HTMLInputElement>("#flow")!;
 
 /** A spec as it is, or Mermaid text laid out by the diagrams add-on in the chosen style. */
 const toSpec = (example: Example): Promise<ChartSpec> =>
@@ -37,6 +38,7 @@ const toSpec = (example: Example): Promise<ChartSpec> =>
         style: styleSelect.value as DiagramStyle,
         cards: cardsBox.checked,
         theme: themeSelect.value as DiagramTheme,
+        flow: flowBox.checked,
         icons,
       })
     : Promise.resolve(example);
@@ -46,6 +48,8 @@ const params = new URLSearchParams(location.search);
 styleSelect.value = ["glossy", "isometric", "schematic"].includes(params.get("style") ?? "") ? params.get("style")! : "flat";
 // ?cards=1 lays a card beside each node (isometric style).
 cardsBox.checked = params.get("cards") === "1";
+// ?flow=1 animates every edge.
+flowBox.checked = params.get("flow") === "1";
 // ?theme=dark (or neutral, forest) colours Mermaid diagrams after that theme.
 themeSelect.value = ["neutral", "dark", "forest"].includes(params.get("theme") ?? "") ? params.get("theme")! : "default";
 // ?backend=webgl2 forces the fallback; ?backend=webgpu forces WebGPU.
@@ -190,7 +194,7 @@ select.addEventListener("change", () => {
 });
 
 // A new style or theme (or cards on or off) lays the Mermaid text in the editor out again.
-for (const control of [styleSelect, cardsBox, themeSelect]) {
+for (const control of [styleSelect, cardsBox, themeSelect, flowBox]) {
   control.addEventListener("change", () => {
     if (!textarea.value.trimStart().startsWith("{")) void apply(textarea.value);
   });

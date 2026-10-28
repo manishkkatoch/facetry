@@ -283,6 +283,96 @@ impl Sign {
     }
 }
 
+/// Copies of one small solid moving along a path, over and over, the way a diagram edge runs
+/// (its flow): `every` apart, `speed` world units a second, each shrinking to nothing near the
+/// path's ends so none pops in or out. Not a mark: never picked. See [`FlowMark::marks_at`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FlowMark {
+    pub key: String,
+    pub color: Color,
+    /// World points; a mark's heights are measured from the path's.
+    #[serde(serialize_with = "points3")]
+    pub path: Vec<[f32; 3]>,
+    #[serde(serialize_with = "w4")]
+    pub every: f32,
+    #[serde(serialize_with = "w4")]
+    pub speed: f32,
+    /// Where along the path (world units) the first mark is at time 0.
+    #[serde(serialize_with = "w4")]
+    pub phase: f32,
+    /// The solid's footprint, centred on its place: `[along, across]` world units, `along`
+    /// pointing the way it moves.
+    #[serde(serialize_with = "outline2")]
+    pub outline: Vec<[f32; 2]>,
+    #[serde(serialize_with = "w4")]
+    pub base: f32,
+    #[serde(serialize_with = "w4")]
+    pub top: f32,
+    pub smooth: bool,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub gloss: f32,
+}
+
+impl FlowMark {
+    /// The marks where they are `t` seconds in.
+    pub fn marks_at(&self, t: f32) -> Vec<PrismMark> {
+        let n = self.path.len();
+        if n < 2 || self.every <= 0.0 {
+            return Vec::new();
+        }
+        let flat = |i: usize| [self.path[i][0], self.path[i][2]];
+        let mut at = Vec::with_capacity(n);
+        let mut total = 0.0f32;
+        at.push(0.0);
+        for i in 1..n {
+            let ([ax, az], [bx, bz]) = (flat(i - 1), flat(i));
+            total += ((bx - ax).powi(2) + (bz - az).powi(2)).sqrt();
+            at.push(total);
+        }
+        // Each mark grows over this much of the path from its start and shrinks over as much
+        // before its end.
+        let fade = (self.every * 0.6).min(total / 2.0).max(1e-6);
+        let first = (self.phase + t * self.speed).rem_euclid(self.every);
+        let mut out = Vec::new();
+        let mut seg = 0;
+        let mut s = first;
+        while s < total {
+            while seg + 2 < n && at[seg + 1] < s {
+                seg += 1;
+            }
+            let ([ax, az], [bx, bz]) = (flat(seg), flat(seg + 1));
+            let len = (at[seg + 1] - at[seg]).max(1e-9);
+            let k = ((s - at[seg]) / len).clamp(0.0, 1.0);
+            let (dx, dz) = ((bx - ax) / len, (bz - az) / len);
+            let y = self.path[seg][1] + (self.path[seg + 1][1] - self.path[seg][1]) * k;
+            let (x, z) = (ax + (bx - ax) * k, az + (bz - az) * k);
+            let size = (s / fade).min((total - s) / fade).min(1.0);
+            if size > 0.05 {
+                out.push(PrismMark {
+                    key: format!("{}/{}", self.key, out.len()),
+                    color: self.color,
+                    outline: self
+                        .outline
+                        .iter()
+                        .map(|&[u, v]| {
+                            let (u, v) = (u * size, v * size);
+                            [x + u * dx - v * dz, z + u * dz + v * dx]
+                        })
+                        .collect(),
+                    base: y + self.base * size,
+                    top: y + self.top * size,
+                    smooth: self.smooth,
+                    gloss: self.gloss,
+                    node: 0,
+                    stand: None,
+                });
+            }
+            s += self.every;
+        }
+        out
+    }
+}
+
 fn points3<S: Serializer>(v: &[[f32; 3]], s: S) -> Result<S::Ok, S::Error> {
     let r = |x: f32| (f64::from(x) * 10_000.0).round() / 10_000.0;
     let rounded: Vec<(f64, f64, f64)> = v.iter().map(|p| (r(p[0]), r(p[1]), r(p[2]))).collect();
@@ -576,6 +666,7 @@ impl Scene3d {
     pub fn clone_shell(&self) -> Scene3d {
         Scene3d {
             fills: Vec::new(),
+            flows: Vec::new(),
             signs: Vec::new(),
             shadows: Vec::new(),
             ribbons: Vec::new(),
@@ -598,6 +689,15 @@ impl Scene3d {
             texts: Vec::new(),
             labels: Vec::new(),
         }
+    }
+
+    /// The flows' marks where they are `t` seconds in, as a scene of their own (in `decor`).
+    pub fn flows_at(&self, t: f32) -> Scene3d {
+        let mut out = self.clone_shell();
+        for flow in &self.flows {
+            out.decor.extend(flow.marks_at(t));
+        }
+        out
     }
 
     /// The signs turned to face the camera at `azimuth` (degrees), as a scene of their own:
@@ -659,6 +759,7 @@ impl Scene3d {
             ribbons: Vec::new(),
             shadows: Vec::new(),
             fills: Vec::new(),
+            flows: Vec::new(),
             signs: Vec::new(),
             lines: Vec::new(),
             polylines: Vec::new(),
@@ -727,6 +828,9 @@ pub struct Scene3d {
     /// Filled icons, printed on the surfaces they belong to.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<FillMark>,
+    /// Marks moving along a diagram's animated edges, placed for each frame's time.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<FlowMark>,
     /// Signs that turn to face the camera, drawn like `decor`, `polylines` and `fills`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub signs: Vec<Sign>,

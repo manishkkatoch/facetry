@@ -416,6 +416,12 @@ pub struct Chart {
     anim: Option<Anim>,
     /// The camera tween in progress, if any. `camera` is where it is now.
     camera_tween: Option<CameraTween>,
+    /// The clock of the marks moving along animated diagram edges: seconds shown, the `now`
+    /// it counts from (`None`: the next `tick` sets it so the marks go on from where they
+    /// are), and whether it is held.
+    flow_seconds: f64,
+    flow_start_ms: Option<f64>,
+    flow_paused: bool,
 }
 
 /// The laid-out chart, 2D or 3D.
@@ -477,6 +483,9 @@ impl Chart {
             pending: None,
             anim: None,
             camera_tween: None,
+            flow_seconds: 0.0,
+            flow_start_ms: None,
+            flow_paused: false,
         };
         chart.relayout();
         if bool_option(
@@ -1003,12 +1012,34 @@ impl Chart {
         self.anim.is_some() || self.camera_tween.is_some()
     }
 
+    /// Whether marks move along animated diagram edges (and the flow is not held): keep calling
+    /// `tick` and `render` once per animation frame while it is true.
+    #[wasm_bindgen(getter)]
+    pub fn flowing(&self) -> bool {
+        self.renderer.has_flows() && !self.flow_paused
+    }
+
+    /// Holds the marks of animated diagram edges where they are (`true`), or lets them move
+    /// on from there (`false`).
+    #[wasm_bindgen(js_name = setFlowPaused)]
+    pub fn set_flow_paused(&mut self, paused: bool) {
+        self.flow_paused = paused;
+        self.flow_start_ms = None;
+    }
+
     /// Advances every animation (a transition, a camera tween) to the frame at `now_ms` (any
     /// clock that only goes forward, such as `requestAnimationFrame`'s timestamp). The first call
     /// after one began is its time 0. Returns whether anything is still running; when a
     /// transition ends the chart is the plain new scene, so `render` after the last `tick`
     /// draws the final picture.
     pub fn tick(&mut self, now_ms: f64) -> bool {
+        if self.flowing() {
+            let start = *self
+                .flow_start_ms
+                .get_or_insert(now_ms - self.flow_seconds * 1000.0);
+            self.flow_seconds = ((now_ms - start) / 1000.0).max(0.0);
+            self.renderer.set_flow_time(self.flow_seconds as f32);
+        }
         if let Some(anim) = &mut self.anim {
             let start = *anim.start_ms.get_or_insert(now_ms);
             anim.elapsed = (now_ms - start).max(0.0) as f32;
@@ -1024,6 +1055,10 @@ impl Chart {
     /// Returns whether anything is still running.
     pub fn seek(&mut self, elapsed_ms: f64) -> bool {
         let elapsed = elapsed_ms.max(0.0) as f32;
+        // The flow's marks too, as if they had moved for `elapsed_ms`.
+        self.flow_seconds = f64::from(elapsed) / 1000.0;
+        self.flow_start_ms = None;
+        self.renderer.set_flow_time(elapsed / 1000.0);
         if let Some(anim) = &mut self.anim {
             anim.elapsed = elapsed;
         }
@@ -1036,6 +1071,7 @@ impl Chart {
     /// Makes the animations continue from their current time on the clock that reads `now_ms`
     /// (after `seek` was used to hold them still).
     pub fn rebase(&mut self, now_ms: f64) {
+        self.flow_start_ms = Some(now_ms - self.flow_seconds * 1000.0);
         if let Some(anim) = &mut self.anim {
             anim.start_ms = Some(now_ms - f64::from(anim.elapsed));
         }

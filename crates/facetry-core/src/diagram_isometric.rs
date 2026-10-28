@@ -12,8 +12,9 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram::{
-    CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, ICON_SIZE, ISOMETRIC_AZIMUTH, Plan, card_layout,
-    dashes, icon_and_label, parse_color, path_length, push_icon, push_rim, shape_outline,
+    CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, Flow, ICON_SIZE, ISOMETRIC_AZIMUTH, Plan,
+    arrow_shape, card_layout, dashes, icon_and_label, parse_color, path_length, push_flow,
+    push_icon, push_rim, shape_outline, trim_end,
 };
 use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with};
 use crate::diagram_hops::Hops;
@@ -528,7 +529,28 @@ fn push_edge(
     let total = path_length(&path);
     let forward = head != EdgeEnd::None;
     let backward = tail != EdgeEnd::None;
-    if forward || backward {
+    // Animated: the chevrons drive along the road instead, between the end markers.
+    let mut between = path.clone();
+    trim_end(&mut between, HEAD_SETBACK, true);
+    trim_end(&mut between, HEAD_SETBACK, false);
+    push_flow(
+        scene,
+        plan,
+        &key,
+        edge,
+        &between,
+        |p| plan.len(ROAD_HEIGHT + HOP_HEIGHT * hops.rise(p)),
+        &Flow {
+            outline: &arrow_shape(CHEVRON_LENGTH, CHEVRON_WIDTH),
+            base: 0.0,
+            top: plan.len(CHEVRON_HEIGHT),
+            smooth: false,
+            color: plan.look.chevron,
+            gloss: 0.0,
+            every: CHEVRON_EVERY,
+        },
+    );
+    if (forward || backward) && edge.animation.is_none() {
         let count = ((total - 2.0 * HEAD_SETBACK) / CHEVRON_EVERY)
             .floor()
             .max(0.0) as usize;

@@ -31,7 +31,7 @@
 //! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
 
-use facetry_core::spec::{DiagramTheme, EdgeEnd, EdgeStroke, NodeShape};
+use facetry_core::spec::{DiagramTheme, EdgeAnimation, EdgeEnd, EdgeStroke, NodeShape};
 
 use crate::issue::{DiagramIssue, Lines};
 use crate::style::{self, NodeStyle};
@@ -108,6 +108,11 @@ pub struct Edge {
     pub tail: EdgeEnd,
     /// How many ranks the edge spans at least: 1, more for `--->` and friends.
     pub length: u32,
+    /// Its id, `e1` in `a e1@--> b`, for `e1@{ ... }`.
+    pub id: Option<String>,
+    /// From `e1@{ animate: true }` or `animation: fast|slow`: moving or explicitly still
+    /// (`animate: false`); `None` where the text does not say.
+    pub animation: Option<Option<EdgeAnimation>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -892,6 +897,18 @@ impl Parser<'_> {
                 _ => {}
             }
         }
+        // `e1@{ animate: true }`: an edge's metadata, by the id its link gave it.
+        if self.text[end..].starts_with(&['@', '{']) {
+            if let Some(edge) = self
+                .chart
+                .edges
+                .iter()
+                .position(|e| e.id.as_deref() == Some(&word))
+            {
+                self.pos = end;
+                return self.edge_metadata(edge);
+            }
+        }
         if let Some((_, message)) = UNSUPPORTED_STATEMENTS.iter().find(|(k, _)| *k == word) {
             // `end` and `class` are also fine node ids in front of a shape or link... except
             // that Mermaid itself rejects `end`, and `class` followed by a space is a statement.
@@ -906,9 +923,15 @@ impl Parser<'_> {
             if self.at_statement_end() {
                 return Ok(());
             }
+            let id = self.edge_id()?;
             let link = self.link()?;
             self.skip_inline_ws();
             let next = self.node_group()?;
+            if let Some((_, at)) = &id {
+                if group.len() * next.len() > 1 {
+                    return self.fail(*at, "an edge id names one edge; `&` here makes several");
+                }
+            }
             for &a in &group {
                 for &b in &next {
                     self.chart.edges.push(Edge {
@@ -919,11 +942,128 @@ impl Parser<'_> {
                         head: link.head,
                         tail: link.tail,
                         length: link.length,
+                        id: id.as_ref().map(|(id, _)| id.clone()),
+                        animation: None,
                     });
                 }
             }
             group = next;
         }
+    }
+
+    /// An edge's id in front of its link, `e1@` in `a e1@--> b`, and where it is.
+    fn edge_id(&mut self) -> Step<Option<(String, usize)>> {
+        let at = self.pos;
+        let mut end = at;
+        while self.text.get(end).copied().is_some_and(is_id_char) {
+            end += 1;
+        }
+        if end == at || self.text.get(end) != Some(&'@') || self.text.get(end + 1) == Some(&'{') {
+            return Ok(None);
+        }
+        let id: String = self.text[at..end].iter().collect();
+        if self
+            .chart
+            .edges
+            .iter()
+            .any(|e| e.id.as_deref() == Some(&id))
+        {
+            return self.fail(at, format!("edge id `{id}` is used twice"));
+        }
+        self.pos = end + 1;
+        Ok(Some((id, at)))
+    }
+
+    /// `@{ key: value, ... }` (the `@{` next): the pairs, each with where its key and its
+    /// value are; a value quoted or bare.
+    fn metadata_pairs(&mut self) -> Step<Vec<(String, usize, String, usize)>> {
+        let open = self.pos;
+        self.pos += 2;
+        let mut out = Vec::new();
+        loop {
+            self.skip_inline_ws();
+            match self.peek() {
+                Some('}') => {
+                    self.pos += 1;
+                    return Ok(out);
+                }
+                Some(',') => {
+                    self.pos += 1;
+                    continue;
+                }
+                None | Some('\n') => return self.fail(open, "unclosed `@{`: expected `}`"),
+                _ => {}
+            }
+            let key_at = self.pos;
+            while self.peek().is_some_and(is_id_char) {
+                self.pos += 1;
+            }
+            let key: String = self.text[key_at..self.pos].iter().collect();
+            self.skip_inline_ws();
+            if self.peek() != Some(':') {
+                return self.fail(self.pos, "expected `key: value` in `@{ }`");
+            }
+            self.pos += 1;
+            self.skip_inline_ws();
+            let value_at = self.pos;
+            let value: String = if self.peek() == Some('"') {
+                self.pos += 1;
+                let start = self.pos;
+                while self.peek().is_some_and(|c| c != '"' && c != '\n') {
+                    self.pos += 1;
+                }
+                if self.peek() != Some('"') {
+                    return self.fail(value_at, "unclosed `\"`");
+                }
+                let v = self.text[start..self.pos].iter().collect();
+                self.pos += 1;
+                v
+            } else {
+                let start = self.pos;
+                while self
+                    .peek()
+                    .is_some_and(|c| !matches!(c, ',' | '}' | '\n') && !c.is_whitespace())
+                {
+                    self.pos += 1;
+                }
+                self.text[start..self.pos].iter().collect()
+            };
+            out.push((key, key_at, value, value_at));
+        }
+    }
+
+    /// `e1@{ animate: true }` (the `@{` next) for edge `edge`: `animate` (`true` or `false`)
+    /// and `animation` (`fast` or `slow`, which animates it too).
+    fn edge_metadata(&mut self, edge: usize) -> Step<()> {
+        for (key, key_at, value, value_at) in self.metadata_pairs()? {
+            let animation = match (key.as_str(), value.as_str()) {
+                ("animate", "true") => Some(EdgeAnimation::Fast),
+                ("animate", "false") => None,
+                ("animation", "fast") => Some(EdgeAnimation::Fast),
+                ("animation", "slow") => Some(EdgeAnimation::Slow),
+                ("animate", _) => {
+                    return self.fail(value_at, "`animate` is `true` or `false`");
+                }
+                ("animation", _) => {
+                    return self.fail(value_at, "`animation` is `fast` or `slow`");
+                }
+                _ => {
+                    return self.fail(
+                        key_at,
+                        format!(
+                            "`{key}` is not supported in an edge's `@{{ }}` (only `animate` and `animation`)"
+                        ),
+                    );
+                }
+            };
+            // `animate: true` keeps a pace set by `animation`.
+            let e = &mut self.chart.edges[edge];
+            e.animation = match (key.as_str(), animation, e.animation) {
+                ("animate", Some(_), Some(Some(pace))) => Some(Some(pace)),
+                _ => Some(animation),
+            };
+        }
+        Ok(())
     }
 
     /// `a`, or `a & b & c`.
@@ -1012,57 +1152,8 @@ impl Parser<'_> {
     /// the built-in icons (`fa:`-style prefixes are dropped). Returns the icon's name as
     /// written.
     fn metadata(&mut self) -> Step<Option<String>> {
-        let open = self.pos;
-        self.pos += 2;
         let mut icon = None;
-        loop {
-            self.skip_inline_ws();
-            match self.peek() {
-                Some('}') => {
-                    self.pos += 1;
-                    return Ok(icon);
-                }
-                Some(',') => {
-                    self.pos += 1;
-                    continue;
-                }
-                None | Some('\n') => return self.fail(open, "unclosed `@{`: expected `}`"),
-                _ => {}
-            }
-            let key_at = self.pos;
-            while self.peek().is_some_and(is_id_char) {
-                self.pos += 1;
-            }
-            let key: String = self.text[key_at..self.pos].iter().collect();
-            self.skip_inline_ws();
-            if self.peek() != Some(':') {
-                return self.fail(self.pos, "expected `key: value` in `@{ }`");
-            }
-            self.pos += 1;
-            self.skip_inline_ws();
-            let value_at = self.pos;
-            let value: String = if self.peek() == Some('"') {
-                self.pos += 1;
-                let start = self.pos;
-                while self.peek().is_some_and(|c| c != '"' && c != '\n') {
-                    self.pos += 1;
-                }
-                if self.peek() != Some('"') {
-                    return self.fail(value_at, "unclosed `\"`");
-                }
-                let v = self.text[start..self.pos].iter().collect();
-                self.pos += 1;
-                v
-            } else {
-                let start = self.pos;
-                while self
-                    .peek()
-                    .is_some_and(|c| !matches!(c, ',' | '}' | '\n') && !c.is_whitespace())
-                {
-                    self.pos += 1;
-                }
-                self.text[start..self.pos].iter().collect()
-            };
+        for (key, key_at, value, value_at) in self.metadata_pairs()? {
             match key.as_str() {
                 "icon" => {
                     if !self.icons.contains(&value.as_str())
@@ -1084,6 +1175,14 @@ impl Parser<'_> {
                     }
                     icon = Some(value);
                 }
+                "animate" | "animation" => {
+                    return self.fail(
+                        key_at,
+                        format!(
+                            "`{key}` is for edges: give the edge an id (`a e1@--> b`), then write `e1@{{ {key}: ... }}`"
+                        ),
+                    );
+                }
                 _ => {
                     return self.fail(
                         key_at,
@@ -1092,6 +1191,7 @@ impl Parser<'_> {
                 }
             }
         }
+        Ok(icon)
     }
 
     /// A shape and its label right after a node id, if there is one.
@@ -1929,6 +2029,63 @@ mod tests {
             (
                 "---\nconfig:\n  look: handDrawn\n---\ngraph TD\nA",
                 "`config.look` is not supported",
+            ),
+        ] {
+            let e = err(src);
+            assert!(e.iter().any(|i| i.message.contains(needle)), "{src}: {e:?}");
+        }
+    }
+
+    #[test]
+    fn edges_take_ids_and_animate_by_them() {
+        let f = ok(
+            "flowchart LR\n  a e1@--> b e2@-.-> c --> d\n  e1@{ animate: true }\n  e2@{ animation: slow }",
+        );
+        let anim: Vec<_> = f
+            .edges
+            .iter()
+            .map(|e| (e.id.as_deref(), e.animation))
+            .collect();
+        assert_eq!(
+            anim,
+            [
+                (Some("e1"), Some(Some(EdgeAnimation::Fast))),
+                (Some("e2"), Some(Some(EdgeAnimation::Slow))),
+                (None, None),
+            ]
+        );
+        assert_eq!(edges(&f), [("a", "b"), ("b", "c"), ("c", "d")]);
+        // A pace given first stays; `animate: false` stills the edge.
+        let f = ok("flowchart LR\n  a e1@--> b\n  e1@{ animation: slow, animate: true }");
+        assert_eq!(f.edges[0].animation, Some(Some(EdgeAnimation::Slow)));
+        let f = ok("flowchart LR\n  a e1@--> b\n  e1@{ animate: false }");
+        assert_eq!(f.edges[0].animation, Some(None));
+        // `x@{ }` names a node unless an edge took that id.
+        assert_eq!(
+            ids(&ok("flowchart LR\n  a --> b\n  e1@{ icon: bulb }")),
+            ["a", "b", "e1"]
+        );
+        for (src, needle) in [
+            (
+                "flowchart LR\n  a e1@--> b\n  c e1@--> d",
+                "edge id `e1` is used twice",
+            ),
+            ("flowchart LR\n  a & b e1@--> c", "makes several"),
+            (
+                "flowchart LR\n  a e1@--> b\n  e1@{ animate: yes }",
+                "`true` or `false`",
+            ),
+            (
+                "flowchart LR\n  a e1@--> b\n  e1@{ animation: medium }",
+                "`fast` or `slow`",
+            ),
+            (
+                "flowchart LR\n  a e1@--> b\n  e1@{ curve: linear }",
+                "`curve` is not supported in an edge",
+            ),
+            (
+                "flowchart LR\n  a@{ animate: true } --> b",
+                "`animate` is for edges",
             ),
         ] {
             let e = err(src);

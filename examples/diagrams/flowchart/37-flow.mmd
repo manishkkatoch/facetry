@@ -1,0 +1,10 @@
+flowchart LR
+    orders[(Orders)] e1@--> api[Order API]
+    api e2@==> queue{{Queue}}
+    queue e3@-.-> worker[Worker]
+    worker e4@--> mail([Mail])
+    worker --> ledger[(Ledger)]
+    e1@{ animate: true }
+    e2@{ animation: fast }
+    e3@{ animation: slow }
+    e4@{ animate: true }

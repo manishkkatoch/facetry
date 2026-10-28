@@ -605,7 +605,7 @@ try {
 }
 ```
 
-The add-on is a separate wasm module of about 114 KB gzip (the parser and the layout, no GPU
+The add-on is a separate wasm module of about 116 KB gzip (the parser and the layout, no GPU
 code), fetched the first time `fromMermaid` runs, so pages that only draw charts never download
 it. Its result is plain JSON (`dimension: "3d"` with a `diagram` of placed nodes and routed edges)
 that can be stored and drawn later without the add-on.
@@ -626,8 +626,9 @@ that can be stored and drawn later without the add-on.
 
 Each block's text (its shared indentation removed) is replaced by a canvas as wide as the block
 and `height` tall (default `400px`), with the text as its `aria-label`. `data-style`,
-`data-theme` and `data-cards` choose a block's own style, theme and cards; the other options are `fromMermaid`'s
-(`style`, `theme`, `cards`, `icons`, for every block), `querySelector` (default `"pre.mermaid"`) or
+`data-theme`, `data-cards` and `data-flow` choose a block's own style, theme, cards and moving
+edges; the other options are `fromMermaid`'s (`style`, `theme`, `flow`, `cards`, `icons`, for
+every block), `querySelector` (default `"pre.mermaid"`) or
 `nodes`, and `chart` (`Chart.create`'s options, such as `backend`). Drawn blocks get
 `data-processed`, so `run` can be called again after adding more. A block that fails shows its
 message in its place (a `role="alert"` box listing every issue with its line and column); the
@@ -699,6 +700,9 @@ the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-i
 - themes: `%%{init: {"theme": "dark"}}%%` before the header (also `initialize`, single quotes
   or bare words, over several lines), or front matter with `config:` and `theme:` under it;
   `default` (or `base`), `neutral`, `dark` or `forest`. See "Themes" below.
+- animated edges, as in Mermaid 11: an edge id in front of the link (`a e1@--> b`), then
+  `e1@{ animate: true }` or `e1@{ animation: fast }` (or `slow`); `animate: false` keeps an
+  edge still. See "Flow" below.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (other style properties such as `stroke-dasharray` or `font-size`, `click`,
@@ -761,6 +765,20 @@ glossy style, how its edges are routed):
   colour is used if it reads on the white sign. Signs of nodes that stand close together can
   cover each other in the starting view (orbiting separates them).
 
+**Flow.** Animated edges show which way things move: marks travel along them from tail to
+head (both ways on a two-headed edge), in every style in its own manner: beads on the flat
+style's lines, light pulses gliding on glossy arrows, the chevrons of isometric roads and the
+green flow marks of schematic pipes driving along (over bridges too). Each mark grows in at the
+start and shrinks away at the end, so none pops. Animate edges in the Mermaid text (above), or
+all of them with `diagram.fromMermaid(text, { flow: true })` (`"fast"` or `"slow"`; `run` takes it
+too, and a block's `data-flow`); an edge the text animates or stills itself keeps its own
+setting. In the spec it is an edge's `animation` (`"fast"`, 70 layout units a second, or
+`"slow"`, 28). While marks move the chart draws a frame per animation frame, but not while the
+canvas is scrolled out of view; `chart.flow = false` holds them where they are and `true` lets
+them go on. A viewer who asks for reduced motion sees them still, and an idle diagram without
+animated edges draws nothing. The playground has a Flow switch (`?flow=1`) and
+`mermaid/37-flow` animates its edges with Mermaid's syntax.
+
 **Themes.** `diagram.fromMermaid(text, { theme })` (and `diagram.run({ theme })`, or a block's
 `data-theme`) colours the diagram after Mermaid's themes, each style in its own manner:
 `"default"`, `"neutral"` (greys: lavender nodes turn grey, glossy slabs and isometric caps are
@@ -788,7 +806,7 @@ card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }
 round nodes, `parent` naming the group around it; an edge's `from` or `to` may name a group)
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
-"cross", tail? }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
+"cross", tail?, animation?: "fast" | "slow" }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
 `examples/specs/diagram-glossy.json`). `icon` names one of the diagram's `icons` or a built-in
 icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
@@ -809,7 +827,7 @@ each other. The flat style's lines jump the way a schematic drawing's wires do; 
 bands, isometric roads and schematic pipes become bridges (a pipe's supports grow to meet it,
 and the marks along a road or pipe ride up with it).
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (35 flowcharts in the
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (36 flowcharts in the
 style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
@@ -1014,7 +1032,8 @@ console, and `facetryDiagram` the `diagram` of `facetry/diagrams`.
   `diagram-flat-23-dense`, `diagram-glossy-23-dense` and `diagram-schematic-23-dense`, whose
   crossing edges arc over each other, and `diagram-{flat,glossy,isometric,schematic}-dark-34-group-edges`,
   `diagram-flat-neutral-34-group-edges` and `diagram-isometric-forest-34-group-edges` in the
-  themes): Playwright screenshots these examples (3D ones at their
+  themes, and `diagram-glossy-flow-01-decision` and `diagram-schematic-flow-01-decision`, their
+  edges flowing, a quarter second in): Playwright screenshots these examples (3D ones at their
   default camera; most show the legend) in
   Chromium at 800x500, devicePixelRatio 1, `?backend=webgl2`, and allows 1% of pixels to differ. To regenerate after an intentional visual change:
   `pnpm -r build && pnpm --filter playground exec playwright test golden --update-snapshots`,
@@ -1046,9 +1065,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 945,809 B (924 KiB) | 415,498 B (406 KiB) | 339,414 B (331 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,552,736 B (2493 KiB) | 1,057,073 B (1032 KiB) | 833,444 B (814 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 264,361 B (258 KiB) | 113,992 B (111 KiB) | 97,470 B (95 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 956,614 B (934 KiB) | 419,266 B (409 KiB) | 342,267 B (334 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,563,445 B (2503 KiB) | 1,062,192 B (1037 KiB) | 836,790 B (817 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 267,259 B (261 KiB) | 115,651 B (113 KiB) | 98,612 B (96 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1086,7 +1105,9 @@ Schematic signs that turn to face the camera added 2,868 B gzip to the WebGPU mo
 2,674 to the WebGL2 one; edges arcing over crossings 2,672 and 2,230, and 13 B to the add-on.
 Printed flat-style labels and the four themes then added 2,855 B gzip to the WebGPU module and
 2,894 to the WebGL2 one (a palette per theme), and 1,418 to the add-on (reading the theme from
-directives and front matter).
+directives and front matter). Flow along edges added 3,768 B gzip to the WebGPU module, 5,119 to
+the WebGL2 one (the marks, their pipeline and the clock) and 1,659 to the add-on (edge ids and
+their `@{ }`).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

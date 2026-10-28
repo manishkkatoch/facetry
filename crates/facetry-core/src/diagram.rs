@@ -23,7 +23,9 @@ use crate::diagram_theme::Look;
 use crate::framing_radius;
 use crate::icons::IconShape;
 use crate::scene::RuleKind;
-use crate::scene3d::{FOV_Y_DEGREES, FRAMING_LIFT, FillMark, Line3, Polyline3, PrismMark, Scene3d};
+use crate::scene3d::{
+    FOV_Y_DEGREES, FRAMING_LIFT, FillMark, FlowMark, Line3, Polyline3, PrismMark, Scene3d,
+};
 use crate::spec::{
     CameraKind, CameraSpec, ChartSpec, DEFAULT_DIAGRAM_FONT_SIZE, DiagramEdge, DiagramNode,
     DiagramSpec, DiagramStyle, DiagramTheme, Dimension, EdgeEnd, EdgeStroke, MAX_DIAGRAM_FONT_SIZE,
@@ -50,6 +52,9 @@ const EDGE_LIFT: f64 = 0.6;
 /// layout units.
 const HOP_RADIUS: f64 = 10.0;
 const HOP_HEIGHT: f64 = 8.0;
+/// Animated edges: the beads running along them, radius and spacing, layout units.
+const BEAD_RADIUS: f64 = 2.8;
+const BEAD_EVERY: f64 = 22.0;
 /// Arrowheads: length and width, layout units, and thickness.
 const ARROW_LENGTH: f64 = 12.0;
 const ARROW_WIDTH: f64 = 10.0;
@@ -1062,16 +1067,33 @@ fn push_edge(
             trim_end(&mut points, ARROW_LENGTH * 0.8, at_head);
         }
     }
+    let height = |p: [f64; 2]| lift + plan.len(HOP_HEIGHT * hops.rise(p));
+    // Animated: beads of the line's colour running along it.
+    let (bead, _) = shape_outline(NodeShape::Circle, 2.0 * BEAD_RADIUS, 2.0 * BEAD_RADIUS);
+    push_flow(
+        scene,
+        plan,
+        &key,
+        edge,
+        &points,
+        height,
+        &Flow {
+            outline: &bead,
+            // Just over the line, and under an edge label's patch, which hides them.
+            base: -plan.len(BEAD_RADIUS),
+            top: plan.len(LABEL_PATCH_LIFT / 2.0),
+            smooth: true,
+            color: palette.edge,
+            gloss: 0.0,
+            every: BEAD_EVERY,
+        },
+    );
     let runs: Vec<Vec<[f32; 3]>> = match edge.stroke {
         EdgeStroke::Dotted => dashes(&points, DASH, GAP),
         _ => vec![points.clone()],
     }
     .into_iter()
-    .map(|run| {
-        run.iter()
-            .map(|&p| plan.world(p, lift + plan.len(HOP_HEIGHT * hops.rise(p))))
-            .collect()
-    })
+    .map(|run| run.iter().map(|&p| plan.world(p, height(p))).collect())
     .collect();
     let width = match edge.stroke {
         EdgeStroke::Thick => THICK_WIDTH,
@@ -1139,6 +1161,77 @@ fn push_edge(
         });
         crate::diagram_glossy::print(scene, plan, &key, text, at, y, size, palette.text);
     }
+}
+
+/// What moves along an animated edge: a solid with this footprint (layout units, `[along,
+/// across]`, `along` pointing the way it moves) and heights (world units over the path), this
+/// colour and gloss, this many layout units apart.
+pub(crate) struct Flow<'a> {
+    pub outline: &'a [[f64; 2]],
+    pub base: f64,
+    pub top: f64,
+    pub smooth: bool,
+    pub color: Color,
+    pub gloss: f32,
+    pub every: f64,
+}
+
+/// The flow of `edge` if it is animated: marks moving along `path` (layout units) at world
+/// height `height(p)`, from the tail to the head (the other way if only the tail has an end,
+/// both ways, interleaved, if both have).
+pub(crate) fn push_flow(
+    scene: &mut Scene3d,
+    plan: &Plan,
+    key: &str,
+    edge: &DiagramEdge,
+    path: &[[f64; 2]],
+    height: impl Fn([f64; 2]) -> f64,
+    flow: &Flow,
+) {
+    let Some(pace) = edge.animation else {
+        return;
+    };
+    if path.len() < 2 {
+        return;
+    }
+    let (tail, head) = edge.ends();
+    let forward = head != EdgeEnd::None || tail == EdgeEnd::None;
+    let backward = tail != EdgeEnd::None;
+    let both = forward && backward;
+    let every = if both { 2.0 * flow.every } else { flow.every };
+    let world: Vec<[f32; 3]> = path.iter().map(|&p| plan.world(p, height(p))).collect();
+    for (name, run, phase) in [("forward", forward, 0.0), ("back", backward, flow.every)] {
+        if !run {
+            continue;
+        }
+        let mut path = world.clone();
+        if name == "back" {
+            path.reverse();
+        }
+        scene.flows.push(FlowMark {
+            key: format!("{key}/flow/{name}"),
+            color: flow.color,
+            path,
+            every: plan.len(every) as f32,
+            speed: plan.len(pace.speed()) as f32,
+            phase: plan.len(phase) as f32,
+            outline: flow
+                .outline
+                .iter()
+                .map(|&[u, v]| [plan.len(u) as f32, plan.len(v) as f32])
+                .collect(),
+            base: flow.base as f32,
+            top: flow.top as f32,
+            smooth: flow.smooth,
+            gloss: flow.gloss,
+        });
+    }
+}
+
+/// A flow mark's footprint: an arrowhead `length` long and `width` wide, pointing along +x.
+pub(crate) fn arrow_shape(length: f64, width: f64) -> Vec<[f64; 2]> {
+    let (l, w) = (length / 2.0, width / 2.0);
+    vec![[l, 0.0], [-l, w], [-l, -w]]
 }
 
 /// The nearest point before `points[i]` (stepping by `dir`) that is not on top of it, for the
