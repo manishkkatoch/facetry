@@ -135,6 +135,25 @@ algorithm is better in places but is EPL-licensed and much larger. In 3D, height
 structure: each subgraph is a platform raised or inset relative to its parent, and where two
 edges cross in the plan, one arcs over the other so they never intersect visually.
 
+### Flow along edges (D5)
+
+An animated edge (`animation: "fast" | "slow"` in the spec) gets a `FlowMark` in the scene: its
+path in world units (densified over arcs, at the height the marks ride at), the footprint of one
+mark (`[along, across]`), its heights, spacing and speed. `FlowMark::marks_at(t)` places the
+copies `t` seconds in: every `every` along the path from `phase + t * speed` (wrapping), each
+turned to the path's direction and scaled down over the first and last 0.6 `every` so marks grow
+in and shrink away instead of popping. The styles choose the marks: beads (flat), stadium-shaped
+light pulses on the ribbon tops (glossy), the road chevrons (isometric) and pipe flow arrows
+(schematic), the moving ones replacing the still ones; they run from tail to head, both ways
+(interleaved) on a two-headed edge.
+
+The renderer keeps the flows apart and re-tessellates their marks into a pipeline of their own
+when the flow clock moved, which is cheap (a few hundred small prisms). The clock is the chart's:
+`tick(now)` advances it while flows exist and are not held, `seek(ms)` (the test clock) sets it,
+so a frame at a given time is reproducible. `Chart` keeps requesting frames while
+`flowing` and the canvas intersects the viewport (`IntersectionObserver`), holds the flow for
+`prefers-reduced-motion: reduce`, and exposes `chart.flow` to hold or release it.
+
 ### Edges arcing over crossings (D2)
 
 Where two edges cross in the plan, the later one (in source order) arcs over the earlier
@@ -274,7 +293,7 @@ render-only-on-change loop. This controller is meant to be the same one keyed tr
 | **D2** (done) | Done: subgraphs (parsing with nesting, `direction` and edges to a subgraph; compound layout; group bases in every style; group metrics), schematic signs that turn to the camera, edges arcing over crossings, `diagram.run()` (every `<pre class="mermaid">` on a page, each block's style by `data-style`, failures shown in place). labels that follow the zoom in the flat style, themes |
 | **D3** | Sequence: parser, layout, activations, fragments, notes, boxes |
 | **D4** | Architecture: parser, constraint-grid layout, orthogonal routing, icon atlas, groups, junctions |
-| **D5** | Animation controller, sequence playback, build-in, flow along edges |
+| **D5** (started) | Done: flow along edges (`animation` per edge, Mermaid's edge ids with `animate`/`animation`, `flow` for every edge; marks per style moving along the paths, placed by the renderer each frame; reduced motion and off-screen canvases hold them). Next: animation controller, sequence playback, build-in |
 
 Each milestone reports the size of both core modules and of the add-on, as `docs/wasm-size.md`
 does for charts.

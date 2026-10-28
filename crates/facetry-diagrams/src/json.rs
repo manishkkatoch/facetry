@@ -1,7 +1,9 @@
 //! The laid-out diagram as a Facetry `ChartSpec`, in JSON: what the add-on hands to the core
 //! module. Written by hand (no serde in the wasm), in a fixed key order, numbers to a tenth.
 
-use facetry_core::spec::{DiagramSpec, DiagramStyle, DiagramTheme, EdgeEnd, EdgeStroke, FillRule};
+use facetry_core::spec::{
+    DiagramSpec, DiagramStyle, DiagramTheme, EdgeAnimation, EdgeEnd, EdgeStroke, FillRule,
+};
 
 /// `{"dimension":"3d","diagram":{...}}`.
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
@@ -140,6 +142,11 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
                 out.push_str("\":");
                 string(&mut out, end_name(end));
             }
+        }
+        match e.animation {
+            None => {}
+            Some(EdgeAnimation::Fast) => out.push_str(",\"animation\":\"fast\""),
+            Some(EdgeAnimation::Slow) => out.push_str(",\"animation\":\"slow\""),
         }
         out.push('}');
     }

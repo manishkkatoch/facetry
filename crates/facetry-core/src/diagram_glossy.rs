@@ -10,8 +10,8 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram::{
-    ICON_SIZE, Plan, dashes, icon_and_label, ink_on, parse_color, previous_distinct, push_icon,
-    push_rim, shape_outline, trim_end,
+    Flow, ICON_SIZE, Plan, dashes, icon_and_label, ink_on, parse_color, previous_distinct,
+    push_flow, push_icon, push_rim, shape_outline, trim_end,
 };
 use crate::diagram_hops::Hops;
 use crate::diagram_theme::Look;
@@ -33,6 +33,12 @@ const EDGE_HEIGHT: f64 = 2.4;
 /// Where edges cross, the later arcs over the earlier: half the arc's span and its height.
 const HOP_RADIUS: f64 = 14.0;
 const HOP_HEIGHT: f64 = 8.0;
+/// Animated edges: the pulses gliding along them: length, share of the band's width, height
+/// over it and spacing, layout units.
+const PULSE_LENGTH: f64 = 10.0;
+const PULSE_WIDTH: f64 = 0.55;
+const PULSE_HEIGHT: f64 = 0.9;
+const PULSE_EVERY: f64 = 30.0;
 const ARROW_LENGTH: f64 = 14.0;
 const ARROW_WIDTH: f64 = 17.0;
 /// Gaps between an edge and the nodes it joins, layout units: before the head (which must
@@ -320,6 +326,25 @@ fn push_edge(
             trim_end(&mut band, by, at_head);
         }
     }
+    // Animated: light pulses gliding along the band's top (over its arcs too).
+    let (pill, _) = shape_outline(NodeShape::Stadium, PULSE_LENGTH, width * PULSE_WIDTH);
+    push_flow(
+        scene,
+        plan,
+        &key,
+        edge,
+        &band,
+        |p| plan.len(EDGE_HEIGHT + HOP_HEIGHT * hops.rise(p)),
+        &Flow {
+            outline: &pill,
+            base: plan.len(0.05),
+            top: plan.len(PULSE_HEIGHT),
+            smooth: true,
+            color: plan.look.pulse,
+            gloss: 0.6,
+            every: PULSE_EVERY,
+        },
+    );
     let runs = match edge.stroke {
         EdgeStroke::Dotted => dashes(&band, DASH, DASH_GAP),
         _ => vec![band],

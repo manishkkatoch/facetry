@@ -942,3 +942,97 @@ fn a_dark_theme_darkens_the_page_and_lightens_the_text_in_every_style() {
     ));
     assert_eq!(got[0].path, "/diagram/theme");
 }
+
+#[test]
+fn flow_marks_move_along_their_path_and_shrink_at_its_ends() {
+    use facetry_core::scene3d::FlowMark;
+    let flow = FlowMark {
+        key: "f".into(),
+        color: facetry_core::Color::linear(0.0, 0.0, 0.0, 1.0),
+        path: vec![[0.0, 1.0, 0.0], [10.0, 1.0, 0.0]],
+        every: 2.0,
+        speed: 1.0,
+        phase: 0.0,
+        outline: vec![[0.5, 0.0], [-0.5, 0.25], [-0.5, -0.25]],
+        base: 0.0,
+        top: 0.1,
+        smooth: false,
+        gloss: 0.0,
+    };
+    // Marks centred at 1, 3, 5, 7, 9 a second in, pointing along +x; a second later each has
+    // moved a unit on.
+    let at = |t: f32| -> Vec<f32> {
+        flow.marks_at(t)
+            .iter()
+            .map(|m| {
+                (m.outline[1][0] + m.outline[2][0]) / 2.0
+                    + (m.outline[0][0] - m.outline[1][0]) / 2.0
+            })
+            .collect()
+    };
+    let a = at(1.0);
+    assert_eq!(a.len(), 5);
+    for (k, x) in a.iter().enumerate() {
+        assert!((x - (1.0 + 2.0 * k as f32)).abs() < 1e-4, "{a:?}");
+    }
+    let b = at(2.0);
+    assert!(
+        (b[0] - 2.0).abs() < 1e-4 && (b[1] - 4.0).abs() < 1e-4,
+        "{b:?}"
+    );
+    // At its full size in the middle; smaller near the ends.
+    let size = |m: &facetry_core::scene3d::PrismMark| m.outline[0][0] - m.outline[1][0];
+    let marks = flow.marks_at(1.0);
+    assert!((size(&marks[2]) - 1.0).abs() < 1e-4);
+    assert!(size(&marks[0]) < 1.0 && size(&marks[4]) < 1.0);
+    // On the path's height.
+    assert!(marks.iter().all(|m| m.base >= 1.0 && m.top > m.base));
+    // A mark at either end has no size and is left out.
+    assert_eq!(flow.marks_at(0.0).len(), 4);
+}
+
+#[test]
+fn animated_edges_flow_the_way_they_run_in_every_style() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = |extra: &str| {
+            broken(
+                r#""label": "go" }"#,
+                &format!(r#""label": "go", "points": [[50, 40], [50, 300]], "animation": "slow"{extra} }}"#),
+            )
+            .replace(r#""points": [[50, 40], [50, 95]], "#, "")
+            .replace(r#""diagram": {"#, &format!(r#""diagram": {{ "style": "{style}","#))
+        };
+        let s = spec(&json(""));
+        assert_eq!(validate(&s), vec![], "{style}");
+        let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+        assert_eq!(scene.flows.len(), 1, "{style}");
+        let flow = &scene.flows[0];
+        // From `a` (y 40) down to `b`: along +z.
+        assert!(flow.path.last().unwrap()[2] > flow.path[0][2], "{style}");
+        assert!(flow.speed > 0.0 && flow.every > 0.0);
+        // Moving marks replace the still ones of the styles that have them.
+        assert!(
+            !scene
+                .decor
+                .iter()
+                .any(|p| p.key.contains("/chevron/") || p.key.contains("/flow/")),
+            "{style}"
+        );
+        // A two-headed edge flows both ways.
+        let both = spec(&json(r#", "tail": "arrow""#));
+        let scene = build_scene_3d(&both, (800, 500), 1.0, FontMetrics::inter());
+        assert_eq!(scene.flows.len(), 2, "{style}");
+        // An edge that is not animated does not flow.
+        let still = spec(&json("").replace(r#", "animation": "slow""#, ""));
+        assert!(
+            build_scene_3d(&still, (800, 500), 1.0, FontMetrics::inter())
+                .flows
+                .is_empty()
+        );
+    }
+    let got = issues(&broken(
+        r#""label": "go""#,
+        r#""label": "go", "animation": "warp""#,
+    ));
+    assert_eq!(got[0].path, "/diagram/edges/0/animation");
+}

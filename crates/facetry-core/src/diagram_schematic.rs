@@ -11,7 +11,8 @@
 use crate::Color;
 use crate::Theme;
 use crate::diagram::{
-    ISOMETRIC_AZIMUTH, Plan, dashes, midpoint, parse_color, path_length, push_icon_shape,
+    Flow, ISOMETRIC_AZIMUTH, Plan, arrow_shape, dashes, midpoint, parse_color, path_length,
+    push_flow, push_icon_shape, trim_end,
 };
 use crate::diagram_glossy::push_shadow_with;
 use crate::diagram_hops::Hops;
@@ -689,7 +690,28 @@ fn push_edge(
             stand: None,
         }
     };
-    if (forward || backward) && total > 2.0 * HEAD_SETBACK {
+    // Animated: the flow marks run along the pipe instead, between the end markers.
+    let mut between = path.clone();
+    trim_end(&mut between, HEAD_SETBACK, true);
+    trim_end(&mut between, HEAD_SETBACK, false);
+    push_flow(
+        scene,
+        plan,
+        &key,
+        edge,
+        &between,
+        |p| top + hop(p),
+        &Flow {
+            outline: &arrow_shape(FLOW_LENGTH, FLOW_WIDTH),
+            base: -rise,
+            top: rise,
+            smooth: false,
+            color: plan.look.flow,
+            gloss: 0.0,
+            every: FLOW_EVERY,
+        },
+    );
+    if (forward || backward) && total > 2.0 * HEAD_SETBACK && edge.animation.is_none() {
         let count = ((total - 2.0 * HEAD_SETBACK) / FLOW_EVERY).floor().max(0.0) as usize;
         let start = (total - count.saturating_sub(1) as f64 * FLOW_EVERY) / 2.0;
         for k in 0..count {

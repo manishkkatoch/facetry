@@ -111,6 +111,11 @@ export class Chart {
   #renderCount = 0;
   /** While not null the animation clock is held by {@link __animationClock}, at this many ms. */
   #manualClock: number | null = null;
+  /** Whether animated diagram edges may move (see {@link flow}). */
+  #flowOn = true;
+  /** Whether any of the canvas is on screen (frames for a moving flow stop while it is not). */
+  #visible = true;
+  readonly #intersection: IntersectionObserver | null;
 
   /** Resolves after the first frame has been drawn; rejects if drawing fails first. */
   readonly firstFrame: Promise<void>;
@@ -132,14 +137,24 @@ export class Chart {
     this.firstFrame.catch(() => {});
     this.#observer = new ResizeObserver(() => this.#syncSize());
     this.#observer.observe(canvas);
+    this.#intersection =
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver((entries) => {
+            this.#visible = entries[entries.length - 1]!.isIntersecting;
+            if (this.#visible) this.requestRender();
+          })
+        : null;
+    this.#intersection?.observe(canvas);
     this.#reducedMotion = typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION) : null;
-    // A viewer who asks for reduced motion in the middle of a transition gets its end at once.
+    // A viewer who asks for reduced motion in the middle of a transition gets its end at once,
+    // and moving edges stand still.
     this.#onReducedMotion = () => {
       if (this.#reducedMotion?.matches && this.#inner.animating) {
         this.#inner.finishTransition();
-        this.requestRender();
       }
+      this.#syncFlow();
     };
+    this.#syncFlow();
     this.#reducedMotion?.addEventListener("change", this.#onReducedMotion);
     this.#removeListeners = this.#attachPointerControls();
     this.#syncInteraction();
@@ -416,6 +431,29 @@ export class Chart {
   }
 
   /**
+   * Whether the marks on animated diagram edges (`animation` in the spec) move. Default
+   * `true`; `false` holds them where they are, and `true` lets them go on from there. They
+   * never move for a viewer who asks for reduced motion (`prefers-reduced-motion: reduce`).
+   * While they move a frame is drawn every animation frame, except while the canvas is
+   * scrolled out of view.
+   */
+  get flow(): boolean {
+    return this.#flowOn;
+  }
+
+  set flow(on: boolean) {
+    this.#flowOn = on;
+    this.#syncFlow();
+  }
+
+  /** Tells the module whether the flow may move, and draws if it now does. */
+  #syncFlow(): void {
+    if (this.#destroyed) return;
+    this.#inner.setFlowPaused(!this.#flowOn || (this.#reducedMotion?.matches ?? false));
+    this.requestRender();
+  }
+
+  /**
    * Whether a transition is running. While it is, a frame is drawn every animation frame;
    * when it ends the last frame is drawn and the loop stops.
    */
@@ -473,7 +511,8 @@ export class Chart {
    * Schedules a redraw on the next animation frame. Calls before that frame coalesce into
    * one. We draw only when something changed (resize, an update, a hover), never in a
    * continuous loop, so an idle chart costs no CPU/GPU and no battery. While a transition
-   * runs, each frame asks for the next one until it ends.
+   * runs, each frame asks for the next one until it ends; so does a diagram whose edges flow,
+   * while it is on screen.
    */
   requestRender(): void {
     if (this.#destroyed || this.#raf) return;
@@ -484,7 +523,8 @@ export class Chart {
       this.#draw();
       // The camera may have moved under a pointer that did not: look again at what is under it.
       if (wasAnimating) this.#repick();
-      if (this.#manualClock === null && this.#inner.animating) this.requestRender();
+      const flowing = this.#inner.flowing && this.#visible;
+      if (this.#manualClock === null && (this.#inner.animating || flowing)) this.requestRender();
     });
   }
 
@@ -516,6 +556,7 @@ export class Chart {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#observer.disconnect();
+    this.#intersection?.disconnect();
     this.#reducedMotion?.removeEventListener("change", this.#onReducedMotion);
     this.#removeListeners();
     this.#listeners.hover.clear();

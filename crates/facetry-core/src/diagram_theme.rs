@@ -29,6 +29,8 @@ pub(crate) struct Look {
     pub shapes: [Color; 6],
     pub arrow: Color,
     pub card: Color,
+    /// Glossy: the light pulses moving along animated edges.
+    pub pulse: Color,
     /// Isometric: plates, bodies (and the insets labels are printed on), roads, chevrons; floor
     /// cards and their text; node (and group) colours in turn.
     pub plate: Color,
@@ -80,6 +82,7 @@ impl Look {
             shapes: all(SHAPES),
             arrow: rgb(0x30323a),
             card: rgb(0xf8f8fb),
+            pulse: rgb(0x8fd3ff),
             plate: rgb(0xe4e8ee),
             body: rgb(0xf3f5f8),
             inset: rgb(0xffffff),
@@ -111,6 +114,7 @@ impl Look {
                 group_edge: all([0xa3a3a3, 0x7a7a7a]),
                 shapes: all([0x52525b, 0x6b7280, 0x3f3f46, 0x9ca3af, 0x71717a, 0x57534e]),
                 arrow: rgb(0x3a3a3a),
+                pulse: rgb(0xf4f4f5),
                 caps: all([
                     0x4b5563, 0x6b7280, 0x9ca3af, 0x374151, 0x52525b, 0x71717a, 0x8b8f97, 0x27272a,
                 ]),
@@ -127,6 +131,7 @@ impl Look {
                 fence: all([0x8fa585, 0x9fb596]),
                 shapes: all([0xc8742c, 0x3c8d40, 0xb5a033, 0x8b5a2b, 0x2e8b57, 0x6b8e23]),
                 arrow: rgb(0x23401f),
+                pulse: rgb(0xd9f99d),
                 card: rgb(0xf6faf0),
                 plate: rgb(0xdfe8d6),
                 body: rgb(0xf3f7ee),
@@ -159,6 +164,7 @@ impl Look {
                 group_edge: all([0x5c6573, 0x6b7480]),
                 fence: all([0x5a6270, 0x6b7380]),
                 arrow: rgb(0xd5d9e0),
+                pulse: rgb(0x3e8ef7),
                 card: rgb(0x2c2f36),
                 plate: rgb(0x2b2e35),
                 body: rgb(0x3a3e47),

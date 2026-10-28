@@ -2,7 +2,9 @@
 //! spec. The TypeScript wrapper (`facetry/diagrams` in `packages/facetry`) loads this module
 //! only when a page asks for a diagram, and hands the spec to the core module to draw.
 
-use facetry_core::spec::{CustomIcon, DiagramStyle, DiagramTheme, FillRule, IconFill};
+use facetry_core::spec::{
+    CustomIcon, DiagramStyle, DiagramTheme, EdgeAnimation, FillRule, IconFill,
+};
 use facetry_diagrams::{DiagramIssue, Options, chart_json};
 use wasm_bindgen::prelude::*;
 
@@ -43,6 +45,7 @@ pub fn layout_mermaid(
     style: Option<String>,
     cards: Option<bool>,
     theme: Option<String>,
+    flow: Option<String>,
     icon_names: Option<Vec<String>>,
     icon_strokes: Option<Vec<String>>,
     icon_fill_counts: Option<Vec<u32>>,
@@ -69,6 +72,16 @@ pub fn layout_mermaid(
         Some(other) => {
             return Err(invalid_options(&format!(
                 "`theme` must be \"default\", \"neutral\", \"dark\" or \"forest\", got {other:?}"
+            )));
+        }
+    };
+    let flow = match flow.as_deref() {
+        None | Some("none") => None,
+        Some("fast") => Some(EdgeAnimation::Fast),
+        Some("slow") => Some(EdgeAnimation::Slow),
+        Some(other) => {
+            return Err(invalid_options(&format!(
+                "`flow` must be true, false, \"fast\" or \"slow\", got {other:?}"
             )));
         }
     };
@@ -124,6 +137,7 @@ pub fn layout_mermaid(
         &Options {
             style,
             theme,
+            flow,
             cards,
             icons,
         },

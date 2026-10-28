@@ -37,3 +37,4 @@ expression: report
 34-group-edges             nodes 6 edges 6 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 12 | edge length 1139 size 394 x 889 | groups 2 group overlaps 0 edges through groups 0
 35-pipeline-stages         nodes 10 edges 10 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 24 | edge length 1893 size 1441 x 444 | groups 3 group overlaps 0 edges through groups 0
 36-org                     nodes 8 edges 8 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 18 | edge length 2816 size 937 x 944 | groups 3 group overlaps 0 edges through groups 0
+37-flow                    nodes 6 edges 5 | crossings 0 edge-node overlaps 0 node overlaps 0 label overlaps 0 bends 10 | edge length 755 size 780 x 276

@@ -13,11 +13,11 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme, Dimension, Easing, EdgeEnd,
-    EdgeStroke, Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow,
-    LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape,
-    Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table,
-    ThetaEncoding, TransitionConfig, TransitionSpec,
+    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme, Dimension, Easing,
+    EdgeAnimation, EdgeEnd, EdgeStroke, Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding,
+    LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark,
+    NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec,
+    StyleSpec, Table, ThetaEncoding, TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -731,7 +731,15 @@ fn read_diagram_edge(v: Value) -> Read<DiagramEdge> {
         stroke [def] = "stroke" => read_edge_stroke,
         head [def] = "head" => opt(read_edge_end),
         tail [def] = "tail" => opt(read_edge_end),
+        animation [def] = "animation" => opt(read_edge_animation),
     })
+}
+
+fn read_edge_animation(v: Value) -> Read<EdgeAnimation> {
+    variant(
+        v,
+        &[("fast", EdgeAnimation::Fast), ("slow", EdgeAnimation::Slow)],
+    )
 }
 
 fn read_edge_stroke(v: Value) -> Read<EdgeStroke> {
