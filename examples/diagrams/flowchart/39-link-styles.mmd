@@ -1,0 +1,11 @@
+%%{init: {"theme": "default", "themeVariables": {"primaryColor": "#fdf2d6", "lineColor": "#56677d", "clusterBkg": "#f4f7fb"}}}%%
+flowchart LR
+    user([Customer]) --> web[Storefront]
+    web --> pay{Payment ok?}
+    pay -->|yes| ship[Ship order]
+    pay -->|no| retry[Ask again]
+    retry -.-> pay
+    ship ==> done([Delivered])
+    linkStyle default stroke-width:2px
+    linkStyle 2,5 stroke:#30a46c,stroke-width:4px,color:#1e7a46
+    linkStyle 3,4 stroke:#e5484d,color:#b42318

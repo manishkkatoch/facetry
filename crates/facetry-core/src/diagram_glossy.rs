@@ -282,10 +282,10 @@ fn push_node(
 }
 
 /// The band of an edge from `from` to `to` along `points`, `width` wide.
-fn ribbon(plan: &Plan, key: String, points: &[[f64; 2]], width: f64) -> RibbonMark {
+fn ribbon(plan: &Plan, key: String, points: &[[f64; 2]], width: f64, color: Color) -> RibbonMark {
     RibbonMark {
         key,
-        color: plan.look.arrow,
+        color,
         path: points.iter().map(|&p| plan.floor_point(p)).collect(),
         width: plan.len(width) as f32,
         base: 0.0,
@@ -311,7 +311,8 @@ fn push_edge(
     let width = match edge.stroke {
         EdgeStroke::Thick => THICK_EDGE_WIDTH,
         _ => EDGE_WIDTH,
-    };
+    } * edge.width_scale();
+    let color = parse_color(&edge.color).unwrap_or(plan.look.arrow);
     // Leave the gaps at both ends; the ends' markers sit at the new ends.
     let mut path = hops.densify(&edge.points);
     trim_end(&mut path, HEAD_GAP, true);
@@ -353,7 +354,7 @@ fn push_edge(
     };
     for (k, run) in runs.iter().enumerate() {
         if run.len() >= 2 {
-            let mut band = ribbon(plan, format!("{key}/{k}"), run, width);
+            let mut band = ribbon(plan, format!("{key}/{k}"), run, width, color);
             band.lift = hops.lift(plan, run, HOP_HEIGHT);
             scene.ribbons.push(band);
         }
@@ -365,7 +366,7 @@ fn push_edge(
         } else {
             (path[0], previous_distinct(&path, 0, 1))
         };
-        push_end(scene, plan, &key, end, tip, from, at_head);
+        push_end(scene, plan, &key, end, tip, from, at_head, color);
     }
 
     if let Some(text) = edge.label.as_deref().filter(|t| !t.is_empty()) {
@@ -373,7 +374,15 @@ fn push_edge(
             .label_position
             .unwrap_or_else(|| crate::diagram::midpoint(&edge.points));
         push_card(
-            scene, plan, &key, text, at, 0.0, shadow, measure, theme.text,
+            scene,
+            plan,
+            &key,
+            text,
+            at,
+            0.0,
+            shadow,
+            measure,
+            parse_color(&edge.label_color).unwrap_or(theme.text),
         );
     }
 }
@@ -423,7 +432,8 @@ pub(crate) fn push_card(
     }
 }
 
-/// The marker at one end of an edge: its tip at `tip`, arriving from `from`.
+/// The marker at one end of an edge: its tip at `tip`, arriving from `from`, in `color`.
+#[allow(clippy::too_many_arguments)]
 fn push_end(
     scene: &mut Scene3d,
     plan: &Plan,
@@ -432,6 +442,7 @@ fn push_end(
     tip: [f64; 2],
     from: [f64; 2],
     at_head: bool,
+    color: Color,
 ) {
     let (dx, dy) = (tip[0] - from[0], tip[1] - from[1]);
     let len = dx.hypot(dy).max(1e-9);
@@ -440,7 +451,7 @@ fn push_end(
     let name = if at_head { "head" } else { "tail" };
     let solid = |outline: Vec<[f64; 2]>, smooth: bool| PrismMark {
         key: format!("{key}/{name}"),
-        color: plan.look.arrow,
+        color,
         outline: outline.iter().map(|&p| plan.floor_point(p)).collect(),
         base: 0.0,
         top: plan.len(EDGE_HEIGHT) as f32,
@@ -487,6 +498,7 @@ fn push_end(
                     format!("{key}/{name}/{k}"),
                     &[p, q],
                     EDGE_WIDTH * 0.6,
+                    color,
                 ));
             }
         }

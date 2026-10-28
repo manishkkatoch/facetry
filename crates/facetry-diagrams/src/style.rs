@@ -80,7 +80,7 @@ const NAMED: &[(&str, &str)] = &[
 ];
 
 /// A CSS colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` or one of [`NAMED`].
-fn color(value: &str) -> Result<String, String> {
+pub fn color(value: &str) -> Result<String, String> {
     let v = value.trim();
     if let Some(hex) = v.strip_prefix('#') {
         if hex.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -134,6 +134,16 @@ fn px(value: &str) -> Result<f64, String> {
 /// Parses `key:value,key:value`. Each problem is reported with its character offset within
 /// `text`.
 pub fn parse(text: &str) -> Result<NodeStyle, (usize, String)> {
+    parse_for(text, false)
+}
+
+/// [`parse`] for a link (`linkStyle`): `fill` may only be `none` (links have no inside; Mermaid's
+/// examples write it), which changes nothing.
+pub fn parse_link(text: &str) -> Result<NodeStyle, (usize, String)> {
+    parse_for(text, true)
+}
+
+fn parse_for(text: &str, link: bool) -> Result<NodeStyle, (usize, String)> {
     let mut style = NodeStyle::default();
     let mut offset = 0;
     for part in text.split(',') {
@@ -149,6 +159,13 @@ pub fn parse(text: &str) -> Result<NodeStyle, (usize, String)> {
         let at_value = at + key.len() + 1;
         let located = |m: String| (at_value, m);
         match key.trim() {
+            "fill" if link => {
+                if value.trim() != "none" {
+                    return Err(located(
+                        "a link has no fill: only `fill:none` is allowed".into(),
+                    ));
+                }
+            }
             "fill" => style.fill = Some(color(value).map_err(located)?),
             "stroke" => style.stroke = Some(color(value).map_err(located)?),
             "stroke-width" => style.stroke_width = Some(px(value).map_err(located)?),

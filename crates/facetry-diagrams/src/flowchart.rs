@@ -23,15 +23,19 @@
 //! * styling: `classDef name,other fill:#f96,stroke:#333,stroke-width:2px,color:#fff` (and
 //!   `classDef default ...` for every node), `class a,b name`, `a:::name`, and
 //!   `style a fill:#f96`; later styles win over earlier ones, `style` over classes;
-//! * the theme: `%%{init: {"theme": "dark"}}%%`, or front matter with `config:` and `theme:`.
+//! * the theme: `%%{init: {"theme": "dark"}}%%`, or front matter with `config:` and `theme:`;
+//! * link styles: `linkStyle 0,2 stroke:#e5484d,stroke-width:3px,color:#555` and
+//!   `linkStyle default ...` (links numbered from 0 in the order written; `fill:none` allowed);
 //!
-//! Everything else that is valid Mermaid (`linkStyle`, other style properties,
-//! click handlers, keys of `@{ }` other than `icon`, anything in a directive or front matter but
+//! Everything else that is valid Mermaid (other style properties,
+//! click handlers, keys of `@{ }` other than `icon`, `shape` and `label`, anything in a directive or front matter but
 //! the theme, ...) is an
 //! error that names the feature, so a diagram is never drawn with parts silently missing. All problems are
 //! reported, not only the first: after an error the parser skips to the next statement.
 
-use facetry_core::spec::{DiagramTheme, EdgeAnimation, EdgeEnd, EdgeStroke, NodeShape};
+use facetry_core::spec::{
+    DiagramPalette, DiagramTheme, EdgeAnimation, EdgeEnd, EdgeStroke, NodeShape,
+};
 
 use crate::issue::{DiagramIssue, Lines};
 use crate::style::{self, NodeStyle};
@@ -115,6 +119,8 @@ pub struct Edge {
     /// From `e1@{ animate: true }` or `animation: fast|slow`: moving or explicitly still
     /// (`animate: false`); `None` where the text does not say.
     pub animation: Option<Option<EdgeAnimation>>,
+    /// From `linkStyle`: `stroke` (its colour), `stroke-width` and `color` (its label's).
+    pub style: NodeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -127,6 +133,8 @@ pub struct Flowchart {
     /// The theme the text asks for (`%%{init: {"theme": "dark"}}%%`, or `config: theme:` in
     /// front matter).
     pub theme: Option<DiagramTheme>,
+    /// Colours from Mermaid's `themeVariables` (in a directive or front matter).
+    pub palette: DiagramPalette,
 }
 
 impl Flowchart {
@@ -176,6 +184,8 @@ struct Styling {
     uses: Vec<(String, String, usize)>,
     /// `(node, style, offset)` from `style` statements.
     styles: Vec<(String, NodeStyle, usize)>,
+    /// `(link index, or None for `default`, style, offset)` from `linkStyle` statements.
+    links: Vec<(Option<usize>, NodeStyle, usize)>,
 }
 
 /// The longest edge Mermaid's extra dashes can ask for.
@@ -212,7 +222,6 @@ const OTHER_TYPES: &[&str] = &[
 
 /// Statement keywords of flowcharts that are not supported yet, with what to say.
 const UNSUPPORTED_STATEMENTS: &[(&str, &str)] = &[
-    ("linkStyle", "edge styling (`linkStyle`) is not supported"),
     ("click", "click handlers (`click`) are not supported"),
     ("callback", "click handlers (`callback`) are not supported"),
     (
@@ -452,7 +461,10 @@ impl Parser<'_> {
                     self.expect_char(':')?;
                     self.skip_ws_before(close);
                     let value_at = self.pos;
-                    if self.peek() == Some('{') {
+                    if key == "themeVariables" && self.peek() == Some('{') {
+                        self.theme_variables(close)?;
+                        continue;
+                    } else if self.peek() == Some('{') {
                         self.skip_braces(close)?;
                     } else {
                         let value = self.directive_word()?;
@@ -463,9 +475,69 @@ impl Parser<'_> {
                     }
                     let _: Step<()> = self.fail(
                         key_at,
-                        format!("`{key}` is not supported in a directive; only `theme` is"),
+                        format!(
+                            "`{key}` is not supported in a directive; only `theme` and `themeVariables` are"
+                        ),
                     );
                 }
+            }
+        }
+    }
+
+    /// `{ primaryColor: "#f4f4f4", ... }` of a directive's `themeVariables`, ending before
+    /// `close`.
+    fn theme_variables(&mut self, close: usize) -> Step<()> {
+        self.expect_char('{')?;
+        loop {
+            self.skip_ws_before(close);
+            match self.peek() {
+                Some('}') => {
+                    self.pos += 1;
+                    return Ok(());
+                }
+                Some(',') => self.pos += 1,
+                _ if self.pos >= close => return Err(Skip),
+                _ => {
+                    let key_at = self.pos;
+                    let key = self.directive_word()?;
+                    self.skip_ws_before(close);
+                    self.expect_char(':')?;
+                    self.skip_ws_before(close);
+                    let value_at = self.pos;
+                    let value = self.directive_word()?;
+                    self.theme_variable(&key, key_at, &value, value_at);
+                }
+            }
+        }
+    }
+
+    /// One of Mermaid's `themeVariables`, onto the palette role it stands for.
+    fn theme_variable(&mut self, key: &str, key_at: usize, value: &str, value_at: usize) {
+        let palette = &mut self.chart.palette;
+        let slot = match key {
+            "background" => &mut palette.page,
+            "primaryColor" | "mainBkg" => &mut palette.node,
+            "primaryTextColor" | "textColor" => &mut palette.text,
+            "primaryBorderColor" | "nodeBorder" => &mut palette.node_border,
+            "lineColor" => &mut palette.edge,
+            "clusterBkg" => &mut palette.group,
+            "clusterBorder" => &mut palette.group_border,
+            _ => {
+                let _: Step<()> = self.fail(
+                    key_at,
+                    format!(
+                        "`themeVariables.{key}` is not supported; the ones read are background, \
+                         primaryColor, mainBkg, primaryTextColor, textColor, primaryBorderColor, \
+                         nodeBorder, lineColor, clusterBkg and clusterBorder"
+                    ),
+                );
+                return;
+            }
+        };
+        match style::color(value) {
+            Ok(hex) => *slot = Some(hex),
+            Err(why) => {
+                let _: Step<()> = self.fail(value_at, why);
             }
         }
     }
@@ -553,7 +625,9 @@ impl Parser<'_> {
     /// ```
     fn front_matter(&mut self) {
         self.skip_line();
+        // How far in `config:`'s keys are, and `themeVariables:` itself, once met.
         let mut in_config = false;
+        let mut variables: Option<usize> = None;
         loop {
             if self.peek().is_none() {
                 let at = self.pos;
@@ -561,9 +635,10 @@ impl Parser<'_> {
                 return;
             }
             self.pos += 1; // the line break
-            let indented = matches!(self.peek(), Some(' ' | '\t'));
+            let line = self.pos;
             self.skip_inline_ws();
-            if self.starts_with("---") && !indented {
+            let indent = self.pos - line;
+            if self.starts_with("---") && indent == 0 {
                 self.skip_line();
                 return;
             }
@@ -594,23 +669,33 @@ impl Parser<'_> {
                         .to_owned()
                 }
             };
-            match (indented && in_config, key.as_str()) {
-                (false, "config") if value.is_empty() => in_config = true,
-                (true, "theme") => self.set_theme(&value, value_at),
-                (true, _) => {
-                    let _: Step<()> = self.fail(
-                        at,
-                        format!("`config.{key}` is not supported; only `theme` is"),
-                    );
-                }
-                (false, _) => {
-                    in_config = false;
+            if indent == 0 {
+                variables = None;
+                in_config = key == "config" && value.is_empty();
+                if !in_config {
                     let _: Step<()> = self.fail(
                         at,
                         format!(
-                            "`{key}` in front matter is not supported; only `config: theme` is"
+                            "`{key}` in front matter is not supported; only `config` (with \
+                             `theme` and `themeVariables`) is"
                         ),
                     );
+                }
+            } else if variables.is_some_and(|v| indent > v) {
+                self.theme_variable(&key, at, &value, value_at);
+            } else if in_config {
+                variables = None;
+                match key.as_str() {
+                    "theme" => self.set_theme(&value, value_at),
+                    "themeVariables" if value.is_empty() => variables = Some(indent),
+                    _ => {
+                        let _: Step<()> = self.fail(
+                            at,
+                            format!(
+                                "`config.{key}` is not supported; only `theme` and `themeVariables` are"
+                            ),
+                        );
+                    }
                 }
             }
             self.skip_line();
@@ -649,6 +734,8 @@ impl Parser<'_> {
             );
         }
         self.resolve_group_ends();
+        // Links first: `resolve_styles` takes the whole of `styling`.
+        self.resolve_link_styles();
         self.resolve_styles();
     }
 
@@ -719,6 +806,33 @@ impl Parser<'_> {
     }
 
     /// Applies `classDef default`, then each node's classes, then its `style` statements.
+    /// `linkStyle default` on every link first, then `linkStyle <n>` on link `n` in the order
+    /// written; a number past the last link is an error.
+    fn resolve_link_styles(&mut self) {
+        let links = std::mem::take(&mut self.styling.links);
+        for (_, style, _) in links.iter().filter(|(index, _, _)| index.is_none()) {
+            for e in &mut self.chart.edges {
+                e.style.apply(style);
+            }
+        }
+        let count = self.chart.edges.len();
+        for (index, style, at) in &links {
+            let Some(i) = *index else { continue };
+            match self.chart.edges.get_mut(i) {
+                Some(e) => e.style.apply(style),
+                None => {
+                    let _: Step<()> = self.fail(
+                        *at,
+                        format!(
+                            "there is no link {i}: the diagram has {count} link{}, numbered from 0",
+                            if count == 1 { "" } else { "s" }
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     fn resolve_styles(&mut self) {
         let styling = std::mem::take(&mut self.styling);
         let class = |name: &str| styling.classes.iter().rev().find(|(n, _)| n == name);
@@ -791,7 +905,7 @@ impl Parser<'_> {
         })
     }
 
-    /// `classDef`, `class` and `style`, after their keyword.
+    /// `classDef`, `class`, `style` and `linkStyle`, after their keyword.
     fn styling_statement(&mut self, keyword: &str) -> Step<()> {
         match keyword {
             "classDef" => {
@@ -799,6 +913,36 @@ impl Parser<'_> {
                 let style = self.properties()?;
                 for (name, _) in names {
                     self.styling.classes.push((name, style.clone()));
+                }
+            }
+            "linkStyle" => {
+                let links = self.names()?;
+                self.skip_inline_ws();
+                let at = self.pos;
+                while !self.at_statement_end() {
+                    self.pos += 1;
+                }
+                let text: String = self.text[at..self.pos].iter().collect();
+                let style = style::parse_link(text.trim_end()).map_err(|(offset, message)| {
+                    let offset = text[..offset.min(text.len())].chars().count();
+                    self.issues.push(self.lines.issue(at + offset, message));
+                    Skip
+                })?;
+                for (link, at) in links {
+                    let index = if link == "default" {
+                        None
+                    } else if link.chars().all(|c| c.is_ascii_digit()) && link.len() < 7 {
+                        Some(
+                            link.chars()
+                                .fold(0, |n, c| n * 10 + (c as usize - '0' as usize)),
+                        )
+                    } else {
+                        return self.fail(
+                            at,
+                            format!("`{link}` is not a link number: links are numbered from 0, in the order written, or `default`"),
+                        );
+                    };
+                    self.styling.links.push((index, style.clone(), at));
                 }
             }
             "class" => {
@@ -875,7 +1019,7 @@ impl Parser<'_> {
             after += 1;
         }
         let names_follow = self.text.get(after).is_some_and(|&c| is_id_char(c));
-        if matches!(word.as_str(), "classDef" | "class" | "style")
+        if matches!(word.as_str(), "classDef" | "class" | "style" | "linkStyle")
             && matches!(next, Some(' ' | '\t'))
             && names_follow
         {
@@ -960,6 +1104,7 @@ impl Parser<'_> {
                         length: link.length,
                         id: id.as_ref().map(|(id, _)| id.clone()),
                         animation: None,
+                        style: NodeStyle::default(),
                     });
                 }
             }
@@ -2166,7 +2311,22 @@ mod tests {
             ),
             ("graph TD\nA@{ icon: \"bulb\"", "unclosed `@{`"),
             ("graph TD\nA:::warn --> B", "no `classDef` named `warn`"),
-            ("graph TD\nA --> B\nlinkStyle 0 stroke:#f00", "linkStyle"),
+            (
+                "graph TD\nA --> B\nlinkStyle 1 stroke:#f00",
+                "there is no link 1: the diagram has 1 link",
+            ),
+            (
+                "graph TD\nA --> B\nlinkStyle 0 stroke-dasharray:5",
+                "`stroke-dasharray` is not supported",
+            ),
+            (
+                "graph TD\nA --> B\nlinkStyle 0 fill:#f00",
+                "only `fill:none`",
+            ),
+            (
+                "graph TD\nA --> B\nlinkStyle first stroke:#f00",
+                "`first` is not a link number",
+            ),
             (
                 "graph TD\nA\nstyle A stroke-dasharray: 5 5",
                 "stroke-dasharray",
@@ -2234,6 +2394,64 @@ mod tests {
         assert!(
             e[0].message.ends_with("the blocks given are pump, mixer"),
             "{e:?}"
+        );
+    }
+
+    #[test]
+    fn theme_variables_fill_the_palette() {
+        for src in [
+            "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1e293b', 'lineColor': 'red', 'clusterBkg': '#111' }}}%%\ngraph TD\nA",
+            "---\nconfig:\n  theme: base\n  themeVariables:\n    primaryColor: \"#1e293b\"\n    lineColor: red\n    clusterBkg: \"#111\"\n---\ngraph TD\nA",
+        ] {
+            let f = ok(src);
+            assert_eq!(f.theme, Some(DiagramTheme::Default), "{src}");
+            assert_eq!(f.palette.node.as_deref(), Some("#1e293b"), "{src}");
+            assert_eq!(f.palette.edge.as_deref(), Some("#ff0000"), "{src}");
+            assert_eq!(f.palette.group.as_deref(), Some("#111111"), "{src}");
+        }
+        for (src, needle) in [
+            (
+                "%%{init: {'themeVariables': { 'fontFamily': 'Inter' }}}%%\ngraph TD\nA",
+                "`themeVariables.fontFamily` is not supported",
+            ),
+            (
+                "%%{init: {'themeVariables': { 'lineColor': 'blurple' }}}%%\ngraph TD\nA",
+                "not a colour Facetry knows",
+            ),
+            (
+                "---\nconfig:\n  themeVariables:\n    edgeLabelBackground: \"#fff\"\n---\ngraph TD\nA",
+                "`themeVariables.edgeLabelBackground`",
+            ),
+        ] {
+            let e = err(src);
+            assert!(e.iter().any(|i| i.message.contains(needle)), "{src}: {e:?}");
+        }
+    }
+
+    #[test]
+    fn link_styles_by_number_over_the_default() {
+        let f = ok(
+            "flowchart LR\n  a --> b & c --> d\n  linkStyle 1,3 stroke:Red,stroke-width:3px,fill:none\n  linkStyle default stroke:#333,color:#555",
+        );
+        let styles: Vec<_> = f
+            .edges
+            .iter()
+            .map(|e| {
+                (
+                    e.style.stroke.as_deref(),
+                    e.style.stroke_width,
+                    e.style.color.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            styles,
+            [
+                (Some("#333333"), None, Some("#555555")),
+                (Some("#ff0000"), Some(3.0), Some("#555555")),
+                (Some("#333333"), None, Some("#555555")),
+                (Some("#ff0000"), Some(3.0), Some("#555555")),
+            ]
         );
     }
 

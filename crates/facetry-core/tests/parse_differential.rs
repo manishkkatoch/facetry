@@ -61,9 +61,9 @@ fn normalise_old(message: &str) -> String {
 /// tree no longer has.
 fn equivalent(old: &str, new: &str) -> bool {
     let old = normalise_old(old);
-    // The top-level `diagram` field came after the old parser was frozen, so the reader's list
-    // of the spec's fields names one more.
-    let new = &new.replace(", `diagram`", "");
+    // The top-level `version` and `diagram` fields came after the old parser was frozen, so the
+    // reader's list of the spec's fields names two more.
+    let new = &new.replace(", `diagram`", "").replace("`version`, ", "");
     old == *new
         // A unit enum given a number, bool, null, array or `{}`: serde_json says "expected
         // value" (a syntax-style error); the reader names the type.

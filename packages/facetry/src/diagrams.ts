@@ -16,7 +16,7 @@
  */
 // Types only: nothing from the chart modules is loaded by this entry point (`run` imports the
 // chart module when it is called).
-import type { Block, ChartSpec, DiagramStyle, DiagramTheme } from "../wasm/facetry_wasm.js";
+import type { Block, ChartSpec, DiagramPalette, DiagramStyle, DiagramTheme } from "../wasm/facetry_wasm.js";
 import type { Chart, ChartOptions } from "./chart.js";
 import type { DiagramIssue } from "../wasm/facetry_diagrams.js";
 import { FacetryError } from "./errors.js";
@@ -24,7 +24,7 @@ import { iconParts, type IconParts, type IconSource } from "./icons.js";
 import { iconPackNames, packIcons, registerIconPacks, type IconPack } from "./iconPacks.js";
 
 export type { Block, BlockPart } from "../wasm/facetry_wasm.js";
-export type { DiagramIssue, DiagramStyle, DiagramTheme, IconSource };
+export type { DiagramIssue, DiagramPalette, DiagramStyle, DiagramTheme, IconSource };
 export type { FillRule, IconFillPath, IconParts, IconPath } from "./icons.js";
 export { iconFromSvg } from "./icons.js";
 export type { IconifyIcon, IconifyJSON, IconPack, IconPackIcons } from "./iconPacks.js";
@@ -48,6 +48,18 @@ export interface DiagramOptions {
    * `config: theme:` in front matter) wins, as in Mermaid. Default `"default"`.
    */
   theme?: DiagramTheme;
+  /**
+   * Colours of your own over the theme's, by role (`#rrggbb`): `page`, `text`, `node`,
+   * `nodeBorder`, `edge`, `group`, `groupBorder`, `flow`, and `accents` (taken in turn by the
+   * glossy slabs and isometric caps). Any left out keep the theme's. Mermaid's `themeVariables`
+   * in the text (`primaryColor`, `lineColor`, ...) fill the same roles and win, as the text's
+   * theme does.
+   *
+   * ```ts
+   * await diagram.fromMermaid(text, { theme: "dark", palette: { edge: "#f5a524", accents: ["#3e8ef7"] } });
+   * ```
+   */
+  palette?: DiagramPalette;
   /**
    * Animate every edge: marks move along it the way it runs (beads on the flat style's lines,
    * light pulses on glossy arrows, chevrons driving along isometric roads, flow marks along
@@ -239,6 +251,10 @@ export const diagram = {
         Object.keys(blocks),
       );
       const spec = JSON.parse(json) as ChartSpec;
+      // The text's own colours (`themeVariables`) win over the options'.
+      if (spec.diagram && options.palette) {
+        spec.diagram.palette = { ...options.palette, ...spec.diagram.palette };
+      }
       // The blocks the nodes name travel with the diagram (the module only knew their names).
       const used = new Set(spec.diagram?.nodes.flatMap((n) => (n.block ? [n.block] : [])));
       if (spec.diagram && used.size > 0) {

@@ -13,11 +13,12 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
     AxisSpec, Block, BlockPart, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column,
-    CustomIcon, DiagramEdge, DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme,
-    Dimension, Easing, EdgeAnimation, EdgeEnd, EdgeStroke, Encoding, FillRule, IconFill,
-    InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig,
-    LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
-    PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding, TransitionConfig, TransitionSpec,
+    CustomIcon, DiagramEdge, DiagramGroup, DiagramNode, DiagramPalette, DiagramSpec, DiagramStyle,
+    DiagramTheme, Dimension, Easing, EdgeAnimation, EdgeEnd, EdgeStroke, Encoding, FillRule,
+    IconFill, InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec,
+    LegendConfig, LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig,
+    PointSpec, Position, PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding,
+    TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -269,8 +270,35 @@ pub fn parse_spec_value(v: Value) -> Result<ChartSpec, Vec<Issue>> {
     })
 }
 
+/// The spec format version this reader reads.
+pub const SPEC_VERSION: u32 = 1;
+
+fn read_version(v: Value) -> Read<u32> {
+    let version = count(v)?;
+    if version == SPEC_VERSION {
+        Ok(version)
+    } else if version > SPEC_VERSION {
+        Err(Fail::new(format!(
+            "this is spec version {version}, and this facetry reads version {SPEC_VERSION}: \
+             update facetry to draw it"
+        )))
+    } else {
+        Err(Fail::new(format!(
+            "spec versions start at 1; this facetry reads version {SPEC_VERSION}"
+        )))
+    }
+}
+
 fn read_chart_spec(v: Value) -> Read<ChartSpec> {
+    // The version first, so that a later version's new fields are reported as that, not as
+    // unknown fields.
+    if let Value::Object(entries) = &v {
+        if let Some((_, version)) = entries.iter().find(|(k, _)| k == "version") {
+            read_version(version.clone()).map_err(|e| e.at_key("version"))?;
+        }
+    }
     object!(v, "ChartSpec", ChartSpec {
+        version [def] = "version" => opt(read_version),
         dimension [def] = "dimension" => read_dimension,
         data [def] = "data" => map(read_table),
         axes [def] = "axes" => list(read_axis),
@@ -572,6 +600,7 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         font_size [def] = "fontSize" => opt(number),
         style [def] = "style" => read_diagram_style,
         theme [def] = "theme" => read_diagram_theme,
+        palette [def] = "palette" => read_palette,
         icons [def] = "icons" => read_custom_icons,
         blocks [def] = "blocks" => read_blocks,
         groups [def] = "groups" => list(read_diagram_group),
@@ -691,6 +720,20 @@ fn read_diagram_style(v: Value) -> Read<DiagramStyle> {
     )
 }
 
+fn read_palette(v: Value) -> Read<DiagramPalette> {
+    object!(v, "DiagramPalette", DiagramPalette {
+        page [def] = "page" => opt(string),
+        text [def] = "text" => opt(string),
+        node [def] = "node" => opt(string),
+        node_border [def] = "nodeBorder" => opt(string),
+        edge [def] = "edge" => opt(string),
+        group [def] = "group" => opt(string),
+        group_border [def] = "groupBorder" => opt(string),
+        accents [def] = "accents" => list(string),
+        flow [def] = "flow" => opt(string),
+    })
+}
+
 fn read_diagram_theme(v: Value) -> Read<DiagramTheme> {
     variant(
         v,
@@ -763,6 +806,9 @@ fn read_diagram_edge(v: Value) -> Read<DiagramEdge> {
         head [def] = "head" => opt(read_edge_end),
         tail [def] = "tail" => opt(read_edge_end),
         animation [def] = "animation" => opt(read_edge_animation),
+        color [def] = "color" => opt(string),
+        width [def] = "width" => opt(number),
+        label_color [def] = "labelColor" => opt(string),
     })
 }
 

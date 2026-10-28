@@ -26,6 +26,7 @@ export type {
   ColorEncoding,
   DiagramEdge,
   DiagramNode,
+  DiagramPalette,
   DiagramSpec,
   DiagramStyle,
   DiagramTheme,
