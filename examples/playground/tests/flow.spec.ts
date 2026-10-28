@@ -13,6 +13,23 @@ async function ready(page: Page, url = URL) {
 
 const renderCount = (page: Page) => page.evaluate(() => (window as any).facetryChart.renderCount as number);
 
+/**
+ * Waits until no frame is drawn for 400 ms in a row: frames that were already on their way
+ * (late, under load) may still come first. A chart that keeps drawing never gets there and fails.
+ */
+async function settles(page: Page) {
+  await expect
+    .poll(
+      async () => {
+        const before = await renderCount(page);
+        await page.waitForTimeout(400);
+        return (await renderCount(page)) - before;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(0);
+}
+
 async function shot(page: Page): Promise<PNG> {
   return PNG.sync.read(await page.locator("#chart").screenshot());
 }
@@ -37,17 +54,7 @@ test.describe("with motion", () => {
     expect(await page.evaluate(() => (window as any).facetryChart.flow)).toBe(true);
     // Switched off: the frames stop, and the marks stay where they were.
     await page.evaluate(() => ((window as any).facetryChart.flow = false));
-    // A frame already asked for may still come (late, under load): wait for the count to hold.
-    await expect
-      .poll(
-        async () => {
-          const before = await renderCount(page);
-          await page.waitForTimeout(400);
-          return (await renderCount(page)) - before;
-        },
-        { timeout: 10_000 },
-      )
-      .toBe(0);
+    await settles(page);
     const held = await renderCount(page);
     // And on again.
     await page.evaluate(() => ((window as any).facetryChart.flow = true));
@@ -70,20 +77,14 @@ test.describe("with motion", () => {
 
   test("a diagram without animated edges draws no frames of its own", async ({ page }) => {
     await ready(page, URL.replace("&flow=1", ""));
-    await page.waitForTimeout(200);
-    const before = await renderCount(page);
-    await page.waitForTimeout(400);
-    expect(await renderCount(page)).toBe(before);
+    await settles(page);
   });
 });
 
 test("a viewer who asks for reduced motion sees still marks and no frames", async ({ page }) => {
   // The project runs tests with `reducedMotion: "reduce"`.
   await ready(page);
-  await page.waitForTimeout(200);
-  const before = await renderCount(page);
-  await page.waitForTimeout(400);
-  expect(await renderCount(page)).toBe(before);
+  await settles(page);
 });
 
 // The glossy pulses and the schematic flow marks, a quarter second in, in the golden images'

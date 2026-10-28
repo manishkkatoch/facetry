@@ -37,6 +37,9 @@ test("with Animate off an update jumps", async ({ page }) => {
 });
 
 test("Randomize data sometimes adds a category and sometimes removes one, in any kind of chart", async ({ page }) => {
+  // Five charts with many randomized updates each: about 27 s alone, more with other tests
+  // running beside it, so it gets more than the default 30 s.
+  test.setTimeout(90_000);
   for (const example of ["bar-colored", "pie", "line-basic", "bar3d-stacked", "combo-bar-line"]) {
     await ready(page, `&example=${example}&seed=3`);
     const categories = async () => {

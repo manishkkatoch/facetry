@@ -12,12 +12,12 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::spec::{
-    AxisSpec, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column, CustomIcon, DiagramEdge,
-    DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme, Dimension, Easing,
-    EdgeAnimation, EdgeEnd, EdgeStroke, Encoding, FillRule, IconFill, InteractionSpec, KeyEncoding,
-    LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig, LegendOrient, LegendSpec, Mark,
-    NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position, PositionEncoding, ScaleSpec,
-    StyleSpec, Table, ThetaEncoding, TransitionConfig, TransitionSpec,
+    AxisSpec, Block, BlockPart, CameraKind, CameraSpec, ChartSpec, ColorEncoding, Column,
+    CustomIcon, DiagramEdge, DiagramGroup, DiagramNode, DiagramSpec, DiagramStyle, DiagramTheme,
+    Dimension, Easing, EdgeAnimation, EdgeEnd, EdgeStroke, Encoding, FillRule, IconFill,
+    InteractionSpec, KeyEncoding, LabelFormat, LabelShow, LabelSpec, LayerSpec, LegendConfig,
+    LegendOrient, LegendSpec, Mark, NodeCard, NodeShape, Orient, PointConfig, PointSpec, Position,
+    PositionEncoding, ScaleSpec, StyleSpec, Table, ThetaEncoding, TransitionConfig, TransitionSpec,
 };
 use crate::validate::{Issue, pointer};
 use crate::value::Value;
@@ -573,6 +573,7 @@ fn read_diagram(v: Value) -> Read<DiagramSpec> {
         style [def] = "style" => read_diagram_style,
         theme [def] = "theme" => read_diagram_theme,
         icons [def] = "icons" => read_custom_icons,
+        blocks [def] = "blocks" => read_blocks,
         groups [def] = "groups" => list(read_diagram_group),
     })
 }
@@ -602,6 +603,35 @@ fn read_custom_icons(v: Value) -> Read<Vec<(String, CustomIcon)>> {
         out.push((key, icon));
     }
     Ok(out)
+}
+
+fn read_blocks(v: Value) -> Read<Vec<(String, Block)>> {
+    let mut out: Vec<(String, Block)> = Vec::new();
+    for (key, value) in entries(v, "a map")? {
+        let block = read_block(value).map_err(|e| e.at_key(&key))?;
+        out.retain(|(name, _)| *name != key);
+        out.push((key, block));
+    }
+    Ok(out)
+}
+
+fn read_block(v: Value) -> Read<Block> {
+    object!(v, "Block", Block {
+        parts [req] = "parts" => list(read_block_part),
+    })
+}
+
+fn read_block_part(v: Value) -> Read<BlockPart> {
+    object!(v, "BlockPart", BlockPart {
+        name [def] = "name" => opt(string),
+        shape [def] = "shape" => read_node_shape,
+        outline [def] = "outline" => opt(list(pair)),
+        at [def] = "at" => opt(pair),
+        size [def] = "size" => opt(pair),
+        from [req] = "from" => number,
+        to [req] = "to" => number,
+        color [def] = "color" => opt(string),
+    })
 }
 
 fn read_custom_icon(v: Value) -> Read<CustomIcon> {
@@ -687,6 +717,7 @@ fn read_diagram_node(v: Value) -> Read<DiagramNode> {
         stroke_width [def] = "strokeWidth" => opt(number),
         text_color [def] = "textColor" => opt(string),
         icon [def] = "icon" => opt(string),
+        block [def] = "block" => opt(string),
         card [def] = "card" => opt(read_node_card),
     })
 }

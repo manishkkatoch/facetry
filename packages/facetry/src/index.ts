@@ -15,6 +15,8 @@ export {
 // The spec types are generated from the Rust definitions (tsify), so they cannot drift.
 export type {
   AxisSpec,
+  Block,
+  BlockPart,
   CameraKind,
   CameraSpec,
   CameraState,

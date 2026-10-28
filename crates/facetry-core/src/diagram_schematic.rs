@@ -58,7 +58,7 @@ const FLOW_RISE: f64 = 0.12;
 
 /// Signs: the post's height above the equipment and its width, the board's padding (layout
 /// units), depth and the frame round it (font sizes), and line height (font sizes).
-const SIGN_LIFT: f64 = 1.3;
+pub(crate) const SIGN_LIFT: f64 = 1.3;
 const SIGN_POST: f64 = 2.2;
 const SIGN_PAD: f64 = 6.0;
 const SIGN_DEPTH: f64 = 0.22;
@@ -83,7 +83,7 @@ const SHADOW_ALPHA: f32 = 0.13;
 /// One solid of a piece of equipment: a convex outline (absolute layout units) from `base` to
 /// `top` (font sizes).
 struct Part {
-    name: &'static str,
+    name: String,
     outline: Vec<[f64; 2]>,
     smooth: bool,
     base: f64,
@@ -108,8 +108,8 @@ fn equipment(node: &DiagramNode, fill: Option<Color>, look: &Look) -> Vec<Part> 
     let (footprint, smooth) = outline(node, 0.0);
     let centre = [node.x, node.y];
     let small = node.width.min(node.height);
-    let part = |name, outline, smooth, base, top, color| Part {
-        name,
+    let part = |name: &str, outline, smooth, base, top, color| Part {
+        name: name.to_owned(),
         outline,
         smooth,
         base,
@@ -287,7 +287,30 @@ fn push_node(
     measure: &dyn TextMeasure,
 ) {
     let look = &plan.look;
-    let parts = equipment(node, parse_color(&node.color), look);
+    // A block of the diagram's own stands in place of the equipment the shape would give.
+    let parts = match node.block.as_deref().and_then(|b| plan.block(b)) {
+        Some(block) => {
+            let body = parse_color(&node.color).unwrap_or(look.equipment);
+            crate::diagram::block_pieces(block, node)
+                .into_iter()
+                .map(|piece| Part {
+                    color: match piece.color.as_deref() {
+                        None | Some("body") => body,
+                        Some("steel") => look.steel,
+                        Some("frame") => look.frame,
+                        Some("accent") => look.flow,
+                        Some(hex) => parse_color(&Some(hex.to_owned())).unwrap_or(body),
+                    },
+                    name: piece.name,
+                    outline: piece.outline,
+                    smooth: piece.smooth,
+                    base: piece.from,
+                    top: piece.to,
+                })
+                .collect()
+        }
+        None => equipment(node, parse_color(&node.color), look),
+    };
     let (shadow, _) = outline(node, 2.0);
     push_shadow_with(
         scene,
@@ -393,7 +416,7 @@ fn push_edges_of(
 /// a white board in a dark frame, `post` world units up, with `text` printed on it (and
 /// `icon` before it), facing the isometric view. `scale` sizes it against a node's sign.
 #[allow(clippy::too_many_arguments)]
-fn push_sign(
+pub(crate) fn push_sign(
     scene: &mut Scene3d,
     plan: &Plan,
     key: &str,

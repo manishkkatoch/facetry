@@ -1101,3 +1101,95 @@ fn a_diagram_builds_in_rank_by_rank_and_ends_as_itself() {
         assert!(part > 0.0 && part < whole, "{style}: {part} of {whole}");
     }
 }
+
+/// GOOD with node `b` drawn as block `pump` (two parts) in `style`.
+fn with_block(style: &str) -> String {
+    broken(r#""diagram": {"#, &format!(r##""diagram": {{ "style": "{style}", "blocks": {{ "pump": {{ "parts": [
+        {{ "name": "skid", "from": 0, "to": 0.5, "color": "frame" }},
+        {{ "name": "casing", "shape": "circle", "at": [-0.2, 0], "size": [0.5, 0.7], "from": 0.5, "to": 2, "color": "#336699" }}
+    ] }} }},"##))
+    .replace(r#""shape": "cylinder","#, r#""shape": "cylinder", "block": "pump","#)
+}
+
+#[test]
+fn blocks_replace_equipment_and_pedestals_and_other_styles_draw_the_shape() {
+    for style in ["schematic", "isometric"] {
+        let s = spec(&with_block(style));
+        assert_eq!(validate(&s), vec![], "{style}");
+        let scene = with_signs(build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter()));
+        // The first part is the node's mark, the others are named after their parts.
+        let mark = scene.prisms.iter().find(|p| p.key == "b").expect(style);
+        let casing = scene
+            .decor
+            .iter()
+            .find(|p| p.key == "b/casing")
+            .expect(style);
+        assert!(
+            mark.top < casing.top && (casing.base - mark.top).abs() < 1e-6,
+            "{style}"
+        );
+        assert_eq!(
+            casing.color,
+            facetry_core::Color::from_hex("#336699").unwrap()
+        );
+        // Fitted to the box: the casing is half the node's 80 units across, left of centre.
+        let xs: Vec<f32> = casing.outline.iter().map(|p| p[0]).collect();
+        let (lo, hi) = xs
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+        let node = scene.prisms.iter().find(|p| p.key == "a").unwrap();
+        let unit = {
+            let xs: Vec<f32> = node.outline.iter().map(|p| p[0]).collect();
+            (xs.iter().cloned().fold(f32::MIN, f32::max)
+                - xs.iter().cloned().fold(f32::MAX, f32::min))
+                / 80.0
+        };
+        assert!(
+            ((hi - lo) / unit - 40.0).abs() < 0.5,
+            "{style}: {}",
+            (hi - lo) / unit
+        );
+        // No pedestal or equipment of the shape's: a silo would have a `b/silo`.
+        assert!(
+            !scene
+                .decor
+                .iter()
+                .any(|p| p.key == "b/silo" || p.key == "b/cap")
+        );
+        // The label stands on a sign over the block.
+        let label = scene
+            .texts
+            .iter()
+            .find(|t| t.key.starts_with("b/sign/"))
+            .expect(style);
+        assert!(label.anchor[1] > casing.top, "{style}");
+    }
+    // The flat style draws the node's shape.
+    let s = spec(&with_block("flat"));
+    assert_eq!(validate(&s), vec![]);
+    let scene = build_scene_3d(&s, (800, 500), 1.0, FontMetrics::inter());
+    assert!(scene.decor.iter().all(|p| !p.key.starts_with("b/casing")));
+}
+
+#[test]
+fn block_mistakes_are_reported_where_they_are() {
+    let json = with_block("schematic");
+    let got = issues(&json.replace(r#""block": "pump""#, r#""block": "pumpp""#));
+    assert_eq!(got[0].path, "/diagram/nodes/1/block");
+    assert_eq!(
+        got[0].message,
+        r#"no block "pumpp"; the diagram's blocks are pump"#
+    );
+    let got = issues(&json.replace(r#""from": 0.5, "to": 2"#, r#""from": 2, "to": 1"#));
+    assert_eq!(got[0].path, "/diagram/blocks/pump/parts/1/to");
+    let got = issues(&json.replace(r#""color": "frame""#, r#""color": "chrome""#));
+    assert_eq!(got[0].path, "/diagram/blocks/pump/parts/0/color");
+    assert!(
+        got[0].message.contains("body, steel, frame, accent"),
+        "{got:?}"
+    );
+    let got = issues(&json.replace(r#""size": [0.5, 0.7]"#, r#""size": [0, 0.7]"#));
+    assert_eq!(got[0].path, "/diagram/blocks/pump/parts/1/size");
+    let got = issues(&json.replace(r#""from": 0, "to": 0.5"#, r#""from": 0, "to": 50"#));
+    assert_eq!(got[0].path, "/diagram/blocks/pump/parts/0/to");
+}

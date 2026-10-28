@@ -596,6 +596,11 @@ pub struct DiagramSpec {
     /// a map type of its own would add kilobytes to the wasm.)
     #[cfg_attr(feature = "ts", tsify(optional, type = "Record<string, CustomIcon>"))]
     pub icons: Vec<(String, CustomIcon)>,
+    /// Blocks of the diagram's own, by name, for nodes' `block`: models the schematic and
+    /// isometric styles draw in place of their own equipment and pedestals. Kept as pairs in
+    /// order, like `icons`.
+    #[cfg_attr(feature = "ts", tsify(optional, type = "Record<string, Block>"))]
+    pub blocks: Vec<(String, Block)>,
     /// Boxes round groups of nodes (Mermaid's subgraphs), drawn under them with their titles.
     /// Edges may start or end at a group, by its id.
     #[cfg_attr(feature = "ts", tsify(optional))]
@@ -647,6 +652,47 @@ impl DiagramSpec {
         }
         depth
     }
+}
+
+/// A model of the user's own for nodes: parts stacked and set side by side, each a footprint
+/// raised between two heights. The first part is the node's body, what hover and click find.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct Block {
+    pub parts: Vec<BlockPart>,
+}
+
+/// One part of a [`Block`], fitted to its node's box: its footprint a node shape (or a polygon
+/// of its own) `size` of the box across, centred `at` (shares of the box from its centre),
+/// raised from `from` to `to` font sizes over the floor.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct BlockPart {
+    /// For the part's key (`<node>/<name>`). Default: `part<k>`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub name: Option<String>,
+    /// Default: `"rect"`.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub shape: NodeShape,
+    /// A convex polygon instead of `shape`: `[x, y]` points as shares of the box, from
+    /// `[-0.5, -0.5]` to `[0.5, 0.5]` (y down the page, as the layout's).
+    #[cfg_attr(feature = "ts", tsify(optional, type = "[number, number][]"))]
+    pub outline: Option<Vec<[f64; 2]>>,
+    /// Shares of the box: default `[0, 0]`, the centre.
+    #[cfg_attr(feature = "ts", tsify(optional, type = "[number, number]"))]
+    pub at: Option<[f64; 2]>,
+    /// Shares of the box: default `[1, 1]`, all of it.
+    #[cfg_attr(feature = "ts", tsify(optional, type = "[number, number]"))]
+    pub size: Option<[f64; 2]>,
+    /// Heights over the floor, in font sizes.
+    pub from: f64,
+    pub to: f64,
+    /// A colour of the style and theme (`"body"`, `"steel"`, `"frame"` or `"accent"`), or
+    /// `#rrggbb`. Default: `"body"`, which the node's own `color` replaces.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub color: Option<String>,
 }
 
 /// An icon brought by the user, as SVG path data: lines drawn like the built-in icons'
@@ -773,6 +819,10 @@ pub struct DiagramNode {
     /// on its top above the label (the layout leaves room for it there).
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub icon: Option<String>,
+    /// One of the diagram's `blocks`: drawn in its place by the schematic and isometric styles
+    /// (the others draw the node's `shape`).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub block: Option<String>,
     /// A card lying on the floor beside the node, with a title, a description and the icon
     /// (isometric style only).
     #[cfg_attr(feature = "ts", tsify(optional))]

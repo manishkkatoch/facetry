@@ -1,0 +1,8 @@
+{
+  "parts": [
+    { "name": "plinth", "shape": "rect", "from": 0, "to": 0.4, "color": "frame" },
+    { "name": "vessel", "shape": "circle", "size": [0.8, 0.8], "from": 0.4, "to": 3.4, "color": "steel" },
+    { "name": "lid", "shape": "circle", "size": [0.86, 0.86], "from": 3.4, "to": 3.65, "color": "body" },
+    { "name": "drive", "shape": "rect", "size": [0.28, 0.28], "from": 3.65, "to": 4.6, "color": "accent" }
+  ]
+}

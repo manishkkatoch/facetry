@@ -13,7 +13,7 @@ use crate::Color;
 use crate::Theme;
 use crate::diagram::{
     CARD_BADGE, CARD_ICON, CARD_TEXT, CARD_TITLE, Flow, ICON_SIZE, ISOMETRIC_AZIMUTH, Plan,
-    arrow_shape, card_layout, dashes, icon_and_label, parse_color, path_length, push_flow,
+    arrow_shape, card_layout, dashes, icon_and_label, ink_on, parse_color, path_length, push_flow,
     push_icon, push_rim, shape_outline, trim_end,
 };
 use crate::diagram_glossy::{lighten, print, print_aligned, push_card, push_shadow_with};
@@ -165,60 +165,96 @@ fn push_node(
         SHADOW_BLUR,
         shadow,
     );
-    let body_base = PLATE_HEIGHT;
-    let cap_base = body_base + BODY_HEIGHT;
-    let inset_base = cap_base + CAP_HEIGHT;
-    scene.decor.push(layer(
-        "plate",
-        &plate,
-        smooth,
-        0.0,
-        PLATE_HEIGHT,
-        plan.look.plate,
-        0.0,
-    ));
-    scene.decor.push(layer(
-        "body",
-        &body,
-        smooth,
-        body_base,
-        BODY_HEIGHT,
-        plan.look.body,
-        WHITE_GLOSS,
-    ));
-    // The cap is the node's mark: what hover lights and picking finds (on its top face).
-    let mut cap = layer("cap", &body, smooth, cap_base, CAP_HEIGHT, fill, CAP_GLOSS);
-    cap.key = node.id.clone();
-    scene.prisms.push(cap);
-    scene.decor.push(layer(
-        "inset",
-        &inset,
-        smooth,
-        inset_base,
-        INSET_HEIGHT,
-        look.inset,
-        WHITE_GLOSS,
-    ));
-    // A light catch-light round the cap's top edge, or the node's own stroke.
-    let (rim, width) = match parse_color(&node.stroke) {
-        Some(c) => (c, node.stroke_width.unwrap_or(1.5)),
-        None => (lighten(fill, 0.45), node.stroke_width.unwrap_or(1.0)),
-    };
-    let (relative, _) = shape_outline(node.shape, node.width, node.height);
-    push_rim(
-        scene,
-        plan,
-        node,
-        &relative,
-        plan.len(inset_base * plan.font),
-        rim,
-        width * s,
-    );
+    // A block of the diagram's own stands in place of the pedestal; its first part carries the
+    // label (and is the node's mark).
+    let (top, surface, block_top) =
+        if let Some(block) = node.block.as_deref().and_then(|b| plan.block(b)) {
+            let pieces = crate::diagram::block_pieces(block, node);
+            for (k, piece) in pieces.iter().enumerate() {
+                let color = match piece.color.as_deref() {
+                    None | Some("accent") => fill,
+                    Some("body") => look.body,
+                    Some("steel") => look.inset,
+                    Some("frame") => darken(fill, 0.35),
+                    Some(hex) => parse_color(&Some(hex.to_owned())).unwrap_or(look.body),
+                };
+                let mut mark = layer(
+                    &piece.name,
+                    &piece.outline,
+                    piece.smooth,
+                    piece.from,
+                    piece.to - piece.from,
+                    color,
+                    CAP_GLOSS,
+                );
+                if k == 0 {
+                    mark.key = node.id.clone();
+                    scene.prisms.push(mark);
+                } else {
+                    scene.decor.push(mark);
+                }
+            }
+            let first = &pieces[0];
+            let color = scene.prisms.last().map_or(look.inset, |m| m.color);
+            let tallest = pieces.iter().map(|p| p.to).fold(0.0, f64::max);
+            (plan.len(first.to * plan.font), color, Some(tallest))
+        } else {
+            let body_base = PLATE_HEIGHT;
+            let cap_base = body_base + BODY_HEIGHT;
+            let inset_base = cap_base + CAP_HEIGHT;
+            scene.decor.push(layer(
+                "plate",
+                &plate,
+                smooth,
+                0.0,
+                PLATE_HEIGHT,
+                plan.look.plate,
+                0.0,
+            ));
+            scene.decor.push(layer(
+                "body",
+                &body,
+                smooth,
+                body_base,
+                BODY_HEIGHT,
+                plan.look.body,
+                WHITE_GLOSS,
+            ));
+            // The cap is the node's mark: what hover lights and picking finds (on its top face).
+            let mut cap = layer("cap", &body, smooth, cap_base, CAP_HEIGHT, fill, CAP_GLOSS);
+            cap.key = node.id.clone();
+            scene.prisms.push(cap);
+            scene.decor.push(layer(
+                "inset",
+                &inset,
+                smooth,
+                inset_base,
+                INSET_HEIGHT,
+                look.inset,
+                WHITE_GLOSS,
+            ));
+            // A light catch-light round the cap's top edge, or the node's own stroke.
+            let (rim, width) = match parse_color(&node.stroke) {
+                Some(c) => (c, node.stroke_width.unwrap_or(1.5)),
+                None => (lighten(fill, 0.45), node.stroke_width.unwrap_or(1.0)),
+            };
+            let (relative, _) = shape_outline(node.shape, node.width, node.height);
+            push_rim(
+                scene,
+                plan,
+                node,
+                &relative,
+                plan.len(inset_base * plan.font),
+                rim,
+                width * s,
+            );
+            (plan.len(STACK_HEIGHT * plan.font), look.inset, None)
+        };
     // The label goes on the white inset: in a deep shade of the node's colour, or the node's
     // own text colour if that reads on white (a `color:#fff` meant for a coloured fill would
     // vanish), or the theme's dark text if the fill is too pale to shade.
     // (On a dark page the inset is dark, and the shade a light one.)
-    let readable = |c: &Color| c.contrast(look.inset) >= 3.0;
+    let readable = |c: &Color| c.contrast(surface) >= 3.0;
     let shade = if look.dark {
         lighten(fill, 0.45)
     } else {
@@ -227,9 +263,34 @@ fn push_node(
     let ink = parse_color(&node.text_color)
         .filter(readable)
         .or_else(|| Some(shade).filter(readable))
-        .unwrap_or(text);
+        .unwrap_or_else(|| ink_on(surface, text));
     let label = node.label.as_deref().unwrap_or(&node.id);
-    let top = plan.len(STACK_HEIGHT * plan.font);
+    // A block has no flat top to print on: its label (and icon) stand on a sign above it, as
+    // the schematic style's do, unless it has a card.
+    if let Some(tallest) = block_top {
+        if let Some(card) = &node.card {
+            push_card_on_floor(scene, plan, node, card, ink, s, measure);
+            return;
+        }
+        let sign_ink = parse_color(&node.text_color)
+            .filter(|c| c.contrast(look.sign) >= 3.0)
+            .unwrap_or(look.ink);
+        crate::diagram_schematic::push_sign(
+            scene,
+            plan,
+            &node.id,
+            label,
+            node.icon.as_deref(),
+            [node.x, node.y],
+            plan.len(tallest * plan.font),
+            plan.len(crate::diagram_schematic::SIGN_LIFT * plan.font),
+            1.0,
+            sign_ink,
+            s,
+            measure,
+        );
+        return;
+    }
     if let Some(card) = &node.card {
         // The pedestal shows the step number, standing; the card says what the step is.
         if !push_numeral(scene, plan, node, label, top, fill) {
