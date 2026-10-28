@@ -9,9 +9,13 @@ test.describe("with motion", () => {
   test.use({ reducedMotion: "no-preference" });
 
   test("the build-in plays once and the chart then rests", async ({ page }) => {
-    await page.goto(URL);
+    // The clock is held at the start, so the build-in cannot be over before it is looked at
+    // (a slow page can take longer to get ready than the build-in takes)...
+    await page.goto(`${URL}&clock=manual`);
     await expect(page.locator("html")).toHaveAttribute("data-ready", "true");
     expect(await page.evaluate(() => (window as any).facetryChart.animating)).toBe(true);
+    // ...then let go: it plays to its end on the real clock.
+    await page.evaluate(() => (window as any).facetryChart.__animationClock(null));
     await expect
       .poll(() => page.evaluate(() => (window as any).facetryChart.animating), { timeout: 15_000 })
       .toBe(false);
