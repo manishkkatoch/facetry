@@ -283,6 +283,17 @@ impl Sign {
     }
 }
 
+/// When one part of a diagram builds in: everything whose key starts with `owner` (a node's
+/// or group's id, or `edge{i}`) grows from `start_ms` over `duration_ms`, drawn out along its
+/// length if `draw` (an edge) or rising from the floor if not.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BuildStep {
+    pub owner: String,
+    pub start_ms: f32,
+    pub duration_ms: f32,
+    pub draw: bool,
+}
+
 /// Copies of one small solid moving along a path, over and over, the way a diagram edge runs
 /// (its flow): `every` apart, `speed` world units a second, each shrinking to nothing near the
 /// path's ends so none pops in or out. Not a mark: never picked. See [`FlowMark::marks_at`].
@@ -410,6 +421,9 @@ fn lifts<S: Serializer>(v: &[f32], s: S) -> Result<S::Ok, S::Error> {
 /// `color` (its alpha the darkness), fading to nothing over `blur` world units outside it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ShadowMark {
+    /// What casts it (a node's id, or its key's first part): what a build-in grows it with.
+    #[serde(skip)]
+    pub key: String,
     #[serde(serialize_with = "outline2")]
     pub outline: Vec<[f32; 2]>,
     #[serde(serialize_with = "w4")]
@@ -666,6 +680,7 @@ impl Scene3d {
     pub fn clone_shell(&self) -> Scene3d {
         Scene3d {
             fills: Vec::new(),
+            build: Vec::new(),
             flows: Vec::new(),
             signs: Vec::new(),
             shadows: Vec::new(),
@@ -759,6 +774,7 @@ impl Scene3d {
             ribbons: Vec::new(),
             shadows: Vec::new(),
             fills: Vec::new(),
+            build: Vec::new(),
             flows: Vec::new(),
             signs: Vec::new(),
             lines: Vec::new(),
@@ -828,6 +844,10 @@ pub struct Scene3d {
     /// Filled icons, printed on the surfaces they belong to.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<FillMark>,
+    /// A diagram's build-in: when each of its nodes, edges and groups appears (see
+    /// [`Scene3d::built_at`]). Empty for anything else.
+    #[serde(skip)]
+    pub build: Vec<BuildStep>,
     /// Marks moving along a diagram's animated edges, placed for each frame's time.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub flows: Vec<FlowMark>,

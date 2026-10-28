@@ -81,6 +81,7 @@ pub(crate) fn build_pie_3d(
         ribbons: Vec::new(),
         shadows: Vec::new(),
         fills: Vec::new(),
+        build: Vec::new(),
         flows: Vec::new(),
         signs: Vec::new(),
         lines: Vec::new(),

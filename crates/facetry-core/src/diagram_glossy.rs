@@ -188,21 +188,23 @@ pub(crate) fn print_aligned(
 }
 
 /// A soft shadow of the convex `outline` (layout units, absolute) cast onto the floor.
-fn push_shadow(scene: &mut Scene3d, plan: &Plan, outline: &[[f64; 2]], color: Color) {
-    push_shadow_with(scene, plan, outline, SHADOW_OFFSET, SHADOW_BLUR, color);
+fn push_shadow(scene: &mut Scene3d, plan: &Plan, key: &str, outline: &[[f64; 2]], color: Color) {
+    push_shadow_with(scene, plan, key, outline, SHADOW_OFFSET, SHADOW_BLUR, color);
 }
 
 /// A soft shadow of the convex `outline` (layout units, absolute), moved by `offset` and
-/// blurred over `blur` layout units.
+/// blurred over `blur` layout units, cast by what `key` names.
 pub(crate) fn push_shadow_with(
     scene: &mut Scene3d,
     plan: &Plan,
+    key: &str,
     outline: &[[f64; 2]],
     offset: [f64; 2],
     blur: f64,
     color: Color,
 ) {
     scene.shadows.push(ShadowMark {
+        key: key.to_owned(),
         outline: outline
             .iter()
             .map(|p| plan.floor_point([p[0] + offset[0], p[1] + offset[1]]))
@@ -230,7 +232,7 @@ fn push_node(
         .map(|p| [node.x + p[0], node.y + p[1]])
         .collect();
     let fill = parse_color(&node.color).unwrap_or_else(|| shape_fill(node.shape, &plan.look));
-    push_shadow(scene, plan, &absolute, shadow);
+    push_shadow(scene, plan, &node.id, &absolute, shadow);
     scene.prisms.push(PrismMark {
         key: node.id.clone(),
         color: fill,
@@ -404,7 +406,7 @@ pub(crate) fn push_card(
             h + 2.0 * CARD_PAD[1],
         );
         let card: Vec<[f64; 2]> = card.iter().map(|p| [at[0] + p[0], at[1] + p[1]]).collect();
-        push_shadow(scene, plan, &card, shadow);
+        push_shadow(scene, plan, key, &card, shadow);
         let card_top = base + plan.len(CARD_HEIGHT);
         scene.decor.push(PrismMark {
             key: format!("{key}/card"),

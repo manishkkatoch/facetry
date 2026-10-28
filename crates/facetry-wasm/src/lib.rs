@@ -283,11 +283,13 @@ fn transition_option(value: &JsValue) -> Result<Option<Option<Timing>>, JsValue>
     Ok(Some(spec.resolve()))
 }
 
-/// What a transition is made of: the keyed start and end states of a 2D or a 3D scene.
+/// What a transition is made of: the keyed start and end states of a 2D or a 3D scene, or a
+/// diagram building itself in (the scene, with its schedule).
 #[derive(Debug)]
 enum Plans {
     TwoD(Box<Plan>),
     ThreeD(Box<Plan3>),
+    Build(Box<Scene3d>),
 }
 
 impl Plans {
@@ -299,7 +301,13 @@ impl Plans {
                 let plan = Plan::diff(a, b, timing);
                 (!plan.is_static()).then(|| Self::TwoD(Box::new(plan)))
             }
-            // Diagrams are not animated yet (milestone D5): they jump to the new picture.
+            // A diagram coming onto an empty canvas (`animateIn`) builds itself in.
+            (SceneKind::ThreeD(a), SceneKind::ThreeD(b))
+                if b.has_diagram() && !a.has_diagram() && !b.build.is_empty() =>
+            {
+                Some(Self::Build(Box::new(b.clone())))
+            }
+            // A diagram replaced by another jumps to the new picture.
             (SceneKind::ThreeD(a), SceneKind::ThreeD(b)) if a.has_diagram() || b.has_diagram() => {
                 None
             }
@@ -315,6 +323,7 @@ impl Plans {
         match self {
             Self::TwoD(p) => p.total_ms(),
             Self::ThreeD(p) => p.total_ms(),
+            Self::Build(s) => s.build_ms(),
         }
     }
 
@@ -323,6 +332,7 @@ impl Plans {
         match self {
             Self::TwoD(p) => SceneKind::TwoD(p.sample(elapsed)),
             Self::ThreeD(p) => SceneKind::ThreeD(p.sample(elapsed)),
+            Self::Build(s) => SceneKind::ThreeD(s.built_at(elapsed)),
         }
     }
 }
@@ -1262,6 +1272,11 @@ impl Chart {
                     self.renderer.set_marks(marks);
                 }
             }
+            Plans::Build(scene) => {
+                // Small enough to upload whole each frame.
+                self.renderer.set_scene_3d(&scene.built_at(elapsed));
+                self.renderer.set_camera(self.camera);
+            }
             Plans::ThreeD(plan) => {
                 self.renderer
                     .set_view_3d(plan.size_at(elapsed), plan.plot_at(elapsed));
@@ -1302,6 +1317,13 @@ impl Chart {
                 self.renderer.begin_transition(plan);
                 self.upload_frame();
             }
+            (
+                SceneKind::ThreeD(_),
+                Some(Anim {
+                    plan: Plans::Build(_),
+                    ..
+                }),
+            ) => self.upload_frame(),
             (SceneKind::ThreeD(scene), _) => {
                 self.renderer.set_scene_3d(scene);
                 self.renderer.set_camera(self.camera);

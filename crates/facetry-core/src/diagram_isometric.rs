@@ -156,7 +156,15 @@ fn push_node(
     let (plate, smooth) = outline(node, PLATE_REACH);
     let (body, _) = outline(node, 0.0);
     let (inset, _) = outline(node, -INSET_MARGIN);
-    push_shadow_with(scene, plan, &plate, SHADOW_OFFSET, SHADOW_BLUR, shadow);
+    push_shadow_with(
+        scene,
+        plan,
+        &node.id,
+        &plate,
+        SHADOW_OFFSET,
+        SHADOW_BLUR,
+        shadow,
+    );
     let body_base = PLATE_HEIGHT;
     let cap_base = body_base + BODY_HEIGHT;
     let inset_base = cap_base + CAP_HEIGHT;
@@ -372,6 +380,7 @@ fn push_card_on_floor(
     push_shadow_with(
         scene,
         plan,
+        &node.id,
         &outline,
         CARD_SHADOW_OFFSET,
         CARD_SHADOW_BLUR,

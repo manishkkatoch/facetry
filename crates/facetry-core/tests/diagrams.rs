@@ -1036,3 +1036,68 @@ fn animated_edges_flow_the_way_they_run_in_every_style() {
     ));
     assert_eq!(got[0].path, "/diagram/edges/0/animation");
 }
+
+#[test]
+fn a_diagram_builds_in_rank_by_rank_and_ends_as_itself() {
+    for style in ["flat", "glossy", "isometric", "schematic"] {
+        let json = grouped().replace(r#""groups""#, &format!(r#""style": "{style}", "groups""#));
+        let scene = build_scene_3d(&spec(&json), (800, 500), 1.0, FontMetrics::inter());
+        let step = |owner: &str| {
+            scene
+                .build
+                .iter()
+                .find(|s| s.owner == owner)
+                .unwrap_or_else(|| panic!("{style}: no step for {owner}"))
+        };
+        // `a` leads to `b`: `a` rises first, the edge leaves it, `b` rises as it arrives.
+        let (a, b, e) = (step("a"), step("b"), step("edge0"));
+        assert!(
+            a.start_ms < e.start_ms && e.start_ms < b.start_ms,
+            "{style}"
+        );
+        assert!(e.draw && !a.draw);
+        // A group's base comes up before what stands on it.
+        assert!(step("org").start_ms <= a.start_ms, "{style}");
+        let total = scene.build_ms();
+        assert!(total > 0.0 && total <= 3200.0);
+        // At the start only what rises first; at the end everything, as it is.
+        let first = scene.built_at(0.0);
+        assert!(first.prisms.is_empty(), "{style}");
+        let last = scene.built_at(total);
+        assert_eq!(last.prisms, scene.prisms, "{style}");
+        assert_eq!(last.decor, scene.decor, "{style}");
+        assert_eq!(last.ribbons, scene.ribbons, "{style}");
+        assert_eq!(last.polylines, scene.polylines, "{style}");
+        assert_eq!(last.texts, scene.texts, "{style}");
+        assert!(last.build.is_empty());
+        // Half way through its edge's drawing, `b` is not up yet and the edge is partly drawn.
+        let mid = scene.built_at(e.start_ms + e.duration_ms * 0.5);
+        assert!(!mid.prisms.iter().any(|p| p.key == "b"), "{style}");
+        let drawn = |s: &Scene3d| -> f32 {
+            let bands: f32 = s
+                .ribbons
+                .iter()
+                .filter(|r| r.key.starts_with("edge0"))
+                .flat_map(|r| {
+                    r.path
+                        .windows(2)
+                        .map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]))
+                })
+                .sum();
+            let lines: f32 = s
+                .polylines
+                .iter()
+                .filter(|l| l.key == "edge0")
+                .flat_map(|l| {
+                    l.runs.iter().flat_map(|r| {
+                        r.windows(2)
+                            .map(|w| (w[1][0] - w[0][0]).hypot(w[1][2] - w[0][2]))
+                    })
+                })
+                .sum();
+            bands + lines
+        };
+        let (part, whole) = (drawn(&mid), drawn(&scene));
+        assert!(part > 0.0 && part < whole, "{style}: {part} of {whole}");
+    }
+}

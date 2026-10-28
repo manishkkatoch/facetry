@@ -271,6 +271,7 @@ pub fn build_scene_3d_with_theme(
         ribbons: Vec::new(),
         shadows: Vec::new(),
         fills: Vec::new(),
+        build: Vec::new(),
         flows: Vec::new(),
         signs: Vec::new(),
         lines: Vec::new(),

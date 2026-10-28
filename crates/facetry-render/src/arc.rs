@@ -803,6 +803,7 @@ mod tests {
     #[test]
     fn a_shadow_is_dark_inside_and_fades_out() {
         let s = ShadowMark {
+            key: String::new(),
             outline: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
             blur: 0.2,
             color: Color::linear(0.0, 0.0, 0.0, 0.3),
