@@ -550,3 +550,23 @@ fn transitions_resolve_to_timings() {
         (250.0, Easing::BackOut, 90.0)
     );
 }
+
+#[test]
+fn the_spec_version_is_1_and_a_later_one_is_refused_first() {
+    let with = |v: &str| GOOD.replacen('{', &format!("{{ \"version\": {v},"), 1);
+    assert_eq!(issues(&with("1")), vec![]);
+    assert_eq!(parse_spec_json(&with("1")).unwrap().version, Some(1));
+    assert_eq!(parse_spec_json(GOOD).unwrap().version, None);
+    let got = issues(&with("2"));
+    assert_eq!(got[0].path, "/version");
+    assert_eq!(
+        got[0].message,
+        "this is spec version 2, and this facetry reads version 1: update facetry to draw it"
+    );
+    // Even when the later version brings fields this one does not know.
+    let got = issues(&with("3").replacen("\"data\"", "\"sources\": {}, \"data\"", 1));
+    assert_eq!((got.len(), got[0].path.as_str()), (1, "/version"));
+    assert_eq!(issues(&with("0"))[0].path, "/version");
+    assert_eq!(issues(&with("\"1\""))[0].path, "/version");
+    assert_eq!(issues(&with("1.5"))[0].path, "/version");
+}

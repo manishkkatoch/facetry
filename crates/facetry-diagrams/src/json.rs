@@ -5,10 +5,10 @@ use facetry_core::spec::{
     DiagramSpec, DiagramStyle, DiagramTheme, EdgeAnimation, EdgeEnd, EdgeStroke, FillRule,
 };
 
-/// `{"dimension":"3d","diagram":{...}}`.
+/// `{"version":1,"dimension":"3d","diagram":{...}}`.
 pub fn chart_spec_json(spec: &DiagramSpec) -> String {
     let mut out = String::with_capacity(256 + 160 * (spec.nodes.len() + spec.edges.len()));
-    out.push_str("{\"dimension\":\"3d\",\"diagram\":{");
+    out.push_str("{\"version\":1,\"dimension\":\"3d\",\"diagram\":{");
     match spec.style {
         DiagramStyle::Flat => {}
         DiagramStyle::Glossy => out.push_str("\"style\":\"glossy\","),
@@ -20,6 +20,45 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
         DiagramTheme::Neutral => out.push_str("\"theme\":\"neutral\","),
         DiagramTheme::Dark => out.push_str("\"theme\":\"dark\","),
         DiagramTheme::Forest => out.push_str("\"theme\":\"forest\","),
+    }
+    if !spec.palette.is_empty() {
+        out.push_str("\"palette\":{");
+        let p = &spec.palette;
+        let mut first = true;
+        for (key, value) in [
+            ("page", &p.page),
+            ("text", &p.text),
+            ("node", &p.node),
+            ("nodeBorder", &p.node_border),
+            ("edge", &p.edge),
+            ("group", &p.group),
+            ("groupBorder", &p.group_border),
+            ("flow", &p.flow),
+        ] {
+            if let Some(value) = value {
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                string(&mut out, key);
+                out.push(':');
+                string(&mut out, value);
+            }
+        }
+        if !p.accents.is_empty() {
+            if !first {
+                out.push(',');
+            }
+            out.push_str("\"accents\":[");
+            for (i, a) in p.accents.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                string(&mut out, a);
+            }
+            out.push(']');
+        }
+        out.push_str("},");
     }
     if let Some(size) = spec.font_size {
         out.push_str("\"fontSize\":");
@@ -151,6 +190,18 @@ pub fn chart_spec_json(spec: &DiagramSpec) -> String {
             None => {}
             Some(EdgeAnimation::Fast) => out.push_str(",\"animation\":\"fast\""),
             Some(EdgeAnimation::Slow) => out.push_str(",\"animation\":\"slow\""),
+        }
+        for (key, value) in [("color", &e.color), ("labelColor", &e.label_color)] {
+            if let Some(value) = value {
+                out.push_str(",\"");
+                out.push_str(key);
+                out.push_str("\":");
+                string(&mut out, value);
+            }
+        }
+        if let Some(width) = e.width {
+            out.push_str(",\"width\":");
+            number(&mut out, width);
         }
         out.push('}');
     }

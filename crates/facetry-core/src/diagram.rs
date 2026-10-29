@@ -181,6 +181,9 @@ pub(crate) fn block_pieces(block: &Block, node: &DiagramNode) -> Vec<Piece> {
         .collect()
 }
 
+/// Widest an edge may be asked to be, CSS px.
+pub const MAX_EDGE_WIDTH: f64 = 20.0;
+
 /// Most parts a block may have.
 pub const MAX_BLOCK_PARTS: usize = 32;
 /// Highest a block part may reach, in font sizes.
@@ -313,6 +316,19 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
         }
     }
     validate_blocks(diagram, issues);
+    for (field, value) in diagram.palette.colors() {
+        if let Err(e) = Color::from_hex(value) {
+            let mut parts = vec!["diagram", "palette"];
+            parts.extend(field.split('/'));
+            issues.push(Issue::new(pointer(&parts), e.to_string()));
+        }
+    }
+    if diagram.palette.accents.len() > 16 {
+        issues.push(Issue::new(
+            pointer(&["diagram", "palette", "accents"]),
+            "at most 16 accents",
+        ));
+    }
     for (i, node) in diagram.nodes.iter().enumerate() {
         let n = i.to_string();
         let at = |field: &str| pointer(&["diagram", "nodes", &n, field]);
@@ -429,6 +445,19 @@ pub(crate) fn validate_diagram(spec: &ChartSpec, issues: &mut Vec<Issue>) {
         }
         if edge.points.len() < 2 {
             issues.push(Issue::new(at("points"), "an edge needs at least 2 points"));
+        }
+        for (field, value) in [("color", &edge.color), ("labelColor", &edge.label_color)] {
+            if let Some(Err(e)) = value.as_deref().map(Color::from_hex) {
+                issues.push(Issue::new(at(field), e.to_string()));
+            }
+        }
+        if let Some(w) = edge.width {
+            if !(w.is_finite() && w > 0.0 && w <= MAX_EDGE_WIDTH) {
+                issues.push(Issue::new(
+                    at("width"),
+                    format!("`width` is CSS px, greater than 0 and at most {MAX_EDGE_WIDTH}"),
+                ));
+            }
         }
         let finite = |p: &[f64; 2]| p.iter().all(|v| v.is_finite());
         if let Some(j) = edge.points.iter().position(|p| !finite(p)) {
@@ -681,7 +710,7 @@ impl Plan {
                     Some((name.clone(), crate::icons::custom_shape(icon).ok()?))
                 })
                 .collect(),
-            look: Look::of(diagram.theme),
+            look: Look::of(diagram.theme).with(&diagram.palette),
             blocks: diagram.blocks.clone(),
         }
     }
@@ -930,12 +959,15 @@ fn styled_scene(
         font_size: None,
         style: DiagramStyle::Flat,
         theme: DiagramTheme::Default,
+        palette: Default::default(),
         icons: Vec::new(),
         blocks: Vec::new(),
         groups: Vec::new(),
     };
     let diagram = spec.diagram.as_ref().unwrap_or(&empty);
-    let theme = &Look::of(diagram.theme).chart_theme(theme);
+    let theme = &Look::of(diagram.theme)
+        .with(&diagram.palette)
+        .chart_theme(theme);
     match diagram.style {
         DiagramStyle::Flat => {}
         DiagramStyle::Glossy => {
@@ -1240,6 +1272,12 @@ fn push_edge(
     measure: &dyn TextMeasure,
 ) {
     let key = format!("edge{index}");
+    // The edge's own colours, if it has them (`linkStyle`).
+    let palette = &Palette {
+        edge: parse_color(&edge.color).unwrap_or(palette.edge),
+        text: parse_color(&edge.label_color).unwrap_or(palette.text),
+        ..*palette
+    };
     let lift = plan.node_top() + plan.len(EDGE_LIFT);
     let (tail, head) = edge.ends();
     // Pull the line back from the ends that carry an arrowhead, so its square end does not
@@ -1278,10 +1316,10 @@ fn push_edge(
     .into_iter()
     .map(|run| run.iter().map(|&p| plan.world(p, height(p))).collect())
     .collect();
-    let width = match edge.stroke {
+    let width = edge.width.unwrap_or(match edge.stroke {
         EdgeStroke::Thick => THICK_WIDTH,
         _ => EDGE_WIDTH,
-    };
+    });
     scene.polylines.push(Polyline3 {
         reveal: 1.0,
         keys: Vec::new(),

@@ -20,6 +20,11 @@ pub type Table = BTreeMap<String, Column>;
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "ts", derive(Tsify))]
 pub struct ChartSpec {
+    /// The spec format's version: `1`, the only one so far, and what a spec without it is
+    /// read as. A spec of a later version is refused with a message that says so, rather than
+    /// misread. `fromMermaid` writes it.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub version: Option<u32>,
     /// `"2d"` (the default) or `"3d"`. 3D enables `orient: "depth"` axes, the `z` encoding,
     /// `camera` and `interaction`.
     #[cfg_attr(feature = "ts", tsify(optional))]
@@ -590,6 +595,10 @@ pub struct DiagramSpec {
     /// The colours, after Mermaid's themes: `"default"`, `"neutral"`, `"dark"` or `"forest"`.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub theme: DiagramTheme,
+    /// Colours over the theme's, by role (`#rrggbb`); each style uses them in its own way.
+    /// Mermaid's `themeVariables` arrive here.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub palette: DiagramPalette,
     /// Icons of the diagram's own, by name, for nodes' `icon` (a custom icon wins over a
     /// built-in one of the same name). A JSON object; kept as pairs in its order, a name
     /// given twice keeping its last icon. (A list rather than a map: there are a handful, and
@@ -778,6 +787,69 @@ pub enum DiagramTheme {
     Forest,
 }
 
+/// A diagram's colours by role, over its theme's; any left out keep the theme's.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "ts", derive(Tsify))]
+#[cfg_attr(feature = "ts", serde(rename_all = "camelCase"))]
+pub struct DiagramPalette {
+    /// The page behind the diagram.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub page: Option<String>,
+    /// Labels and titles.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub text: Option<String>,
+    /// Nodes: the flat style's blocks, the isometric style's pedestals, the schematic style's
+    /// equipment. (The glossy style's slabs and the isometric caps take `accents`.)
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub node: Option<String>,
+    /// Nodes' rims and drawn edges.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub node_border: Option<String>,
+    /// Lines, arrows, chevrons and pipes.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub edge: Option<String>,
+    /// Group bases, and their outlines.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub group: Option<String>,
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub group_border: Option<String>,
+    /// Colours taken in turn: the glossy style's slabs (by shape), the isometric style's caps
+    /// and group plates.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub accents: Vec<String>,
+    /// Marks moving along animated edges, and the schematic style's flow marks.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub flow: Option<String>,
+}
+
+impl DiagramPalette {
+    /// Whether it sets no colour at all.
+    pub fn is_empty(&self) -> bool {
+        *self == DiagramPalette::default()
+    }
+
+    /// Each colour it sets, with its field's name in the spec.
+    pub fn colors(&self) -> Vec<(String, &str)> {
+        let mut out: Vec<(String, &str)> = [
+            ("page", &self.page),
+            ("text", &self.text),
+            ("node", &self.node),
+            ("nodeBorder", &self.node_border),
+            ("edge", &self.edge),
+            ("group", &self.group),
+            ("groupBorder", &self.group_border),
+            ("flow", &self.flow),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| v.as_deref().map(|v| (k.to_owned(), v)))
+        .collect();
+        for (i, a) in self.accents.iter().enumerate() {
+            out.push((format!("accents/{i}"), a));
+        }
+        out
+    }
+}
+
 /// Default label size of a diagram, in layout units.
 pub const DEFAULT_DIAGRAM_FONT_SIZE: f64 = 14.0;
 /// Largest `diagram.fontSize` accepted.
@@ -926,6 +998,18 @@ pub struct DiagramEdge {
     /// pace. Default: none, a still edge.
     #[cfg_attr(feature = "ts", tsify(optional))]
     pub animation: Option<EdgeAnimation>,
+    /// The line's colour (`#rrggbb`, Mermaid's `linkStyle stroke`): the line, band, road or pipe
+    /// and its heads (the schematic style's heads stay flow marks). Default: the style's and theme's.
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub color: Option<String>,
+    /// How thick it is, CSS px as in Mermaid's `stroke-width`: the flat style's line width, and
+    /// in the other styles the band, road or pipe scaled to match (1.5 is a plain edge's width,
+    /// 3.5 a thick one's).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub width: Option<f64>,
+    /// The label's colour (Mermaid's `linkStyle color`).
+    #[cfg_attr(feature = "ts", tsify(optional))]
+    pub label_color: Option<String>,
 }
 
 /// How fast marks move along an animated edge.
@@ -948,6 +1032,16 @@ impl EdgeAnimation {
 }
 
 impl DiagramEdge {
+    /// How much thicker than its style draws it the edge is asked to be (`width` over the
+    /// default for its stroke).
+    pub fn width_scale(&self) -> f64 {
+        let default = match self.stroke {
+            EdgeStroke::Thick => 3.5,
+            _ => 1.5,
+        };
+        self.width.map_or(1.0, |w| w / default)
+    }
+
     /// `(tail, head)` with the defaults filled in.
     pub fn ends(&self) -> (EdgeEnd, EdgeEnd) {
         (

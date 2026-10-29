@@ -1,7 +1,7 @@
 //! A diagram's colours per theme (after Mermaid's `default`, `neutral`, `dark` and `forest`):
 //! every colour a style draws with that a node or group does not set itself.
 
-use crate::spec::DiagramTheme;
+use crate::spec::{DiagramPalette, DiagramTheme};
 use crate::{Color, Theme};
 
 pub(crate) fn rgb(hex: u32) -> Color {
@@ -189,6 +189,47 @@ impl Look {
         }
     }
 
+    /// These colours with `palette`'s over them, each role on the colours of every style it
+    /// stands for.
+    pub(crate) fn with(mut self, palette: &DiagramPalette) -> Look {
+        let get = |v: &Option<String>| v.as_deref().and_then(|v| Color::from_hex(v).ok());
+        if let Some(c) = get(&palette.page) {
+            self.page = c;
+        }
+        if let Some(c) = get(&palette.text) {
+            (self.text, self.ink) = (c, c);
+        }
+        if let Some(c) = get(&palette.node) {
+            (self.node, self.body, self.equipment) = (c, c, c);
+        }
+        if let Some(c) = get(&palette.node_border) {
+            (self.rim, self.outline) = (c, c);
+        }
+        if let Some(c) = get(&palette.edge) {
+            (self.edge, self.arrow, self.chevron, self.pipe) = (c, c, c, c);
+            self.road = self.tint(c);
+        }
+        if let Some(c) = get(&palette.group) {
+            self.group = [c; 3];
+        }
+        if let Some(c) = get(&palette.group_border) {
+            self.group_edge = [c; 2];
+        }
+        if let Some(c) = get(&palette.flow) {
+            (self.flow, self.pulse) = (c, c);
+        }
+        let accents: Vec<Color> = palette
+            .accents
+            .iter()
+            .filter_map(|a| Color::from_hex(a).ok())
+            .collect();
+        if !accents.is_empty() {
+            self.shapes = std::array::from_fn(|i| accents[i % accents.len()]);
+            self.caps = std::array::from_fn(|i| accents[i % accents.len()]);
+        }
+        self
+    }
+
     /// The chart theme a diagram is drawn with: `theme`'s page and text replaced by this
     /// look's, unless the chart was given a page colour of its own (`clearColor`).
     pub(crate) fn chart_theme(&self, theme: &Theme) -> Theme {
@@ -198,6 +239,13 @@ impl Look {
         }
         out.text = self.text;
         out
+    }
+
+    /// `c` most of the way to the page: the isometric road under chevrons of colour `c`.
+    pub(crate) fn tint(&self, c: Color) -> Color {
+        let ([r, g, b, a], [pr, pg, pb, _]) = (c.to_array(), self.page.to_array());
+        let m = |v: f32, p: f32| v + (p - v) * 0.6;
+        Color::linear(m(r, pr), m(g, pg), m(b, pb), a)
     }
 
     /// `c` stepped `t` away from the page: darker on a light page, lighter on a dark one.

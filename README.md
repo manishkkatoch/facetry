@@ -90,6 +90,9 @@ also rejects with `gpu-unavailable`, with a message saying which backend the bui
   [Animated transitions](#animated-transitions).
 - `label` (optional, per layer): value labels on the marks, see
   [below](#value-labels-hover-and-click).
+- `version` (optional, top level): the spec format's version, `1`. A spec without it is read as
+  version 1; one of a later version is refused with a message saying to update facetry, before
+  anything else in it is read. `diagram.fromMermaid` writes it.
 - Unknown fields are errors, so typos are caught. Empty data is valid: the axes are drawn (numeric
   domain `[0, 1]`, no categories) and there are no bars.
 - Tick labels use thousands separators (`1,200`) and as many decimals as the tick step needs
@@ -658,6 +661,13 @@ is loaded by `run` itself, so `facetry/diagrams` alone is enough. In the playgro
   `style a fill:#f96`. Properties `fill`, `stroke`, `stroke-width` (px, up to 20) and `color`
   (the label), with `#rgb`/`#rrggbb` colours or common CSS names. Classes apply in the order
   written, `style` over classes; a class may be defined after the nodes that use it;
+- link styles: `linkStyle 0,2 stroke:#e5484d,stroke-width:3px,color:#555` (links numbered from 0
+  in the order written, a chain or group counting each link it makes) and `linkStyle default
+  ...` for every link, the numbered ones over it. `stroke` colours the line (the band, road or
+  pipe, and its heads), `stroke-width` sets its width (px, up to 20; in the styles that draw
+  bands, roads and pipes it scales them: 1.5 is a plain link's width, 3.5 a thick one's) and
+  `color` its label. `fill:none` is accepted and does nothing; a number past the last link is
+  an error;
 - icons: `a[Checkout]@{ icon: "cart" }` draws a built-in line icon above the label (on the card,
   with cards). The icons are `alert`, `bars`, `bolt`, `bulb`, `calendar`, `cart`, `chart`,
   `check`, `clock`, `cloud`, `code`, `database`, `disk`, `file`, `flag`, `gear`, `globe`, `heart`,
@@ -705,18 +715,22 @@ with `code: "invalid-options"`, naming the icon and where its path goes wrong; a
 the SVG files in `examples/diagrams/*/icons/` as icons (see `mermaid/31-custom-icons`).
 - themes: `%%{init: {"theme": "dark"}}%%` before the header (also `initialize`, single quotes
   or bare words, over several lines), or front matter with `config:` and `theme:` under it;
-  `default` (or `base`), `neutral`, `dark` or `forest`. See "Themes" below.
+  `default` (or `base`), `neutral`, `dark` or `forest`. See "Themes" below. `themeVariables`
+  in either (`%%{init: {"themeVariables": {"primaryColor": "#ffeeaa"}}}%%`, or `themeVariables:`
+  under `config:`) fill the diagram's palette: `background`, `primaryColor` (or `mainBkg`),
+  `primaryTextColor` (or `textColor`), `primaryBorderColor` (or `nodeBorder`), `lineColor`,
+  `clusterBkg` and `clusterBorder`; other variables are errors that list these.
 - animated edges, as in Mermaid 11: an edge id in front of the link (`a e1@--> b`), then
   `e1@{ animate: true }` or `e1@{ animation: fast }` (or `slow`); `animate: false` keeps an
   edge still. See "Flow" below.
 
 Everything else is an `invalid-diagram` error naming the feature and its line and column
 (other style properties such as `stroke-dasharray` or `font-size`, `click`,
-`linkStyle`, invisible `~~~` links, the
+invisible `~~~` links, the
 `[[subroutine]]`, `>asymmetric]` and `(((double circle)))` shapes, `@{ }` keys other than `icon`,
 `shape` and `label`,
 markdown strings, HTML other than `<br>`, anything in a directive or front matter but the
-theme): a diagram is
+theme and its variables): a diagram is
 never drawn with parts silently missing. Sequence and architecture diagrams are planned
 (milestones D3 and D4); other diagram types are rejected. Labels use the bundled font, which
 covers printable ASCII; other characters draw as `?`.
@@ -876,6 +890,25 @@ tones). A theme the Mermaid text sets itself wins, as in Mermaid. The theme trav
 (`diagram.theme`), and the playground has a Theme menu (`?theme=dark`). A chart's own
 `clearColor` still sets the page colour.
 
+**Palette.** Colours of your own go over the theme's by role, each style using them in its own
+manner; any role left out keeps the theme's:
+
+```ts
+await diagram.fromMermaid(text, {
+  theme: "dark",
+  palette: { edge: "#f5a524", node: "#2b3a55", accents: ["#3e8ef7", "#30a46c", "#e5484d"] },
+});
+```
+
+The roles are `page` (behind the diagram), `text` (labels, titles and sign ink), `node` (flat
+blocks, isometric pedestals, schematic equipment), `nodeBorder` (rims and drawn edges), `edge`
+(lines, arrows, chevrons, pipes; isometric roads take a pale shade of it), `group` and
+`groupBorder` (group bases and their outlines), `flow` (moving marks and schematic flow marks)
+and `accents` (up to 16, taken in turn by the glossy style's slabs and the isometric caps), each
+`#rrggbb`. Mermaid's `themeVariables` fill the same roles and win over `palette`, as the text's
+theme wins over `theme`. A node's, group's or edge's own colour still wins over the palette. In
+the spec it is `diagram.palette`.
+
 **Drawing (flat).** Nodes are prisms standing on the floor, their label on top, with a crisp rim; edges
 run at the height of the node tops (so an arrow arriving from behind a node is never hidden by
 it), dotted edges are dashed, and arrowheads are flat solids. Diagrams start from an
@@ -894,8 +927,8 @@ card? }]`, `icons?: { <name>: { stroke?, fill?: [{ d, fillRule? }], viewBox? } }
 round nodes, `parent` naming the group around it; an edge's `from` or `to` may name a group)
 (centre and size in layout units, y down the page) and `edges: [{ from, to, points: [[x, y], ...],
 label?, labelPosition?, stroke?: "solid" | "dotted" | "thick", head?: "arrow" | "none" | "circle" |
-"cross", tail?, animation?: "fast" | "slow" }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
-`examples/specs/diagram-glossy.json`). A node's `block` names one of the diagram's `blocks`
+"cross", tail?, animation?: "fast" | "slow", color?, width?, labelColor? }]`, plus `fontSize` (default 14), `theme` (`"default"`, `"neutral"`, `"dark"` or `"forest"`) and `style` (`"flat"`, `"glossy"`, `"isometric"` or `"schematic"`;
+`examples/specs/diagram-glossy.json`) and `palette` (see "Palette"). A node's `block` names one of the diagram's `blocks`
 (see "Blocks"). `icon` names one of the diagram's `icons` or a built-in
 icon; `card: { x, y, width, height,
 title, text? }` (isometric only) places a card on the floor. Validation reports problems at their JSON pointer
@@ -916,7 +949,7 @@ each other. The flat style's lines jump the way a schematic drawing's wires do; 
 bands, isometric roads and schematic pipes become bridges (a pipe's supports grow to meet it,
 and the marks along a road or pipe ride up with it).
 
-**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (36 flowcharts in the
+**Layout quality is measured.** The corpus in `examples/diagrams/flowchart` (37 flowcharts in the
 style of real documentation) is laid out in both styles, and in the isometric style with cards, by
 `crates/facetry-diagrams/tests/corpus.rs`, which checks that nodes never overlap, output is
 deterministic and valid, and glossy edges are square-cornered, and snapshots per-diagram metrics
@@ -1156,9 +1189,9 @@ The package ships two chart wasm modules built from the same source, plus the di
 
 | | raw | gzip -9 | brotli -q 11 | loaded |
 |---|---:|---:|---:|---|
-| `facetry_wasm` (WebGPU only) | 984,731 B (962 KiB) | 429,885 B (420 KiB) | 351,635 B (343 KiB) | always, where WebGPU works |
-| `facetry_wasm_gl` (WebGL2 only) | 2,591,484 B (2531 KiB) | 1,072,214 B (1047 KiB) | 844,341 B (825 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
-| `facetry_diagrams` (Mermaid add-on) | 270,796 B (264 KiB) | 117,752 B (115 KiB) | 99,892 B (98 KiB) | only when `facetry/diagrams` lays out a diagram |
+| `facetry_wasm` (WebGPU only) | 998,420 B (975 KiB) | 435,025 B (425 KiB) | 355,727 B (347 KiB) | always, where WebGPU works |
+| `facetry_wasm_gl` (WebGL2 only) | 2,605,220 B (2544 KiB) | 1,077,541 B (1052 KiB) | 848,472 B (829 KiB) | only on browsers without WebGPU, or `backend: "webgl2"` |
+| `facetry_diagrams` (Mermaid add-on) | 276,082 B (270 KiB) | 119,705 B (117 KiB) | 101,674 B (99 KiB) | only when `facetry/diagrams` lays out a diagram |
 
 Diagrams were built on top of M2 and then rebased onto M5 (animated transitions): together
 they add 54,677 B gzip to the WebGPU module (347,025 to 401,702, +15.8%) and 55,203 to the
@@ -1202,7 +1235,9 @@ their `@{ }`). The build-in then added 4,974 B gzip to the WebGPU module and 4,5
 one (the schedule and the scene at a time; lists rather than hash maps saved 1.8 KB). Blocks of
 the user's own added 5,645 B gzip to the WebGPU module and 5,423 to the WebGL2 one (reading and
 checking them, fitting their parts, the isometric style's signs) and 1,959 to the add-on
-(Mermaid's `@{ shape }` and `label`, with every name of Mermaid's shapes).
+(Mermaid's `@{ shape }` and `label`, with every name of Mermaid's shapes). The spec version,
+edges' own colours and widths and the palette added 5,140 B gzip to the WebGPU module and 5,327
+to the WebGL2 one, and 1,953 to the add-on (`linkStyle` and `themeVariables`).
 
 M2 (stacking, lines, pies, legend) grew the WebGPU module from 272,819 to 324,277 B gzip
 (+18.9%) and the WebGL2 one from 917,046 to 967,304 (+5.5%); `docs/wasm-size.md` has the

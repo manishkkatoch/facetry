@@ -19,6 +19,10 @@ pub type Table = BTreeMap<String, Column>;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChartSpec {
+    /// Not in the frozen parser (added later); always `None`, so that `Debug` prints the same
+    /// fields as the new `ChartSpec`.
+    #[serde(skip)]
+    pub version: Option<u32>,
     /// `"2d"` (the default) or `"3d"`. 3D enables `orient: "depth"` axes, the `z` encoding,
     /// `camera` and `interaction`.
     #[serde(default)]
